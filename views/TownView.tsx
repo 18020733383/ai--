@@ -410,8 +410,8 @@ export const TownView = ({
   };
   const buildLordRaceContext = () => {
     if (!currentLord) return null;
-    const currentRace = currentLocation.type === 'ROACH_NEST' ? 'ROACH' : 'HUMAN';
-    const otherRace = currentRace === 'ROACH' ? 'HUMAN' : 'ROACH';
+    const currentRace: 'ROACH' | 'HUMAN' = currentLocation.type === 'ROACH_NEST' ? 'ROACH' : 'HUMAN';
+    const otherRace: 'ROACH' | 'HUMAN' = currentRace === 'ROACH' ? 'HUMAN' : 'ROACH';
     const sameRaceLocations = locations.filter(loc => loc.lord && (loc.type === 'ROACH_NEST') === (currentRace === 'ROACH'));
     const sameRaceLords = sameRaceLocations
       .filter(loc => loc.lord && loc.lord.id !== currentLord.id)
