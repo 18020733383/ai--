@@ -1344,6 +1344,27 @@ export const chatWithHero = async (
   return { reply: reply || `${hero.name} 看着你，没有说话。`, emotion: emotionRaw as Hero['currentExpression'], memory, memoryEdits, diaryEdits, affinity };
 };
 
+type LordRaceContext = {
+  race: 'HUMAN' | 'ROACH';
+  sameRaceLords: Array<{
+    id: string;
+    name: string;
+    title: string;
+    temperament: string;
+    traits: string[];
+    relation: number;
+  }>;
+  otherRace: {
+    label: string;
+    relation: number;
+    leader?: {
+      name: string;
+      title: string;
+      attitude: number;
+    } | null;
+  };
+};
+
 export const chatWithLord = async (
   dialogue: LordChatLine[],
   lord: Lord,
@@ -1352,6 +1373,7 @@ export const chatWithLord = async (
   recentLogs: string[],
   localLogs: { day: number; text: string }[],
   garrisonSummary: string,
+  raceContext: LordRaceContext | null,
   openAI?: OpenAIConfig
 ): Promise<{ reply: string; relationDelta: number; memory?: string; attack?: boolean; attackReason?: string; attackRatio?: number }> => {
   const historyText = dialogue
@@ -1364,6 +1386,15 @@ export const chatWithLord = async (
   const memoriesText = (lord.memories || []).slice(0, 8).map(m => `- 第${m.day}天：${m.text}`).join('\n') || '（无）';
   const relation = lord.relation ?? 0;
   const focusLabel = lord.focus === 'WAR' ? '扩张' : lord.focus === 'TRADE' ? '贸易' : lord.focus === 'DEFENSE' ? '防御' : '外交';
+  const sameRaceText = raceContext?.sameRaceLords?.length
+    ? raceContext.sameRaceLords.map(item => `- ${item.title}${item.name}（性格:${item.temperament}，特质:${item.traits.join('、') || '（无）'}，关系:${item.relation}）`).join('\n')
+    : '（无）';
+  const otherRaceLeaderText = raceContext?.otherRace?.leader
+    ? `${raceContext.otherRace.leader.title}${raceContext.otherRace.leader.name}（态度:${raceContext.otherRace.leader.attitude}）`
+    : '（无）';
+  const otherRaceText = raceContext
+    ? `- 整体态度(${raceContext.otherRace.label}): ${raceContext.otherRace.relation}\n- 对方代表领袖: ${otherRaceLeaderText}`
+    : '（无）';
 
   const isRoachNest = location.type === 'ROACH_NEST';
   const prompt = isRoachNest ? `
@@ -1385,6 +1416,12 @@ export const chatWithLord = async (
 
 【巢穴群落概况】
 ${garrisonSummary || '（无）'}
+
+【同种族其他领袖关系】
+${sameRaceText}
+
+【对异族总体看法】
+${otherRaceText}
 
 【你的记忆（近期）】
 ${memoriesText}
@@ -1422,6 +1459,12 @@ ${historyText || '（暂无）'}
 
 【据点驻军概况】
 ${garrisonSummary || '（无）'}
+
+【同种族其他领袖关系】
+${sameRaceText}
+
+【对异族总体看法】
+${otherRaceText}
 
 【你的记忆（近期）】
 ${memoriesText}

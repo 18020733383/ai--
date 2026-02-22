@@ -42,6 +42,7 @@ type AltarRecruitState = {
 
 type TownViewProps = {
   currentLocation: Location | null;
+  locations: Location[];
   player: PlayerState;
   heroes: Hero[];
   heroDialogue: { heroId: string; text: string } | null;
@@ -128,6 +129,7 @@ type TownViewProps = {
 
 export const TownView = ({
   currentLocation,
+  locations,
   player,
   heroes,
   heroDialogue,
@@ -359,6 +361,97 @@ export const TownView = ({
     ].filter(Boolean) as string[];
     return parts.join('\n');
   };
+  const hashString = (value: string) => {
+    let hash = 0;
+    for (let i = 0; i < value.length; i += 1) {
+      hash = (hash << 5) - hash + value.charCodeAt(i);
+      hash |= 0;
+    }
+    return Math.abs(hash);
+  };
+  const clampValue = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value));
+  const getXenoAcceptanceScore = (temperament: string, traits: string[]) => {
+    const temperamentScores: Record<string, number> = {
+      强硬: -18,
+      稳重: 6,
+      多疑: -26,
+      豪爽: 18,
+      谨慎: 0,
+      冷峻: -22,
+      宽厚: 24,
+      冷静: 4
+    };
+    const traitScores: Record<string, number> = {
+      好战: -16,
+      务实: -2,
+      忠诚: 0,
+      谨慎: -6,
+      野心: -10,
+      仁慈: 18,
+      狡黠: -6,
+      守旧: -20,
+      热情: 12,
+      冷静: 0
+    };
+    const base = temperamentScores[temperament] ?? 0;
+    const traitSum = (traits || []).reduce((sum, trait) => sum + (traitScores[trait] ?? 0), 0);
+    return clampValue(base + traitSum, -40, 30);
+  };
+  const buildXenoRelation = (lord: NonNullable<Location['lord']>, otherRace: 'HUMAN' | 'ROACH') => {
+    const acceptance = getXenoAcceptanceScore(lord.temperament, lord.traits || []);
+    const base = otherRace === 'ROACH' ? -48 : -42;
+    const jitter = (hashString(`${lord.id}:${otherRace}`) % 9) - 4;
+    return clampValue(base + Math.round(acceptance / 2) + jitter, -80, 20);
+  };
+  const buildSameRaceRelation = (lord: NonNullable<Location['lord']>, other: NonNullable<Location['lord']>, sameFactionBonus: number) => {
+    const base = (hashString(`${lord.id}:${other.id}`) % 61) - 30;
+    const temperamentBias = Math.round(getXenoAcceptanceScore(lord.temperament, lord.traits || []) / 4);
+    return clampValue(base + temperamentBias + sameFactionBonus, -60, 60);
+  };
+  const buildLordRaceContext = () => {
+    if (!currentLord) return null;
+    const currentRace = currentLocation.type === 'ROACH_NEST' ? 'ROACH' : 'HUMAN';
+    const otherRace = currentRace === 'ROACH' ? 'HUMAN' : 'ROACH';
+    const sameRaceLocations = locations.filter(loc => loc.lord && (loc.type === 'ROACH_NEST') === (currentRace === 'ROACH'));
+    const sameRaceLords = sameRaceLocations
+      .filter(loc => loc.lord && loc.lord.id !== currentLord.id)
+      .map(loc => {
+        const other = loc.lord!;
+        const sameFactionBonus = currentRace === 'HUMAN' && other.factionId === currentLord.factionId ? 8 : 0;
+        return {
+          id: other.id,
+          name: other.name,
+          title: other.title,
+          temperament: other.temperament,
+          traits: other.traits || [],
+          relation: buildSameRaceRelation(currentLord, other, sameFactionBonus)
+        };
+      })
+      .slice(0, 12);
+    const otherRaceCandidates = locations.filter(loc => loc.lord && (loc.type === 'ROACH_NEST') === (otherRace === 'ROACH'));
+    const otherRaceLeader = otherRace === 'HUMAN'
+      ? otherRaceCandidates.find(loc => loc.type === 'CITY') ?? otherRaceCandidates.find(loc => loc.type === 'CASTLE') ?? otherRaceCandidates[0]
+      : otherRaceCandidates[0];
+    const otherRaceRelation = buildXenoRelation(currentLord, otherRace);
+    const leaderAttitude = otherRaceLeader?.lord
+      ? clampValue(otherRaceRelation + ((hashString(`${currentLord.id}:${otherRaceLeader.lord.id}`) % 11) - 5), -90, 30)
+      : undefined;
+    return {
+      race: currentRace,
+      sameRaceLords,
+      otherRace: {
+        label: otherRace === 'ROACH' ? '蟑螂' : '人类',
+        relation: otherRaceRelation,
+        leader: otherRaceLeader?.lord
+          ? {
+              name: otherRaceLeader.lord.name,
+              title: otherRaceLeader.lord.title,
+              attitude: leaderAttitude ?? otherRaceRelation
+            }
+          : null
+      }
+    };
+  };
   const buildLordAttackPlan = (ratio: number) => {
     const garrison = currentLocation.garrison ?? [];
     const stayParties = currentLocation.stayParties ?? [];
@@ -491,6 +584,7 @@ export const TownView = ({
     setIsLordChatLoading(true);
     try {
       const aiConfig = buildAIConfig();
+      const raceContext = buildLordRaceContext();
       const response = await chatWithLord(
         nextDialogue,
         currentLord,
@@ -499,6 +593,7 @@ export const TownView = ({
         recentLogs,
         currentLocation.localLogs ?? [],
         buildLordGarrisonSummary(),
+        raceContext,
         aiConfig
       );
       const reply = response.reply;

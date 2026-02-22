@@ -1869,16 +1869,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    const raw = sessionStorage.getItem('game.logs');
-    if (raw) {
-      try {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed) && parsed.every(x => typeof x === 'string') && parsed.length > 0) {
-          setLogs(parsed.slice(0, 120));
-        }
-      } catch {
-      }
-    }
+    sessionStorage.removeItem('game.logs');
 
     const baseUrl = localStorage.getItem('openai.baseUrl');
     const key = localStorage.getItem('openai.key');
@@ -6969,6 +6960,7 @@ export default function App() {
         {view === 'TOWN' && (
           <TownView
             currentLocation={currentLocation}
+            locations={locations}
             player={player}
             heroes={heroes}
             heroDialogue={heroDialogue}
