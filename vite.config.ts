@@ -18,6 +18,23 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
         }
+      },
+      build: {
+        rollupOptions: {
+          output: {
+            manualChunks(id) {
+              if (id.includes('node_modules')) {
+                if (id.includes('react')) return 'react';
+                if (id.includes('lucide-react')) return 'lucide';
+                if (id.includes('@google/genai')) return 'genai';
+                return 'vendor';
+              }
+              if (id.includes('/views/')) return 'views';
+              if (id.includes('/components/')) return 'components';
+              if (id.includes('/services/')) return 'services';
+            }
+          }
+        }
       }
     };
 });

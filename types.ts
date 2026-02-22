@@ -54,6 +54,8 @@ export interface Troop {
   ammoPerUnit?: number;
   supportRole?: HeavySupportRole;
   supportRules?: string;
+  doctrine?: string;
+  evangelist?: boolean;
 }
 
 export type AltarDoctrine = {

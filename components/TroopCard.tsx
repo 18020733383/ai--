@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Troop } from '../types';
-import { Shield, Users, Sword, ChevronUp, Hammer, ShieldAlert } from 'lucide-react';
+import { Shield, Users, Sword, ChevronUp, Hammer, ShieldAlert, Star } from 'lucide-react';
 
 interface TroopCardProps {
   troop: Troop;
@@ -40,6 +40,9 @@ export const TroopCard: React.FC<TroopCardProps> = ({
   const xpPercentage = Math.min(100, (troop.xp / (troop.maxXp * (troop.count || 1))) * 100);
   const isReadyToUpgrade = canUpgrade && troop.xp >= troop.maxXp; // At least one unit can upgrade
   const isHeavy = troop.category === 'HEAVY';
+  const normalizedId = troop.id.startsWith('garrison_') ? troop.id.slice('garrison_'.length) : troop.id;
+  const doctrineLabel = troop.doctrine?.trim();
+  const isEvangelist = troop.evangelist || normalizedId.startsWith('altar_') || !!doctrineLabel;
 
   return (
     <div className="bg-stone-900/80 border border-stone-700 p-4 rounded-sm flex flex-col gap-3 group hover:border-stone-500 transition-colors relative overflow-hidden">
@@ -66,6 +69,11 @@ export const TroopCard: React.FC<TroopCardProps> = ({
                    <ShieldAlert className="w-3 h-3" /> 重型
                  </span>
                )}
+               {isEvangelist && (
+                 <span className="bg-amber-900/40 text-amber-200 px-1 rounded border border-amber-700/60 inline-flex items-center gap-1">
+                   <Star className="w-3 h-3" /> {doctrineLabel ? `教义·${doctrineLabel}` : '传教'}
+                 </span>
+               )}
                <span>•</span>
                <span>{troop.equipment.join(', ')}</span>
             </div>
@@ -80,6 +88,14 @@ export const TroopCard: React.FC<TroopCardProps> = ({
 
       {/* Stats & Description */}
       <p className="text-xs text-stone-400 italic border-l-2 border-stone-700 pl-2 min-h-[40px]">{troop.description}</p>
+      <div className="flex flex-wrap gap-2 text-[11px] text-stone-400">
+        <span>攻 {troop.attributes.attack}</span>
+        <span>防 {troop.attributes.defense}</span>
+        <span>敏 {troop.attributes.agility}</span>
+        <span>血 {troop.attributes.hp}</span>
+        <span>射 {troop.attributes.range}</span>
+        <span>士 {troop.attributes.morale}</span>
+      </div>
 
       {/* Action Area */}
       <div className="mt-auto pt-2 border-t border-stone-800 flex flex-col gap-2">

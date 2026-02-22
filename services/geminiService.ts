@@ -1352,7 +1352,7 @@ export const chatWithLord = async (
   localLogs: { day: number; text: string }[],
   garrisonSummary: string,
   openAI?: OpenAIConfig
-): Promise<{ reply: string; relationDelta: number; memory?: string }> => {
+): Promise<{ reply: string; relationDelta: number; memory?: string; attack?: boolean; attackReason?: string; attackRatio?: number }> => {
   const historyText = dialogue
     .slice(-10)
     .map(m => `${m.role === 'PLAYER' ? '玩家' : `${lord.title}${lord.name}`}: ${m.text}`)
@@ -1374,7 +1374,9 @@ export const chatWithLord = async (
 4) 关系变化谨慎：除非玩家明显礼貌或挑衅，否则 relationDelta 取 0；允许在 -2 到 2 之间小幅变动。
 5) reply 只给领主回复，不要标题。
 6) 若玩家询问近况，可引用 lastAction 或 据点日志。
-输出 JSON：{ "reply": "...", "relationDelta": 0, "memory": "" }，memory 为空可省略。
+7) 若玩家明显挑衅、威胁或关系已非常恶劣（<=-40），可以决定派兵袭击玩家；此时 attack=true，并给出 attackReason。
+8) attackRatio 表示派出的兵力比例（0.2~0.6），仅在 attack=true 时输出。
+输出 JSON：{ "reply": "...", "relationDelta": 0, "memory": "", "attack": false, "attackReason": "", "attackRatio": 0.4 }，attack=false 时可省略 attack 相关字段，memory 为空可省略。
 
 【领主档案】
 - 性格: ${lord.temperament}
@@ -1429,7 +1431,7 @@ ${historyText || '（暂无）'}
     const json = await res.json().catch(() => null) as any;
     const text = json?.choices?.[0]?.message?.content;
     if (!text) throw new Error('OpenAI 返回为空');
-    let parsed: { reply?: string; relationDelta?: number; memory?: string };
+    let parsed: { reply?: string; relationDelta?: number; memory?: string; attack?: boolean; attackReason?: string; attackRatio?: number };
     try {
       parsed = JSON.parse(text);
     } catch (parseError) {
@@ -1438,7 +1440,11 @@ ${historyText || '（暂无）'}
     const reply = String(parsed?.reply || '').trim();
     const relationDelta = Math.max(-2, Math.min(2, Number(parsed?.relationDelta ?? 0)));
     const memory = String(parsed?.memory || '').trim();
-    return { reply: reply || `${lord.name} 看着你，没有回应。`, relationDelta, memory };
+    const attack = Boolean(parsed?.attack);
+    const attackReason = String(parsed?.attackReason || '').trim();
+    const attackRatioRaw = Number(parsed?.attackRatio ?? 0.4);
+    const attackRatio = Number.isFinite(attackRatioRaw) ? Math.min(0.6, Math.max(0.2, attackRatioRaw)) : 0.4;
+    return { reply: reply || `${lord.name} 看着你，没有回应。`, relationDelta, memory, attack, attackReason, attackRatio };
   }
 
   const model = "gemini-3-flash-preview";
@@ -1452,7 +1458,7 @@ ${historyText || '（暂无）'}
 
   const text = response.text;
   if (!text) throw new Error("No response from AI");
-  let parsed: { reply?: string; relationDelta?: number; memory?: string };
+  let parsed: { reply?: string; relationDelta?: number; memory?: string; attack?: boolean; attackReason?: string; attackRatio?: number };
   try {
     parsed = JSON.parse(String(text));
   } catch (parseError) {
@@ -1461,7 +1467,11 @@ ${historyText || '（暂无）'}
   const reply = String(parsed?.reply || '').trim();
   const relationDelta = Math.max(-2, Math.min(2, Number(parsed?.relationDelta ?? 0)));
   const memory = String(parsed?.memory || '').trim();
-  return { reply: reply || `${lord.name} 沉默片刻。`, relationDelta, memory };
+  const attack = Boolean(parsed?.attack);
+  const attackReason = String(parsed?.attackReason || '').trim();
+  const attackRatioRaw = Number(parsed?.attackRatio ?? 0.4);
+  const attackRatio = Number.isFinite(attackRatioRaw) ? Math.min(0.6, Math.max(0.2, attackRatioRaw)) : 0.4;
+  return { reply: reply || `${lord.name} 沉默片刻。`, relationDelta, memory, attack, attackReason, attackRatio };
 };
 
 export function buildHeroChatPrompt(

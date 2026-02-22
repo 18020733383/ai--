@@ -5139,6 +5139,14 @@ export default function App() {
     const baseId = `altar_${currentLocation.id}_${Date.now()}`;
     const costByTier = [0, 20, 60, 140, 300, 600];
     const tierCounts: Record<number, number> = {};
+    const doctrineSuffix = `隶属于${doctrine.domain}教义`;
+    const appendDoctrineSuffix = (value: string) => {
+      const trimmed = value.trim();
+      if (!trimmed) return doctrineSuffix;
+      if (trimmed.includes(doctrineSuffix)) return trimmed;
+      const tail = trimmed.endsWith('。') ? trimmed : `${trimmed}。`;
+      return `${tail}${doctrineSuffix}`;
+    };
     const templates = sortedTroops.map(troop => {
       const tier = clampInt(troop.tier, 1, 5);
       const nextCount = (tierCounts[tier] ?? 0) + 1;
@@ -5154,7 +5162,7 @@ export default function App() {
         upgradeCost: clampInt(troop.upgradeCost, 0, 1000000),
         maxXp: clampInt(troop.maxXp, 10, 2000),
         upgradeTargetId: undefined as string | undefined,
-        description: String(troop.description || `教义：${doctrine.domain}。`).slice(0, 500),
+        description: appendDoctrineSuffix(String(troop.description || `教义：${doctrine.domain}。`)).slice(0, 500),
         equipment: (() => {
           const list = (troop.equipment ?? []).map(item => String(item)).filter(Boolean).slice(0, 5);
           return list.length > 0 ? list : ['布袍'];
@@ -5166,7 +5174,9 @@ export default function App() {
           hp: clampInt(attrs.hp, 1, 300),
           range: clampInt(attrs.range, 1, 300),
           morale: clampInt(attrs.morale, 1, 300)
-        }
+        },
+        doctrine: doctrine.domain,
+        evangelist: true
       } as Omit<Troop, 'count' | 'xp'>;
     });
 

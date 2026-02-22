@@ -357,6 +357,40 @@ export const TownView = ({
     ].filter(Boolean) as string[];
     return parts.join('\n');
   };
+  const buildLordAttackPlan = (ratio: number) => {
+    const garrison = currentLocation.garrison ?? [];
+    const stayParties = currentLocation.stayParties ?? [];
+    const lordPartyIndex = stayParties.findIndex(p => p.lordId && p.lordId === currentLord?.id);
+    const lordParty = lordPartyIndex >= 0 ? stayParties[lordPartyIndex] : null;
+    const pickTroops = (troops: Troop[]) => {
+      const used: Troop[] = [];
+      const remaining: Troop[] = [];
+      troops.forEach(t => {
+        if (!t || t.count <= 0) return;
+        const sendCount = Math.min(t.count, Math.max(1, Math.floor(t.count * ratio)));
+        if (sendCount > 0) {
+          used.push({ ...t, count: sendCount });
+        }
+        const left = t.count - sendCount;
+        if (left > 0) {
+          remaining.push({ ...t, count: left });
+        }
+      });
+      return { used, remaining };
+    };
+    const garrisonPick = pickTroops(garrison);
+    const lordPick = lordParty ? pickTroops(lordParty.troops) : { used: [], remaining: [] };
+    const nextStayParties = lordParty
+      ? stayParties.map((p, idx) => idx === lordPartyIndex ? { ...p, troops: lordPick.remaining } : p)
+      : stayParties;
+    const updatedLocation: Location = {
+      ...currentLocation,
+      garrison: garrisonPick.remaining,
+      stayParties: nextStayParties
+    };
+    const troops = [...garrisonPick.used, ...lordPick.used];
+    return troops.length > 0 ? { troops, updatedLocation } : null;
+  };
   const buildAIConfig = () => {
     if (aiProvider === 'GEMINI') {
       const key = geminiApiKey.trim();
@@ -474,6 +508,32 @@ export const TownView = ({
           ? [{ day: playerRef.current.day, text: memory }, ...(currentLord.memories ?? [])].slice(0, 10)
           : currentLord.memories;
         updateLordData({ relation: nextRelation, memories: nextMemories });
+      }
+      if (response.attack) {
+        const attackRatio = Number(response.attackRatio ?? 0.4);
+        const attackPlan = buildLordAttackPlan(Number.isFinite(attackRatio) ? attackRatio : 0.4);
+        if (attackPlan) {
+          const reasonText = String(response.attackReason ?? '').trim();
+          const locationId = currentLocation.id;
+          updateLocationState(attackPlan.updatedLocation);
+          addLog(`${currentLord.name} 忍无可忍，派兵来袭${reasonText ? `（${reasonText}）` : ''}。`);
+          const enemy: EnemyForce = {
+            id: `lord_attack_${Date.now()}`,
+            name: `${currentLord.title}${currentLord.name}的亲卫`,
+            description: reasonText ? `因冒犯而出兵：${reasonText}` : '领主怒而出兵。',
+            troops: attackPlan.troops,
+            difficulty: '困难',
+            lootPotential: 1.1,
+            terrain: currentLocation.terrain,
+            baseTroopId: attackPlan.troops[0]?.id ?? 'militia'
+          };
+          window.setTimeout(() => {
+            setActiveEnemy(enemy);
+            setPendingBattleMeta({ mode: 'FIELD', targetLocationId: locationId });
+            setPendingBattleIsTraining(false);
+            onEnterBattle();
+          }, 1200);
+        }
       }
     } catch (error) {
       setLordDialogue(prev => [...prev, { role: 'LORD' as const, text: '领主沉默了片刻，没有回应。' }].slice(-16));
