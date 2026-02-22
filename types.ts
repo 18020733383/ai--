@@ -193,6 +193,8 @@ export interface PlayerState {
   status: 'ACTIVE' | 'INJURED'; // 受伤状态无法战斗，随时间恢复
   position: { x: number; y: number }; // Map coordinates (Now 0-200)
   minerals: MineralInventory;
+  relationMatrix: RelationMatrix;
+  relationEvents: RelationEvent[];
 }
 
 export interface EnemyForce {
@@ -223,6 +225,22 @@ export type FactionInfo = {
 };
 
 export type LordFocus = 'WAR' | 'TRADE' | 'DEFENSE' | 'DIPLOMACY';
+
+export type RaceId = 'ROACH' | 'UNDEAD' | 'IMPOSTER' | 'BANDIT' | 'AUTOMATON' | 'VOID' | 'MADNESS';
+
+export type RelationEvent = {
+  id: string;
+  day: number;
+  targetType: 'FACTION' | 'RACE';
+  targetId: string;
+  delta: number;
+  text: string;
+};
+
+export type RelationMatrix = {
+  factions: Record<FactionId, number>;
+  races: Record<RaceId, number>;
+};
 
 export interface Lord {
   id: string;
@@ -288,7 +306,7 @@ export interface SiegeEngineQueueItem {
   totalDays: number;
 }
 
-export type GameView = 'MAP' | 'TOWN' | 'BATTLE' | 'BATTLE_RESULT' | 'GAME_OVER' | 'PARTY' | 'CHARACTER' | 'TRAINING' | 'ASYLUM' | 'MARKET' | 'BANDIT_ENCOUNTER' | 'CAVE' | 'HERO_CHAT' | 'WORLD_BOARD' | 'TROOP_ARCHIVE';
+export type GameView = 'MAP' | 'TOWN' | 'BATTLE' | 'BATTLE_RESULT' | 'GAME_OVER' | 'PARTY' | 'CHARACTER' | 'TRAINING' | 'ASYLUM' | 'MARKET' | 'BANDIT_ENCOUNTER' | 'CAVE' | 'HERO_CHAT' | 'WORLD_BOARD' | 'TROOP_ARCHIVE' | 'RELATIONS';
 
 export interface RecruitOffer {
   troopId: string;

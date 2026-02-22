@@ -2543,7 +2543,24 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
     NULL_CRYSTAL: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
     STACK_OVERFLOW: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
     DEADLOCK_SHARD: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
-  }
+  },
+  relationMatrix: {
+    factions: {
+      VERDANT_COVENANT: 0,
+      FROST_OATH: 0,
+      RED_DUNE: 0
+    },
+    races: {
+      ROACH: 0,
+      UNDEAD: 0,
+      IMPOSTER: 0,
+      BANDIT: 0,
+      AUTOMATON: 0,
+      VOID: 0,
+      MADNESS: 0
+    }
+  },
+  relationEvents: []
 };
 
 // Initial state for locations, recruits will be generated at runtime

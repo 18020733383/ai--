@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, Lord, PartyDiaryEntry, PlayerState, TerrainType, Troop } from '../types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, Location, Lord, PartyDiaryEntry, PlayerState, TerrainType, Troop } from '../types';
 import { normalizeOpenAIBattle, parseCasualties, parseInjuries, parseOutcome } from './battleParsing';
 import { WORLD_BOOK } from '../constants';
 
@@ -1348,6 +1348,7 @@ export const chatWithLord = async (
   dialogue: LordChatLine[],
   lord: Lord,
   player: PlayerState,
+  location: Location,
   recentLogs: string[],
   localLogs: { day: number; text: string }[],
   garrisonSummary: string,
@@ -1364,7 +1365,43 @@ export const chatWithLord = async (
   const relation = lord.relation ?? 0;
   const focusLabel = lord.focus === 'WAR' ? '扩张' : lord.focus === 'TRADE' ? '贸易' : lord.focus === 'DEFENSE' ? '防御' : '外交';
 
-  const prompt = `
+  const isRoachNest = location.type === 'ROACH_NEST';
+  const prompt = isRoachNest ? `
+你是蟑螂巢主「${lord.title}${lord.name}」，在巢穴中接见玩家。你说中文，但语气带有蟑螂族群的逻辑：谨慎、嗡鸣、强调巢群与生存。
+关系为 ${relation}（-100~100）：数值越高越友好，越低越冷淡甚至敌意。
+说话要求：
+1) 口吻短促、像蜂群交流，最多 3-5 行短句，每行一句，行间换行。
+2) 结合【据点日志】与【你的记忆】回答最近事件，不要编造不存在的具体战果。
+3) 关系变化谨慎：除非玩家明显礼貌或挑衅，否则 relationDelta 取 0；允许在 -2 到 2 之间小幅变动。
+4) reply 只给巢主回复，不要标题。
+5) 若玩家明显挑衅、威胁或关系已非常恶劣（<=-40），可以决定派兵袭击玩家；此时 attack=true，并给出 attackReason。
+6) attackRatio 表示派出的兵力比例（0.2~0.6），仅在 attack=true 时输出。
+输出 JSON：{ "reply": "...", "relationDelta": 0, "memory": "", "attack": false, "attackReason": "", "attackRatio": 0.4 }，attack=false 时可省略 attack 相关字段，memory 为空可省略。
+
+【巢主档案】
+- 性格: ${lord.temperament}
+- 特质: ${lord.traits.join('、') || '（无）'}
+- 倾向: ${focusLabel}
+
+【巢穴群落概况】
+${garrisonSummary || '（无）'}
+
+【你的记忆（近期）】
+${memoriesText}
+
+【巢穴日志（近期）】
+${localText}
+
+【玩家信息】
+- 名字: ${player.name}
+- 等级: ${player.level}
+
+【玩家最近日志（从新到旧）】
+${logsText}
+
+【最近对话】
+${historyText || '（暂无）'}
+  `.trim() : `
 你是领主「${lord.title}${lord.name}」，正接见玩家。你说中文，语气受关系影响。
 关系为 ${relation}（-100~100）：数值越高越友好，越低越冷淡甚至敌意。
 说话要求：

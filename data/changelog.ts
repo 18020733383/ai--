@@ -6,6 +6,17 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.12',
+    date: '2026-02-22',
+    items: [
+      '蟑螂窝加入领主与蟑螂风格对话',
+      '修复伪人伏击队名称与实际兵种不匹配',
+      '新增种族/势力关系矩阵与关系变动记录',
+      '关系影响伏击概率并在友好据点提供援军',
+      '上边栏新增关系入口与关系总览页面'
+    ]
+  },
+  {
     version: '0.3.11',
     date: '2026-02-21',
     items: [

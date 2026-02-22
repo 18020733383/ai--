@@ -493,6 +493,7 @@ export const TownView = ({
         nextDialogue,
         currentLord,
         playerRef.current,
+        currentLocation,
         recentLogs,
         currentLocation.localLogs ?? [],
         buildLordGarrisonSummary(),

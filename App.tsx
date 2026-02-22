@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus } from './types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, Lord } from './types';
 import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, ShaperDecision } from './services/geminiService';
 import { Button } from './components/Button';
@@ -74,6 +74,16 @@ const MINERAL_META: Record<MineralId, { name: string; effect: string }> = {
 };
 
 const STAY_PARTY_LOCATION_TYPES: Location['type'][] = ['CITY', 'CASTLE', 'ROACH_NEST', 'IMPOSTER_PORTAL'];
+
+const RACE_LABELS: Record<RaceId, string> = {
+  ROACH: '蟑螂族群',
+  UNDEAD: '亡灵族群',
+  IMPOSTER: '伪人族群',
+  BANDIT: '盗匪团伙',
+  AUTOMATON: '失控机兵',
+  VOID: '深渊势力',
+  MADNESS: '疯人群体'
+};
 
 const buildStayPartyTroops = (entries: Array<{ id: string; count: number }>) =>
   entries
@@ -398,9 +408,10 @@ const lordGivenNames = ['兰', '维恩', '赫尔', '赛恩', '米娅', '罗莎',
 const lordTemperaments = ['强硬', '稳重', '多疑', '豪爽', '谨慎', '冷峻', '宽厚', '冷静'];
 const lordTraits = ['好战', '务实', '忠诚', '谨慎', '野心', '仁慈', '狡黠', '守旧', '热情', '冷静'];
 const lordFocuses: LordFocus[] = ['WAR', 'TRADE', 'DEFENSE', 'DIPLOMACY'];
-const lordTitleByType = (type: Location['type']) => type === 'CITY' ? '城主' : type === 'CASTLE' ? '堡主' : '领主';
+const lordTitleByType = (type: Location['type']) => type === 'CITY' ? '城主' : type === 'CASTLE' ? '堡主' : type === 'ROACH_NEST' ? '巢主' : '领主';
 const getLordSeed = (id: string) => id.split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
 const pickLordValue = <T,>(list: T[], seed: number, offset: number = 0) => list[(seed + offset) % list.length];
+const roachLordNames = ['甲壳母', '壳鸣者', '孵化主', '触须王', '蜕壳者', '螯刃统领', '脉囊司巢'];
 const getDefaultGarrisonBaseLimit = (location: Location) => {
   const existingCount = (location.garrison ?? []).reduce((sum, t) => sum + t.count, 0);
   if (existingCount > 0) return existingCount;
@@ -423,6 +434,14 @@ const buildLordPartyTroops = (location: Location) => {
   if (location.type === 'VILLAGE') {
     return [pickTroop('peasant', 30), pickTroop('hunter', 15)].filter(Boolean) as Troop[];
   }
+  if (location.type === 'ROACH_NEST') {
+    return [
+      pickTroop('roach_brawler', 80),
+      pickTroop('roach_pikeman', 70),
+      pickTroop('roach_slinger', 60),
+      pickTroop('roach_shieldling', 50)
+    ].filter(Boolean) as Troop[];
+  }
   return [];
 };
 const buildLordStayParty = (location: Location, lord: Lord) => ({
@@ -433,16 +452,17 @@ const buildLordStayParty = (location: Location, lord: Lord) => ({
   lordId: lord.id
 });
 const buildLocationLord = (location: Location) => {
-  if (location.type !== 'CITY' && location.type !== 'CASTLE' && location.type !== 'VILLAGE') return null;
+  if (location.type !== 'CITY' && location.type !== 'CASTLE' && location.type !== 'VILLAGE' && location.type !== 'ROACH_NEST') return null;
   const seed = getLordSeed(location.id);
   const traitA = pickLordValue(lordTraits, seed, 5);
   const traitB = pickLordValue(lordTraits, seed, 9);
   const traits = traitA === traitB ? [traitA] : [traitA, traitB];
   const focus = pickLordValue(lordFocuses, seed, 7);
   const faction = FACTIONS.find(f => f.id === location.factionId);
+  const roachName = roachLordNames[seed % roachLordNames.length];
   return {
     id: `lord_${location.id}`,
-    name: `${pickLordValue(lordFamilyNames, seed)}${pickLordValue(lordGivenNames, seed, 3)}`,
+    name: location.type === 'ROACH_NEST' ? roachName : `${pickLordValue(lordFamilyNames, seed)}${pickLordValue(lordGivenNames, seed, 3)}`,
     title: lordTitleByType(location.type),
     factionId: faction?.id ?? location.factionId,
     fiefId: location.id,
@@ -454,7 +474,7 @@ const buildLocationLord = (location: Location) => {
 };
 const ensureLocationLords = (list: Location[]) => {
   return list.map(loc => {
-    if (loc.type !== 'CITY' && loc.type !== 'CASTLE' && loc.type !== 'VILLAGE') return loc;
+    if (loc.type !== 'CITY' && loc.type !== 'CASTLE' && loc.type !== 'VILLAGE' && loc.type !== 'ROACH_NEST') return loc;
     const currentLord = loc.lord && loc.lord.factionId === loc.factionId && loc.lord.fiefId === loc.id ? loc.lord : null;
     const lord = currentLord ?? buildLocationLord(loc);
     if (!lord) return loc;
@@ -606,8 +626,8 @@ export default function App() {
   const [saveDataText, setSaveDataText] = useState('');
   const [saveDataNotice, setSaveDataNotice] = useState<string | null>(null);
   const [battleError, setBattleError] = useState<string | null>(null);
-  const [battleMeta, setBattleMeta] = useState<{ mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; siegeContext?: string } | null>(null);
-  const [pendingBattleMeta, setPendingBattleMeta] = useState<{ mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; siegeContext?: string } | null>(null);
+  const [battleMeta, setBattleMeta] = useState<{ mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; siegeContext?: string; supportTroops?: Troop[]; supportLabel?: string } | null>(null);
+  const [pendingBattleMeta, setPendingBattleMeta] = useState<{ mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; siegeContext?: string; supportTroops?: Troop[]; supportLabel?: string } | null>(null);
   const [pendingBattleIsTraining, setPendingBattleIsTraining] = useState(false);
   const [isBattleStreaming, setIsBattleStreaming] = useState(false);
   const [isBattleResultFinal, setIsBattleResultFinal] = useState(true);
@@ -968,6 +988,125 @@ export default function App() {
       const nextLogs = [{ day, text: safe }, ...existing].slice(0, 30);
       return { ...prev, localLogs: nextLogs };
     });
+  };
+
+  const normalizeRelationMatrix = (matrix?: PlayerState['relationMatrix']) => ({
+    factions: {
+      VERDANT_COVENANT: matrix?.factions?.VERDANT_COVENANT ?? INITIAL_PLAYER_STATE.relationMatrix.factions.VERDANT_COVENANT,
+      FROST_OATH: matrix?.factions?.FROST_OATH ?? INITIAL_PLAYER_STATE.relationMatrix.factions.FROST_OATH,
+      RED_DUNE: matrix?.factions?.RED_DUNE ?? INITIAL_PLAYER_STATE.relationMatrix.factions.RED_DUNE
+    },
+    races: {
+      ROACH: matrix?.races?.ROACH ?? INITIAL_PLAYER_STATE.relationMatrix.races.ROACH,
+      UNDEAD: matrix?.races?.UNDEAD ?? INITIAL_PLAYER_STATE.relationMatrix.races.UNDEAD,
+      IMPOSTER: matrix?.races?.IMPOSTER ?? INITIAL_PLAYER_STATE.relationMatrix.races.IMPOSTER,
+      BANDIT: matrix?.races?.BANDIT ?? INITIAL_PLAYER_STATE.relationMatrix.races.BANDIT,
+      AUTOMATON: matrix?.races?.AUTOMATON ?? INITIAL_PLAYER_STATE.relationMatrix.races.AUTOMATON,
+      VOID: matrix?.races?.VOID ?? INITIAL_PLAYER_STATE.relationMatrix.races.VOID,
+      MADNESS: matrix?.races?.MADNESS ?? INITIAL_PLAYER_STATE.relationMatrix.races.MADNESS
+    }
+  });
+
+  const getLocationRace = (location?: Location | null): RaceId | null => {
+    if (!location) return null;
+    if (location.type === 'ROACH_NEST') return 'ROACH';
+    if (location.type === 'GRAVEYARD' || location.type === 'COFFEE') return 'UNDEAD';
+    if (location.type === 'IMPOSTER_PORTAL') return 'IMPOSTER';
+    if (location.type === 'BANDIT_CAMP') return 'BANDIT';
+    if (location.type === 'MYSTERIOUS_CAVE') return 'VOID';
+    if (location.type === 'ASYLUM') return 'MADNESS';
+    return null;
+  };
+
+  const getLocationRelationTarget = (location?: Location | null) => {
+    if (!location) return null;
+    if (location.factionId) return { type: 'FACTION' as const, id: location.factionId };
+    const race = getLocationRace(location);
+    return race ? { type: 'RACE' as const, id: race } : null;
+  };
+
+  const getEncounterChance = (baseChance: number, relationValue: number) => {
+    if (relationValue >= 60) return Math.min(baseChance, 0.08);
+    if (relationValue >= 40) return Math.min(baseChance, 0.12);
+    if (relationValue >= 20) return Math.min(baseChance, 0.18);
+    if (relationValue <= -50) return Math.max(baseChance, 0.5);
+    if (relationValue <= -30) return Math.max(baseChance, 0.4);
+    return baseChance;
+  };
+
+  const buildSupportTroops = (location: Location, ratio: number) => {
+    const garrison = location.garrison ?? [];
+    return garrison
+      .map(t => ({ ...t, count: Math.max(0, Math.ceil(t.count * ratio)) }))
+      .filter(t => t.count > 0);
+  };
+
+  const getEnemyRace = (enemy?: EnemyForce | null): RaceId | null => {
+    if (!enemy) return null;
+    const baseId = String(enemy.baseTroopId ?? '').trim();
+    if (IMPOSTER_TROOP_IDS.has(baseId)) return 'IMPOSTER';
+    if (baseId.startsWith('roach_')) return 'ROACH';
+    if (baseId.startsWith('undead_') || baseId.startsWith('skeleton') || baseId.startsWith('zombie') || baseId.startsWith('specter')) return 'UNDEAD';
+    if (baseId.startsWith('automaton') || baseId.startsWith('ai_')) return 'AUTOMATON';
+    if (baseId.startsWith('void_')) return 'VOID';
+    if (baseId.startsWith('mad_') || baseId.includes('patient')) return 'MADNESS';
+    const name = String(enemy.name ?? '');
+    if (name.includes('匪') || name.includes('盗') || name.includes('强盗') || name.includes('劫匪')) return 'BANDIT';
+    return null;
+  };
+
+  const clampRelation = (value: number) => Math.max(-100, Math.min(100, Math.round(value)));
+
+  const getRelationValue = (state: PlayerState, targetType: 'FACTION' | 'RACE', targetId: string) => {
+    const matrix = normalizeRelationMatrix(state.relationMatrix);
+    if (targetType === 'FACTION') {
+      return matrix.factions[targetId as keyof typeof matrix.factions] ?? 0;
+    }
+    return matrix.races[targetId as keyof typeof matrix.races] ?? 0;
+  };
+
+  const updateRelation = (targetType: 'FACTION' | 'RACE', targetId: string, delta: number, text: string) => {
+    if (!delta) return;
+    setPlayer(prev => {
+      const matrix = normalizeRelationMatrix(prev.relationMatrix);
+      const currentValue = getRelationValue(prev, targetType, targetId);
+      const nextValue = clampRelation(currentValue + delta);
+      if (nextValue === currentValue) return prev;
+      const nextMatrix = {
+        factions: { ...matrix.factions },
+        races: { ...matrix.races }
+      };
+      if (targetType === 'FACTION') {
+        nextMatrix.factions[targetId as keyof typeof matrix.factions] = nextValue;
+      } else {
+        nextMatrix.races[targetId as keyof typeof matrix.races] = nextValue;
+      }
+      const eventText = String(text || '').trim();
+      const nextEvents = eventText
+        ? [
+            {
+              id: `rel_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+              day: prev.day,
+              targetType,
+              targetId,
+              delta: nextValue - currentValue,
+              text: eventText
+            },
+            ...(prev.relationEvents ?? [])
+          ].slice(0, 24)
+        : (prev.relationEvents ?? []);
+      return { ...prev, relationMatrix: nextMatrix, relationEvents: nextEvents };
+    });
+  };
+
+  const getRelationTone = (value: number) => {
+    if (value >= 60) return { label: '同盟', color: 'text-emerald-400' };
+    if (value >= 40) return { label: '友好', color: 'text-emerald-300' };
+    if (value >= 20) return { label: '缓和', color: 'text-emerald-200' };
+    if (value <= -60) return { label: '死敌', color: 'text-red-400' };
+    if (value <= -40) return { label: '敌对', color: 'text-red-300' };
+    if (value <= -20) return { label: '紧张', color: 'text-red-200' };
+    return { label: '中立', color: 'text-stone-300' };
   };
 
   const buildUndeadReply = (question: string) => {
@@ -2962,8 +3101,13 @@ export default function App() {
     logsToAdd.forEach(addLog);
 
     const finalLocation = location ? newLocations.find(l => l.id === location.id) ?? location : undefined;
-    if (!suppressEncounter && finalLocation && Math.random() < 0.25 && finalLocation.type !== 'TRAINING_GROUNDS' && finalLocation.type !== 'ASYLUM' && finalLocation.type !== 'CITY' && finalLocation.type !== 'MARKET' && finalLocation.type !== 'HOTPOT_RESTAURANT' && finalLocation.type !== 'BANDIT_CAMP' && finalLocation.type !== 'MYSTERIOUS_CAVE' && finalLocation.type !== 'COFFEE' && finalLocation.type !== 'IMPOSTER_PORTAL' && finalLocation.type !== 'WORLD_BOARD' && finalLocation.type !== 'ROACH_NEST') {
-      triggerRandomEncounter(finalLocation.terrain, finalLocation);
+    if (!suppressEncounter && finalLocation && finalLocation.type !== 'TRAINING_GROUNDS' && finalLocation.type !== 'ASYLUM' && finalLocation.type !== 'CITY' && finalLocation.type !== 'MARKET' && finalLocation.type !== 'HOTPOT_RESTAURANT' && finalLocation.type !== 'BANDIT_CAMP' && finalLocation.type !== 'MYSTERIOUS_CAVE' && finalLocation.type !== 'COFFEE' && finalLocation.type !== 'IMPOSTER_PORTAL' && finalLocation.type !== 'WORLD_BOARD' && finalLocation.type !== 'ROACH_NEST') {
+      const relationTarget = getLocationRelationTarget(finalLocation);
+      const relationValue = relationTarget ? getRelationValue(playerRef.current, relationTarget.type, relationTarget.id) : 0;
+      const encounterChance = getEncounterChance(0.25, relationValue);
+      if (Math.random() < encounterChance) {
+        triggerRandomEncounter(finalLocation.terrain, finalLocation);
+      }
     } else if (finalLocation) {
       if (suppressEncounter) {
         enterLocation(finalLocation);
@@ -2980,7 +3124,11 @@ export default function App() {
       ];
 
       // 35% chance to be ambushed if enemies are present
-      if (allEnemyTroops.length > 0 && Math.random() < 0.35) {
+      if (allEnemyTroops.length > 0) {
+         const relationTarget = getLocationRelationTarget(finalLocation);
+         const relationValue = relationTarget ? getRelationValue(playerRef.current, relationTarget.type, relationTarget.id) : 0;
+         const ambushChance = getEncounterChance(0.35, relationValue);
+         if (Math.random() < ambushChance) {
          const attackRatio = 0.2 + Math.random() * 0.3; // 20-50%
          const ambushTroops = allEnemyTroops.map(t => ({
             ...t,
@@ -2988,23 +3136,50 @@ export default function App() {
          })).filter(t => t.count > 0);
 
          if (ambushTroops.length > 0) {
-            addLog(`刚踏入 ${finalLocation.name}，你就遭到了伪人部队的伏击！`);
+            const isImposterAmbush = ambushTroops.every(t => IMPOSTER_TROOP_IDS.has(t.id));
+            const ambushLabel = isImposterAmbush ? '伪人部队' : '伏兵';
+            addLog(`刚踏入 ${finalLocation.name}，你就遭到了${ambushLabel}的伏击！`);
             const enemy: EnemyForce = {
                id: `ambush_${Date.now()}`,
-               name: '伪人伏击队',
-               description: '埋伏在据点里的敌人。',
+               name: isImposterAmbush ? '伪人伏击队' : `${finalLocation.name}伏兵`,
+               description: isImposterAmbush ? '埋伏在据点里的伪人。' : '埋伏在据点里的敌人。',
                troops: ambushTroops,
                difficulty: '一般',
                lootPotential: 1.0,
                terrain: finalLocation.terrain,
                baseTroopId: ambushTroops[0]?.id ?? 'militia'
             };
+            let supportTroops: Troop[] | null = null;
+            let supportLabel = '';
+            const relationTarget = getLocationRelationTarget(finalLocation);
+            const relationValue = relationTarget ? getRelationValue(playerRef.current, relationTarget.type, relationTarget.id) : 0;
+            const locationRace = getLocationRace(finalLocation);
+            const enemyRace = getEnemyRace(enemy);
+            if (relationValue >= 20 && (enemyRace ? enemyRace !== locationRace : true)) {
+              const ratio = relationValue >= 60 ? 0.35 : relationValue >= 40 ? 0.25 : 0.15;
+              const supportCandidates = buildSupportTroops(finalLocation, ratio);
+              if (supportCandidates.length > 0) {
+                supportTroops = supportCandidates;
+                supportLabel = relationTarget?.type === 'FACTION'
+                  ? `${FACTIONS.find(f => f.id === relationTarget.id)?.name ?? finalLocation.name}援军`
+                  : relationTarget?.type === 'RACE'
+                    ? `${RACE_LABELS[relationTarget.id as RaceId]}援军`
+                    : `${finalLocation.name}援军`;
+                addLog(`${finalLocation.name}派出援军协助迎敌。`);
+                addLocationLog(finalLocation.id, `守军增援前来迎敌。`);
+              }
+            }
             setActiveEnemy(enemy);
-            setPendingBattleMeta({ mode: 'FIELD' });
+            if (supportTroops) {
+              setPendingBattleMeta({ mode: 'DEFENSE_AID', targetLocationId: finalLocation.id, supportTroops, supportLabel });
+            } else {
+              setPendingBattleMeta({ mode: 'FIELD' });
+            }
             setPendingBattleIsTraining(false);
             setView('BATTLE');
             return;
          }
+        }
       }
 
       enterLocation(finalLocation);
@@ -3661,9 +3836,35 @@ export default function App() {
       baseTroopId: enemyType.baseTroopId
     };
 
-    if (atLocation) setCurrentLocation(atLocation);
+    let supportTroops: Troop[] | null = null;
+    let supportLabel = '';
+    if (atLocation) {
+      setCurrentLocation(atLocation);
+      const relationTarget = getLocationRelationTarget(atLocation);
+      const relationValue = relationTarget ? getRelationValue(playerRef.current, relationTarget.type, relationTarget.id) : 0;
+      const locationRace = getLocationRace(atLocation);
+      const enemyRace = getEnemyRace(enemy);
+      if (relationValue >= 20 && (enemyRace ? enemyRace !== locationRace : true)) {
+        const ratio = relationValue >= 60 ? 0.35 : relationValue >= 40 ? 0.25 : 0.15;
+        const supportCandidates = buildSupportTroops(atLocation, ratio);
+        if (supportCandidates.length > 0) {
+          supportTroops = supportCandidates;
+          supportLabel = relationTarget?.type === 'FACTION'
+            ? `${FACTIONS.find(f => f.id === relationTarget.id)?.name ?? atLocation.name}援军`
+            : relationTarget?.type === 'RACE'
+              ? `${RACE_LABELS[relationTarget.id as RaceId]}援军`
+              : `${atLocation.name}援军`;
+          addLog(`${atLocation.name}派出援军协助迎敌。`);
+          addLocationLog(atLocation.id, `守军增援前来迎敌。`);
+        }
+      }
+    }
     setActiveEnemy(enemy);
-    setPendingBattleMeta(atLocation ? { mode: 'FIELD', targetLocationId: atLocation.id } : { mode: 'FIELD' });
+    if (atLocation && supportTroops) {
+      setPendingBattleMeta({ mode: 'DEFENSE_AID', targetLocationId: atLocation.id, supportTroops, supportLabel });
+    } else {
+      setPendingBattleMeta(atLocation ? { mode: 'FIELD', targetLocationId: atLocation.id } : { mode: 'FIELD' });
+    }
     setPendingBattleIsTraining(false);
     setView('BATTLE');
     addLog(atLocation ? `在 ${atLocation.name} 遭遇了 ${enemy.name} 的伏击！` : `在 ${terrain} 遭遇了 ${enemy.name} 的伏击！`);
@@ -3721,7 +3922,7 @@ export default function App() {
     enemyForce: EnemyForce,
     terrain: TerrainType,
     currentPlayer: PlayerState,
-    battleInfo?: { mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string }
+    battleInfo?: { mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; supportTroops?: Troop[] }
   ): BattleResult => {
     const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
     const isLegacyAttributes = (attrs: Troop['attributes']) => {
@@ -4256,11 +4457,10 @@ export default function App() {
     const currentHeroes = heroesRef.current;
     let battleTroops = getBattleTroops(currentPlayer, currentHeroes);
 
-    // Merge Garrison for Defense Aid
     if (meta.mode === 'DEFENSE_AID' && meta.targetLocationId) {
         const loc = locations.find(l => l.id === meta.targetLocationId);
-        const garrison = loc?.garrison ?? [];
-        const taggedGarrison = garrison.map(t => ({ ...t, id: `garrison_${t.id}` }));
+        const supportTroops = meta.supportTroops ?? loc?.garrison ?? [];
+        const taggedGarrison = supportTroops.map(t => ({ ...t, id: `garrison_${t.id}` }));
         battleTroops = [...battleTroops, ...taggedGarrison];
     }
 
@@ -4296,18 +4496,16 @@ export default function App() {
     }
   };
 
-  const startBattle = async (isTraining: boolean = false, meta?: { mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; siegeContext?: string }) => {
+  const startBattle = async (isTraining: boolean = false, meta?: { mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; siegeContext?: string; supportTroops?: Troop[]; supportLabel?: string }) => {
     if (!activeEnemy) return;
     const battleInfo = meta ?? { mode: 'FIELD' as const };
     const currentPlayer = playerRef.current;
     let battleTroops = getBattleTroops(currentPlayer, heroesRef.current);
 
-    // Merge Garrison for Defense Aid
     if (battleInfo.mode === 'DEFENSE_AID' && battleInfo.targetLocationId) {
         const loc = locations.find(l => l.id === battleInfo.targetLocationId);
-        const garrison = loc?.garrison ?? [];
-        // Append with special ID prefix to keep them separate and identifiable
-        const taggedGarrison = garrison.map(t => ({ ...t, id: `garrison_${t.id}` }));
+        const supportTroops = battleInfo.supportTroops ?? loc?.garrison ?? [];
+        const taggedGarrison = supportTroops.map(t => ({ ...t, id: `garrison_${t.id}` }));
         battleTroops = [...battleTroops, ...taggedGarrison];
     }
 
@@ -4542,15 +4740,18 @@ export default function App() {
              const loc = locations.find(l => l.id === battleInfo.targetLocationId);
              if (loc) {
                  const garrison = loc.garrison ?? [];
+                 const supportLimits = (battleInfo.supportTroops ?? garrison).reduce<Record<string, number>>((acc, troop) => {
+                   acc[troop.name] = (acc[troop.name] || 0) + troop.count;
+                   return acc;
+                 }, {});
                  const updatedGarrison = garrison.map(t => {
                      let loss = remainingCasualties[t.name] || 0;
-                     const actualLoss = Math.min(t.count, loss);
-                     
-                     // Medicine check for garrison? Let's say no medicine for garrison to keep it simple, or half chance.
-                     // Simplified: No medicine for garrison auto-resolve in manual battle.
-                     
+                     if (!supportLimits[t.name]) return t;
+                     const cap = supportLimits[t.name];
+                     const actualLoss = Math.min(t.count, loss, cap);
                      if (actualLoss > 0) {
                          remainingCasualties[t.name] -= actualLoss;
+                         supportLimits[t.name] -= actualLoss;
                      }
                      return { ...t, count: t.count - actualLoss };
                  }).filter(t => t.count > 0);
@@ -4831,17 +5032,29 @@ export default function App() {
     if (battleMeta?.mode === 'DEFENSE_AID' && battleMeta.targetLocationId) {
       const target = locations.find(l => l.id === battleMeta.targetLocationId);
       if (target && battleResult) {
+        const relationTarget = getLocationRelationTarget(target);
+        const supportLabel = battleMeta.supportLabel || `${target.name}援军`;
         if (battleResult.outcome === 'A') {
-           const updated = {
-             ...target,
-             activeSiege: undefined // Siege Broken
-           };
-           updateLocationState(updated);
-           addLog(`你协助 ${target.name} 的守军击溃了伪人！围攻解除了。`);
-           addLocationLog(target.id, `围攻解除，伪人军团被击溃。`);
+           const updated = target.activeSiege ? { ...target, activeSiege: undefined } : target;
+           if (updated !== target) updateLocationState(updated);
+           if (target.activeSiege) {
+             addLog(`你协助 ${target.name} 的守军击溃了伪人！围攻解除了。`);
+             addLocationLog(target.id, `围攻解除，伪人军团被击溃。`);
+           } else {
+             addLog(`你与 ${supportLabel} 击退了 ${activeEnemy?.name ?? '敌军'}。`);
+             addLocationLog(target.id, `守军援助成功，击退了来犯之敌。`);
+             if (relationTarget) {
+               updateRelation(relationTarget.type, relationTarget.id, 3, `协助 ${target.name} 击退敌军`);
+             }
+           }
         } else {
-           addLog(`战斗失利，${target.name} 的围攻仍在继续。`);
-           addLocationLog(target.id, `围攻仍在继续，防线吃紧。`);
+           if (target.activeSiege) {
+             addLog(`战斗失利，${target.name} 的围攻仍在继续。`);
+             addLocationLog(target.id, `围攻仍在继续，防线吃紧。`);
+           } else {
+             addLog(`战斗失利，${supportLabel} 未能挡住敌军。`);
+             addLocationLog(target.id, `援军被击退，战况不利。`);
+           }
         }
       }
       setBattleResult(null);
@@ -5610,9 +5823,11 @@ export default function App() {
       const nextHeroes = parsed?.heroes as Hero[] | undefined;
       if (!nextPlayer || !Array.isArray(nextPlayer.troops)) throw new Error('存档缺少玩家信息。');
       if (!Array.isArray(nextLocations)) throw new Error('存档缺少据点信息。');
-      const normalizedPlayer = {
+    const normalizedPlayer = {
         ...nextPlayer,
-        minerals: nextPlayer.minerals ?? INITIAL_PLAYER_STATE.minerals
+        minerals: nextPlayer.minerals ?? INITIAL_PLAYER_STATE.minerals,
+        relationMatrix: normalizeRelationMatrix((nextPlayer as any)?.relationMatrix),
+        relationEvents: Array.isArray((nextPlayer as any)?.relationEvents) ? (nextPlayer as any).relationEvents : []
       };
       setPlayer(normalizedPlayer);
       const normalizedHeroes = Array.isArray(nextHeroes) && nextHeroes.length > 0
@@ -6016,6 +6231,13 @@ export default function App() {
             <Activity size={14} /> <span className="hidden md:inline">统计</span>
           </button>
           <button
+            onClick={() => setView('RELATIONS')}
+            className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
+            title="关系"
+          >
+            <Flag size={14} /> <span className="hidden md:inline">关系</span>
+          </button>
+          <button
             onClick={() => setIsChangelogOpen(true)}
             className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
             title="更新日志"
@@ -6142,6 +6364,84 @@ export default function App() {
         onBackToMap={() => setView('MAP')}
         onExportMarkdown={exportWorldBoardMarkdown}
       />
+    );
+  };
+
+  const renderRelations = () => {
+    const matrix = normalizeRelationMatrix(player.relationMatrix);
+    const factionItems = FACTIONS.map(faction => ({
+      id: faction.id,
+      name: faction.name,
+      value: matrix.factions[faction.id] ?? 0
+    }));
+    const raceItems = (Object.keys(RACE_LABELS) as RaceId[]).map(raceId => ({
+      id: raceId,
+      name: RACE_LABELS[raceId],
+      value: matrix.races[raceId] ?? 0
+    }));
+    const events = (player.relationEvents ?? []).slice(0, 18);
+
+    return (
+      <div className="max-w-5xl mx-auto px-4">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-serif text-amber-400">关系网络</h2>
+          <Button onClick={() => setView('MAP')} variant="secondary">返回地图</Button>
+        </div>
+        <div className="grid md:grid-cols-2 gap-6">
+          <div className="bg-stone-900 border border-stone-700 rounded-lg p-4">
+            <div className="text-stone-200 font-semibold mb-3">人类势力关系</div>
+            <div className="space-y-2">
+              {factionItems.map(item => {
+                const tone = getRelationTone(item.value);
+                return (
+                  <div key={item.id} className="flex items-center justify-between">
+                    <span className="text-stone-200">{item.name}</span>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-xs ${tone.color}`}>{tone.label}</span>
+                      <span className="text-sm text-stone-300">{item.value}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="bg-stone-900 border border-stone-700 rounded-lg p-4">
+            <div className="text-stone-200 font-semibold mb-3">种族关系</div>
+            <div className="space-y-2">
+              {raceItems.map(item => {
+                const tone = getRelationTone(item.value);
+                return (
+                  <div key={item.id} className="flex items-center justify-between">
+                    <span className="text-stone-200">{item.name}</span>
+                    <div className="flex items-center gap-3">
+                      <span className={`text-xs ${tone.color}`}>{tone.label}</span>
+                      <span className="text-sm text-stone-300">{item.value}</span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        <div className="bg-stone-900 border border-stone-700 rounded-lg p-4 mt-6">
+          <div className="text-stone-200 font-semibold mb-3">近期关系事件</div>
+          {events.length > 0 ? (
+            <div className="space-y-2">
+              {events.map(event => (
+                <div key={event.id} className="flex items-center justify-between text-sm">
+                  <span className="text-stone-400">第 {event.day} 天</span>
+                  <span className="text-stone-200 flex-1 px-3">{event.text}</span>
+                  <span className={event.delta >= 0 ? 'text-emerald-300' : 'text-red-300'}>
+                    {event.delta >= 0 ? `+${event.delta}` : event.delta}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-stone-500">暂无关系变动记录。</div>
+          )}
+        </div>
+      </div>
     );
   };
 
@@ -6483,6 +6783,7 @@ export default function App() {
             setHoveredLocation={setHoveredLocation}
           />
         )}
+        {view === 'RELATIONS' && renderRelations()}
         {view === 'WORLD_BOARD' && renderWorldBoard()}
         {view === 'TROOP_ARCHIVE' && renderTroopArchive()}
         {view === 'TOWN' && (
