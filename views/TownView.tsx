@@ -228,8 +228,9 @@ export const TownView = ({
   const isCastle = currentLocation.type === 'CASTLE';
   const isVillage = currentLocation.type === 'VILLAGE';
   const isRoachNest = currentLocation.type === 'ROACH_NEST';
-  const isSiegeTarget = isCity || isCastle || isVillage || isRoachNest;
   const isGraveyard = currentLocation.type === 'GRAVEYARD';
+  const isUndeadFortress = isGraveyard && currentLocation.id === 'death_city';
+  const isSiegeTarget = isCity || isCastle || isVillage || isRoachNest || isUndeadFortress;
   const isHotpot = currentLocation.type === 'HOTPOT_RESTAURANT';
   const isCoffee = currentLocation.type === 'COFFEE';
   const isHeavyTrialGrounds = currentLocation.type === 'HEAVY_TRIAL_GROUNDS';
@@ -410,9 +411,12 @@ export const TownView = ({
   };
   const buildLordRaceContext = () => {
     if (!currentLord) return null;
-    const currentRace: 'ROACH' | 'HUMAN' = currentLocation.type === 'ROACH_NEST' ? 'ROACH' : 'HUMAN';
+    const getLocationRaceTag = (loc: Location): 'ROACH' | 'HUMAN' | 'UNDEAD' =>
+      loc.type === 'ROACH_NEST' ? 'ROACH' : loc.type === 'GRAVEYARD' ? 'UNDEAD' : 'HUMAN';
+    const currentRace = getLocationRaceTag(currentLocation);
     const otherRace: 'ROACH' | 'HUMAN' = currentRace === 'ROACH' ? 'HUMAN' : 'ROACH';
-    const sameRaceLocations = locations.filter(loc => loc.lord && (loc.type === 'ROACH_NEST') === (currentRace === 'ROACH'));
+    const resolvedOtherRace: 'ROACH' | 'HUMAN' = currentRace === 'UNDEAD' ? 'HUMAN' : otherRace;
+    const sameRaceLocations = locations.filter(loc => loc.lord && getLocationRaceTag(loc) === currentRace);
     const sameRaceLords = sameRaceLocations
       .filter(loc => loc.lord && loc.lord.id !== currentLord.id)
       .map(loc => {
@@ -428,11 +432,11 @@ export const TownView = ({
         };
       })
       .slice(0, 12);
-    const otherRaceCandidates = locations.filter(loc => loc.lord && (loc.type === 'ROACH_NEST') === (otherRace === 'ROACH'));
-    const otherRaceLeader = otherRace === 'HUMAN'
+    const otherRaceCandidates = locations.filter(loc => loc.lord && getLocationRaceTag(loc) === resolvedOtherRace);
+    const otherRaceLeader = resolvedOtherRace === 'HUMAN'
       ? otherRaceCandidates.find(loc => loc.type === 'CITY') ?? otherRaceCandidates.find(loc => loc.type === 'CASTLE') ?? otherRaceCandidates[0]
       : otherRaceCandidates[0];
-    const otherRaceRelation = buildXenoRelation(currentLord, otherRace);
+    const otherRaceRelation = buildXenoRelation(currentLord, resolvedOtherRace);
     const leaderAttitude = otherRaceLeader?.lord
       ? clampValue(otherRaceRelation + ((hashString(`${currentLord.id}:${otherRaceLeader.lord.id}`) % 11) - 5), -90, 30)
       : undefined;
@@ -440,7 +444,7 @@ export const TownView = ({
       race: currentRace,
       sameRaceLords,
       otherRace: {
-        label: otherRace === 'ROACH' ? '蟑螂' : '人类',
+        label: resolvedOtherRace === 'ROACH' ? '蟑螂' : '人类',
         relation: otherRaceRelation,
         leader: otherRaceLeader?.lord
           ? {

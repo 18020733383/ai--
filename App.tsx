@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, Lord } from './types';
-import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK } from './constants';
+import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, ShaperDecision } from './services/geminiService';
 import { Button } from './components/Button';
 import { BigMapView } from './components/BigMapView';
@@ -84,6 +84,9 @@ const RACE_LABELS: Record<RaceId, string> = {
   VOID: '深渊势力',
   MADNESS: '疯人群体'
 };
+
+const isUndeadFortressLocation = (location: Location) => location.type === 'GRAVEYARD' && location.id === 'death_city';
+const isCastleLikeLocation = (location: Location) => location.type === 'CASTLE' || isUndeadFortressLocation(location);
 
 const buildStayPartyTroops = (entries: Array<{ id: string; count: number }>) =>
   entries
@@ -408,10 +411,11 @@ const lordGivenNames = ['兰', '维恩', '赫尔', '赛恩', '米娅', '罗莎',
 const lordTemperaments = ['强硬', '稳重', '多疑', '豪爽', '谨慎', '冷峻', '宽厚', '冷静'];
 const lordTraits = ['好战', '务实', '忠诚', '谨慎', '野心', '仁慈', '狡黠', '守旧', '热情', '冷静'];
 const lordFocuses: LordFocus[] = ['WAR', 'TRADE', 'DEFENSE', 'DIPLOMACY'];
-const lordTitleByType = (type: Location['type']) => type === 'CITY' ? '城主' : type === 'CASTLE' ? '堡主' : type === 'ROACH_NEST' ? '巢主' : '领主';
+const lordTitleByType = (type: Location['type']) => type === 'CITY' ? '城主' : type === 'CASTLE' ? '堡主' : type === 'GRAVEYARD' ? '墓主' : type === 'ROACH_NEST' ? '巢主' : '领主';
 const getLordSeed = (id: string) => id.split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
 const pickLordValue = <T,>(list: T[], seed: number, offset: number = 0) => list[(seed + offset) % list.length];
 const roachLordNames = ['甲壳母', '壳鸣者', '孵化主', '触须王', '蜕壳者', '螯刃统领', '脉囊司巢'];
+const undeadLordNames = ['黯焰守陵者', '骨律祀官', '腐棺司主', '冥火执令', '遗誓看守者', '黑纱侯影', '亡钟聆者'];
 const getDefaultGarrisonBaseLimit = (location: Location) => {
   const existingCount = (location.garrison ?? []).reduce((sum, t) => sum + t.count, 0);
   if (existingCount > 0) return existingCount;
@@ -430,6 +434,15 @@ const buildLordPartyTroops = (location: Location) => {
   }
   if (location.type === 'CASTLE') {
     return [pickTroop('footman', 60), pickTroop('hunter', 30)].filter(Boolean) as Troop[];
+  }
+  if (location.type === 'GRAVEYARD') {
+    return [
+      pickTroop('skeleton_warrior', 80),
+      pickTroop('undead_bone_javelin', 70),
+      pickTroop('undead_grave_arbalist', 60),
+      pickTroop('specter', 40),
+      pickTroop('undead_musician', 30)
+    ].filter(Boolean) as Troop[];
   }
   if (location.type === 'VILLAGE') {
     return [pickTroop('peasant', 30), pickTroop('hunter', 15)].filter(Boolean) as Troop[];
@@ -452,7 +465,8 @@ const buildLordStayParty = (location: Location, lord: Lord) => ({
   lordId: lord.id
 });
 const buildLocationLord = (location: Location) => {
-  if (location.type !== 'CITY' && location.type !== 'CASTLE' && location.type !== 'VILLAGE' && location.type !== 'ROACH_NEST') return null;
+  const isUndeadFortress = location.type === 'GRAVEYARD' && location.id === 'death_city';
+  if (location.type !== 'CITY' && location.type !== 'CASTLE' && location.type !== 'VILLAGE' && location.type !== 'ROACH_NEST' && !isUndeadFortress) return null;
   const seed = getLordSeed(location.id);
   const traitA = pickLordValue(lordTraits, seed, 5);
   const traitB = pickLordValue(lordTraits, seed, 9);
@@ -460,9 +474,10 @@ const buildLocationLord = (location: Location) => {
   const focus = pickLordValue(lordFocuses, seed, 7);
   const faction = FACTIONS.find(f => f.id === location.factionId);
   const roachName = roachLordNames[seed % roachLordNames.length];
+  const undeadName = undeadLordNames[seed % undeadLordNames.length];
   return {
     id: `lord_${location.id}`,
-    name: location.type === 'ROACH_NEST' ? roachName : `${pickLordValue(lordFamilyNames, seed)}${pickLordValue(lordGivenNames, seed, 3)}`,
+    name: location.type === 'ROACH_NEST' ? roachName : location.type === 'GRAVEYARD' ? undeadName : `${pickLordValue(lordFamilyNames, seed)}${pickLordValue(lordGivenNames, seed, 3)}`,
     title: lordTitleByType(location.type),
     factionId: faction?.id ?? location.factionId,
     fiefId: location.id,
@@ -474,7 +489,8 @@ const buildLocationLord = (location: Location) => {
 };
 const ensureLocationLords = (list: Location[]) => {
   return list.map(loc => {
-    if (loc.type !== 'CITY' && loc.type !== 'CASTLE' && loc.type !== 'VILLAGE' && loc.type !== 'ROACH_NEST') return loc;
+    const isUndeadFortress = loc.type === 'GRAVEYARD' && loc.id === 'death_city';
+    if (loc.type !== 'CITY' && loc.type !== 'CASTLE' && loc.type !== 'VILLAGE' && loc.type !== 'ROACH_NEST' && !isUndeadFortress) return loc;
     const currentLord = loc.lord && loc.lord.factionId === loc.factionId && loc.lord.fiefId === loc.id ? loc.lord : null;
     const lord = currentLord ?? buildLocationLord(loc);
     if (!lord) return loc;
@@ -2292,7 +2308,7 @@ export default function App() {
   const getGarrisonLimit = (location: Location) => {
     const base = location.type === 'CITY'
       ? 8000
-      : location.type === 'CASTLE'
+      : isCastleLikeLocation(location)
         ? 5000
         : location.type === 'ROACH_NEST'
           ? 15000
@@ -2482,7 +2498,13 @@ export default function App() {
       };
       const applyRecruitment = (troops: Troop[], loc: Location, amount: number) => {
         if (amount <= 0) return troops;
-        const recruitId = loc.type === 'CITY' ? 'militia' : loc.type === 'CASTLE' ? 'footman' : 'peasant';
+        const recruitId = loc.type === 'CITY'
+          ? 'militia'
+          : isUndeadFortressLocation(loc)
+            ? 'zombie'
+            : isCastleLikeLocation(loc)
+              ? 'footman'
+              : 'peasant';
         const template = getTroopTemplate(recruitId);
         if (!template) return troops;
         const updated = [...troops];
@@ -2720,7 +2742,7 @@ export default function App() {
           if (buildings.includes('FACTORY')) {
             const lastIncomeDay = updated.lastIncomeDay ?? 0;
             if (nextDay - lastIncomeDay >= 3) {
-              const income = updated.type === 'CITY' ? 120 : updated.type === 'CASTLE' ? 80 : 50;
+              const income = updated.type === 'CITY' ? 120 : isCastleLikeLocation(updated) ? 80 : 50;
               newGold += income;
               updated.lastIncomeDay = nextDay;
               logsToAdd.push(`【工厂】${updated.name} 贡献了 ${income} 第纳尔。`);
@@ -2746,10 +2768,16 @@ export default function App() {
               const garrison = updated.garrison ?? [];
               const currentCount = getGarrisonCount(garrison);
               if (currentCount < limit) {
-                const recruitCount = updated.type === 'CITY' ? 12 : updated.type === 'CASTLE' ? 8 : 5;
+                const recruitCount = updated.type === 'CITY' ? 12 : isCastleLikeLocation(updated) ? 8 : 5;
                 const available = Math.min(limit - currentCount, recruitCount);
                 if (available > 0) {
-                  const recruitId = updated.type === 'CITY' ? 'militia' : updated.type === 'CASTLE' ? 'footman' : 'peasant';
+                  const recruitId = updated.type === 'CITY'
+                    ? 'militia'
+                    : isUndeadFortressLocation(updated)
+                      ? 'zombie'
+                      : isCastleLikeLocation(updated)
+                        ? 'footman'
+                        : 'peasant';
                   const template = getTroopTemplate(recruitId);
                   if (template) {
                     const index = garrison.findIndex(t => t.id === template.id);
@@ -3882,15 +3910,15 @@ export default function App() {
       ];
     }
      if (type === 'GRAVEYARD') {
-        if (mode === 'VOLUNTEER') return ['zombie']; // Digging graves
-        return ['skeleton_warrior', 'specter', 'skeleton_archer', 'undead_musician']; // Dark Ritual
+        if (mode === 'VOLUNTEER') return ['zombie', 'undead_grave_thrall', 'undead_rot_scout', 'undead_mire_digger', 'undead_bone_crawler', 'undead_ashen_runner', 'undead_coffin_bearer'];
+        return ['skeleton_warrior', 'specter', 'skeleton_archer', 'undead_musician', 'undead_bone_javelin', 'undead_grave_arbalist', 'undead_bone_slinger', 'undead_tomb_guard', 'undead_plague_bearer'];
      }
      if (type === 'HOTPOT_RESTAURANT') {
         // Special Hotpot Units
         return ['meatball_soldier', 'tofu_shield', 'spicy_soup_mage'];
      }
     if (type === 'COFFEE') {
-       if (mode === 'VOLUNTEER') return ['zombie', 'skeleton_warrior'];
+       if (mode === 'VOLUNTEER') return ['zombie', 'undead_grave_thrall', 'undead_ashen_runner', 'skeleton_warrior'];
        return [];
     }
     if (type === 'MARKET') return [];
@@ -6503,11 +6531,25 @@ export default function App() {
       name: faction.name,
       value: matrix.factions[faction.id] ?? 0
     }));
-    const raceItems = (Object.keys(RACE_LABELS) as RaceId[]).map(raceId => ({
-      id: raceId,
-      name: RACE_LABELS[raceId],
-      value: matrix.races[raceId] ?? 0
-    }));
+    type MatrixEntityId = 'PLAYER' | RaceId;
+    const matrixIds: MatrixEntityId[] = ['PLAYER', ...(Object.keys(RACE_LABELS) as RaceId[])];
+    const matrixLabels: Record<MatrixEntityId, string> = { PLAYER: player.name || '流浪领主', ...RACE_LABELS };
+    const getMatrixValue = (rowId: MatrixEntityId, colId: MatrixEntityId) => {
+      if (rowId === colId) return null;
+      if (rowId === 'PLAYER' && colId !== 'PLAYER') return matrix.races[colId] ?? 0;
+      if (colId === 'PLAYER' && rowId !== 'PLAYER') return matrix.races[rowId] ?? 0;
+      return 0;
+    };
+    const getCellStyle = (value: number) => {
+      const intensity = Math.min(1, Math.abs(value) / 100);
+      if (value > 0) {
+        return { backgroundColor: `rgba(16,185,129, ${0.15 + intensity * 0.55})`, color: '#ecfdf5' };
+      }
+      if (value < 0) {
+        return { backgroundColor: `rgba(239,68,68, ${0.15 + intensity * 0.55})`, color: '#fee2e2' };
+      }
+      return { backgroundColor: 'rgba(120,113,108,0.2)', color: '#e7e5e4' };
+    };
     const lordItems = Array.from(new Map(
       locations
         .filter(loc => loc.lord)
@@ -6548,21 +6590,40 @@ export default function App() {
               })}
             </div>
           </div>
-          <div className="bg-stone-900 border border-stone-700 rounded-lg p-4">
-            <div className="text-stone-200 font-semibold mb-3">种族关系</div>
-            <div className="space-y-2">
-              {raceItems.map(item => {
-                const tone = getRelationTone(item.value);
-                return (
-                  <div key={item.id} className="flex items-center justify-between">
-                    <span className="text-stone-200">{item.name}</span>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-xs ${tone.color}`}>{tone.label}</span>
-                      <span className="text-sm text-stone-300">{item.value}</span>
-                    </div>
-                  </div>
-                );
-              })}
+          <div className="bg-stone-900 border border-stone-700 rounded-lg p-4 md:col-span-2">
+            <div className="text-stone-200 font-semibold mb-3">种族关系矩阵</div>
+            <div className="overflow-x-auto">
+              <table className="min-w-[640px] w-full border-collapse text-xs">
+                <thead>
+                  <tr>
+                    <th className="px-3 py-2 text-left text-stone-400 border border-stone-800">阵营</th>
+                    {matrixIds.map(colId => (
+                      <th key={colId} className="px-3 py-2 text-center text-stone-300 border border-stone-800 whitespace-nowrap">
+                        {matrixLabels[colId]}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {matrixIds.map(rowId => (
+                    <tr key={rowId}>
+                      <th className="px-3 py-2 text-left text-stone-300 border border-stone-800 whitespace-nowrap">
+                        {matrixLabels[rowId]}
+                      </th>
+                      {matrixIds.map(colId => {
+                        const isSelf = rowId === colId;
+                        const value = getMatrixValue(rowId, colId);
+                        const style = isSelf ? { backgroundColor: 'rgba(30,41,59,0.4)', color: '#94a3b8' } : getCellStyle(value ?? 0);
+                        return (
+                          <td key={`${rowId}-${colId}`} className="px-2 py-2 text-center border border-stone-800 font-medium" style={style}>
+                            {isSelf ? '—' : value}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

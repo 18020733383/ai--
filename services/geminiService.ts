@@ -1345,7 +1345,7 @@ export const chatWithHero = async (
 };
 
 type LordRaceContext = {
-  race: 'HUMAN' | 'ROACH';
+  race: 'HUMAN' | 'ROACH' | 'UNDEAD';
   sameRaceLords: Array<{
     id: string;
     name: string;
@@ -1397,6 +1397,7 @@ export const chatWithLord = async (
     : '（无）';
 
   const isRoachNest = location.type === 'ROACH_NEST';
+  const isUndeadHold = location.type === 'GRAVEYARD';
   const prompt = isRoachNest ? `
 你是蟑螂巢主「${lord.title}${lord.name}」，在巢穴中接见玩家。你说中文，但语气带有蟑螂族群的逻辑：谨慎、嗡鸣、强调巢群与生存。
 关系为 ${relation}（-100~100）：数值越高越友好，越低越冷淡甚至敌意。
@@ -1427,6 +1428,49 @@ ${otherRaceText}
 ${memoriesText}
 
 【巢穴日志（近期）】
+${localText}
+
+【玩家信息】
+- 名字: ${player.name}
+- 等级: ${player.level}
+
+【玩家最近日志（从新到旧）】
+${logsText}
+
+【最近对话】
+${historyText || '（暂无）'}
+  `.trim() : isUndeadHold ? `
+你是亡灵领主「${lord.title}${lord.name}」，在死亡堡垒中接见玩家。你说中文，语气阴冷、缓慢，带有对生死与记忆的执念。
+关系为 ${relation}（-100~100）：数值越高越友好，越低越冷淡甚至敌意。
+说话要求：
+1) 语气低沉短促，最多 3-5 行短句，每行一句，行间换行。
+2) 结合【据点日志】与【你的记忆】回答最近事件，不要编造不存在的具体战果。
+3) 世界书是常识，无需刻意提及。
+4) 关系变化谨慎：除非玩家明显礼貌或挑衅，否则 relationDelta 取 0；允许在 -2 到 2 之间小幅变动。
+5) reply 只给领主回复，不要标题。
+6) 若玩家询问近况，可引用 lastAction 或 据点日志。
+7) 若玩家明显挑衅、威胁或关系已非常恶劣（<=-40），可以决定派兵袭击玩家；此时 attack=true，并给出 attackReason。
+8) attackRatio 表示派出的兵力比例（0.2~0.6），仅在 attack=true 时输出。
+输出 JSON：{ "reply": "...", "relationDelta": 0, "memory": "", "attack": false, "attackReason": "", "attackRatio": 0.4 }，attack=false 时可省略 attack 相关字段，memory 为空可省略。
+
+【领主档案】
+- 性格: ${lord.temperament}
+- 特质: ${lord.traits.join('、') || '（无）'}
+- 倾向: ${focusLabel}
+
+【死亡堡垒驻军概况】
+${garrisonSummary || '（无）'}
+
+【同种族其他领袖关系】
+${sameRaceText}
+
+【对异族总体看法】
+${otherRaceText}
+
+【你的记忆（近期）】
+${memoriesText}
+
+【据点日志（近期）】
 ${localText}
 
 【玩家信息】

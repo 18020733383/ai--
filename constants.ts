@@ -1,5 +1,5 @@
 
-import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, ParrotVariant, Hero } from './types';
+import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, ParrotVariant, Hero, RaceId } from './types';
 
 export const MAP_WIDTH = 400;
 export const MAP_HEIGHT = 400;
@@ -12,6 +12,72 @@ export const WORLD_BOOK = [
   '伪人：错误实例化的产物，行为异常、身份不稳定。',
   '魔法水晶：系统 bug 凝结形成的实体，用于附魔或触发异常。'
 ].join('\n');
+
+export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
+  ROACH: {
+    ROACH: 0,
+    UNDEAD: 0,
+    IMPOSTER: 0,
+    BANDIT: 0,
+    AUTOMATON: 0,
+    VOID: 0,
+    MADNESS: 0
+  },
+  UNDEAD: {
+    ROACH: 0,
+    UNDEAD: 0,
+    IMPOSTER: 0,
+    BANDIT: 0,
+    AUTOMATON: 0,
+    VOID: 0,
+    MADNESS: 0
+  },
+  IMPOSTER: {
+    ROACH: 0,
+    UNDEAD: 0,
+    IMPOSTER: 0,
+    BANDIT: 0,
+    AUTOMATON: 0,
+    VOID: 0,
+    MADNESS: 0
+  },
+  BANDIT: {
+    ROACH: 0,
+    UNDEAD: 0,
+    IMPOSTER: 0,
+    BANDIT: 0,
+    AUTOMATON: 0,
+    VOID: 0,
+    MADNESS: 0
+  },
+  AUTOMATON: {
+    ROACH: 0,
+    UNDEAD: 0,
+    IMPOSTER: 0,
+    BANDIT: 0,
+    AUTOMATON: 0,
+    VOID: 0,
+    MADNESS: 0
+  },
+  VOID: {
+    ROACH: 0,
+    UNDEAD: 0,
+    IMPOSTER: 0,
+    BANDIT: 0,
+    AUTOMATON: 0,
+    VOID: 0,
+    MADNESS: 0
+  },
+  MADNESS: {
+    ROACH: 0,
+    UNDEAD: 0,
+    IMPOSTER: 0,
+    BANDIT: 0,
+    AUTOMATON: 0,
+    VOID: 0,
+    MADNESS: 0
+  }
+};
 
 export const FACTIONS = [
   {
@@ -802,6 +868,136 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     equipment: ['腐烂的爪子', '寿衣'],
     attributes: troopAttr(35, 35, 15, 60, 5, 255)
   },
+  undead_grave_thrall: {
+    id: 'undead_grave_thrall',
+    name: '墓穴仆从',
+    tier: TroopTier.TIER_1,
+    basePower: 12,
+    cost: 15,
+    upgradeCost: 35,
+    maxXp: 30,
+    upgradeTargetId: 'undead_bone_javelin',
+    description: '在坟土中被召唤的苦役者。【技能：腐蚀触摸】命中后小幅降低敌人护甲。',
+    equipment: ['残破镰刀', '碎骨护具'],
+    attributes: troopAttr(4, 3, 3, 5, 2, 5)
+  },
+  undead_rot_scout: {
+    id: 'undead_rot_scout',
+    name: '腐烂斥候',
+    tier: TroopTier.TIER_1,
+    basePower: 11,
+    cost: 14,
+    upgradeCost: 35,
+    maxXp: 28,
+    upgradeTargetId: 'undead_grave_arbalist',
+    description: '手持旧弩的亡者。【技能：阴影潜行】短暂降低被锁定概率。',
+    equipment: ['裂木短弩', '风化轻甲'],
+    attributes: troopAttr(3, 3, 5, 4, 5, 5)
+  },
+  undead_mire_digger: {
+    id: 'undead_mire_digger',
+    name: '尸沼掘地者',
+    tier: TroopTier.TIER_1,
+    basePower: 9,
+    cost: 12,
+    upgradeCost: 30,
+    maxXp: 24,
+    upgradeTargetId: 'skeleton_archer',
+    description: '从泥沼爬出的幽暗劳工。【技能：沉泥】近战命中后减速。',
+    equipment: ['泥污铁铲', '湿腐裹布'],
+    attributes: troopAttr(4, 4, 2, 5, 1, 5)
+  },
+  undead_bone_crawler: {
+    id: 'undead_bone_crawler',
+    name: '白骨爬行者',
+    tier: TroopTier.TIER_1,
+    basePower: 10,
+    cost: 13,
+    upgradeCost: 32,
+    maxXp: 26,
+    upgradeTargetId: 'undead_bone_slinger',
+    description: '在坟丘缝隙里爬行的亡骨。【技能：缠足】命中后短暂降低敌人移速。',
+    equipment: ['碎骨钩爪', '骨片甲'],
+    attributes: troopAttr(4, 3, 4, 5, 2, 5)
+  },
+  undead_ashen_runner: {
+    id: 'undead_ashen_runner',
+    name: '灰烬奔行者',
+    tier: TroopTier.TIER_1,
+    basePower: 12,
+    cost: 16,
+    upgradeCost: 38,
+    maxXp: 30,
+    upgradeTargetId: 'undead_tomb_guard',
+    description: '从灰烬中归来的追猎者。【技能：疾灰】短时间提升自身攻速。',
+    equipment: ['焦炭短刃', '灰烬披布'],
+    attributes: troopAttr(4, 3, 5, 4, 2, 6)
+  },
+  undead_coffin_bearer: {
+    id: 'undead_coffin_bearer',
+    name: '棺椁抬尸者',
+    tier: TroopTier.TIER_1,
+    basePower: 13,
+    cost: 18,
+    upgradeCost: 40,
+    maxXp: 32,
+    upgradeTargetId: 'undead_bone_javelin',
+    description: '拖拽旧棺的沉重劳工。【技能：撞棺】冲撞目标造成短暂失衡。',
+    equipment: ['棺木板盾', '枯铁短槌'],
+    attributes: troopAttr(5, 4, 2, 6, 1, 5)
+  },
+  undead_bone_javelin: {
+    id: 'undead_bone_javelin',
+    name: '白骨投矛手',
+    tier: TroopTier.TIER_2,
+    basePower: 26,
+    cost: 55,
+    upgradeCost: 90,
+    maxXp: 70,
+    upgradeTargetId: 'skeleton_warrior',
+    description: '骨矛带着寒意飞来。【技能：裂骨】对轻甲单位伤害提升。',
+    equipment: ['骨矛束', '肋骨甲'],
+    attributes: troopAttr(4, 3, 4, 4, 6, 4)
+  },
+  undead_bone_slinger: {
+    id: 'undead_bone_slinger',
+    name: '骨沙投石手',
+    tier: TroopTier.TIER_2,
+    basePower: 24,
+    cost: 52,
+    upgradeCost: 85,
+    maxXp: 65,
+    upgradeTargetId: 'skeleton_warrior',
+    description: '抛射裹着骨粉的石块。【技能：骨沙】命中后降低敌人命中率。',
+    equipment: ['枯骨投索', '骨砂袋'],
+    attributes: troopAttr(4, 3, 4, 4, 6, 4)
+  },
+  undead_tomb_guard: {
+    id: 'undead_tomb_guard',
+    name: '墓冢卫士',
+    tier: TroopTier.TIER_2,
+    basePower: 30,
+    cost: 70,
+    upgradeCost: 110,
+    maxXp: 85,
+    upgradeTargetId: 'skeleton_warrior',
+    description: '看守墓道的沉默守卫。【技能：镇墓】承受伤害时提高自身防御。',
+    equipment: ['墓石长戟', '骨盾'],
+    attributes: troopAttr(5, 5, 3, 6, 2, 5)
+  },
+  undead_grave_arbalist: {
+    id: 'undead_grave_arbalist',
+    name: '墓庭弩手',
+    tier: TroopTier.TIER_2,
+    basePower: 28,
+    cost: 60,
+    upgradeCost: 95,
+    maxXp: 75,
+    upgradeTargetId: 'skeleton_warrior',
+    description: '缓慢上弦的亡者弩兵。【技能：冷风矢】降低目标命中率。',
+    equipment: ['锈蚀重弩', '骨钉'],
+    attributes: troopAttr(3, 4, 3, 5, 6, 4)
+  },
   skeleton_archer: {
     id: 'skeleton_archer',
     name: '骷髅弓手',
@@ -853,6 +1049,32 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     description: '物理攻击有50%概率落空。【技能：穿墙】无视地形阻碍。',
     equipment: ['虚无之刃', '灵体', '恐惧光环'],
     attributes: troopAttr(5, 3, 7, 4, 2, 6)
+  },
+  undead_hexer: {
+    id: 'undead_hexer',
+    name: '亡灵咒师',
+    tier: TroopTier.TIER_3,
+    basePower: 42,
+    cost: 170,
+    upgradeCost: 320,
+    maxXp: 170,
+    upgradeTargetId: 'vampire',
+    description: '在耳边低语的咒法使敌人虚弱。【技能：衰竭】短时间降低敌方攻击。',
+    equipment: ['咒骨法器', '暗影斗篷'],
+    attributes: troopAttr(4, 3, 6, 4, 5, 6)
+  },
+  undead_plague_bearer: {
+    id: 'undead_plague_bearer',
+    name: '腐疫旗手',
+    tier: TroopTier.TIER_3,
+    basePower: 48,
+    cost: 210,
+    upgradeCost: 420,
+    maxXp: 210,
+    upgradeTargetId: 'vampire',
+    description: '拖拽疫雾旗帜的亡者。【技能：疫瘴】降低周围敌军防御并缓慢流血。',
+    equipment: ['疫雾旗', '腐缎甲'],
+    attributes: troopAttr(5, 4, 4, 6, 3, 7)
   },
   vampire: {
     id: 'vampire',
@@ -2552,7 +2774,7 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
     },
     races: {
       ROACH: 0,
-      UNDEAD: 0,
+      UNDEAD: -40,
       IMPOSTER: 0,
       BANDIT: 0,
       AUTOMATON: 0,
@@ -3020,6 +3242,27 @@ export const LOCATIONS: Location[] = [
     lastRefreshDay: 0,
     volunteers: [],
     mercenaries: []
+  },
+  {
+    id: 'death_city',
+    name: '死亡之城',
+    type: 'GRAVEYARD',
+    description: '亡灵的堡垒在此沉眠，城墙缝里仍飘着冥火。',
+    coordinates: { x: 240, y: 40 },
+    terrain: 'GRAVEYARD',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: [],
+    garrisonBaseLimit: 900,
+    garrison: [
+      createTroop('zombie', 260),
+      createTroop('undead_grave_thrall', 160),
+      createTroop('undead_grave_arbalist', 120),
+      createTroop('skeleton_warrior', 140),
+      createTroop('specter', 80),
+      createTroop('undead_musician', 60),
+      createTroop('undead_hexer', 40)
+    ]
   },
   {
     id: 'coffee_undead',
