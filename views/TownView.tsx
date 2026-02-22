@@ -103,6 +103,7 @@ type TownViewProps = {
   setActiveEnemy: React.Dispatch<React.SetStateAction<EnemyForce | null>>;
   setPendingBattleMeta: React.Dispatch<React.SetStateAction<{ mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; siegeContext?: string } | null>>;
   setPendingBattleIsTraining: React.Dispatch<React.SetStateAction<boolean>>;
+  onDefenseAidJoin: (location: Location, attacker: EnemyForce) => void;
   onBackToMap: () => void;
   onEnterBattle: () => void;
   isBattling: boolean;
@@ -188,6 +189,7 @@ export const TownView = ({
   setActiveEnemy,
   setPendingBattleMeta,
   setPendingBattleIsTraining,
+  onDefenseAidJoin,
   onBackToMap,
   onEnterBattle,
   isBattling,
@@ -1086,6 +1088,7 @@ export const TownView = ({
                 baseTroopId: siege.troops[0]?.id ?? 'militia',
                 siegeEngines: siege.siegeEngines ?? []
               };
+              onDefenseAidJoin(currentLocation, enemy);
               setActiveEnemy(enemy);
 
               const defenseDetails = getLocationDefenseDetails(currentLocation);

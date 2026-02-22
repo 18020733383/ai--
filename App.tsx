@@ -669,6 +669,7 @@ export default function App() {
   const playerRef = useRef(player);
   const heroesRef = useRef(heroes);
   const partyDiaryRef = useRef(partyDiary);
+  const defenseAidMetaRef = useRef<{ locationId: string; delta: number; ratio: number } | null>(null);
   const undeadChatListRef = useRef<HTMLDivElement>(null);
   const shaperChatListRef = useRef<HTMLDivElement>(null);
   const altarChatListRef = useRef<HTMLDivElement>(null);
@@ -1097,6 +1098,54 @@ export default function App() {
         : (prev.relationEvents ?? []);
       return { ...prev, relationMatrix: nextMatrix, relationEvents: nextEvents };
     });
+  };
+
+  const updateLordRelation = (locationId: string, delta: number, text?: string) => {
+    if (!delta) return;
+    const nextDay = playerRef.current.day;
+    const safeText = String(text ?? '').trim();
+    setLocations(prev => prev.map(loc => {
+      if (loc.id !== locationId || !loc.lord) return loc;
+      const nextValue = clampRelation(loc.lord.relation + delta);
+      if (nextValue === loc.lord.relation) return loc;
+      const nextMemories = safeText
+        ? [{ day: nextDay, text: safeText }, ...(loc.lord.memories ?? [])].slice(0, 10)
+        : loc.lord.memories;
+      return { ...loc, lord: { ...loc.lord, relation: nextValue, memories: nextMemories } };
+    }));
+    setCurrentLocation(prev => {
+      if (!prev || prev.id !== locationId || !prev.lord) return prev;
+      const nextValue = clampRelation(prev.lord.relation + delta);
+      if (nextValue === prev.lord.relation) return prev;
+      const nextMemories = safeText
+        ? [{ day: nextDay, text: safeText }, ...(prev.lord.memories ?? [])].slice(0, 10)
+        : prev.lord.memories;
+      return { ...prev, lord: { ...prev.lord, relation: nextValue, memories: nextMemories } };
+    });
+  };
+
+  const getDefenseAidRelationDelta = (location: Location, attacker: EnemyForce) => {
+    const attackerPower = Math.max(1, calculatePower(attacker.troops));
+    const defenderPower = Math.max(1, calculatePower(getDefenderTroops(location)));
+    const playerPower = Math.max(1, calculatePower(getBattleTroops(playerRef.current, heroesRef.current)));
+    const balanceRatio = defenderPower / attackerPower;
+    const impactRatio = playerPower / attackerPower;
+    let delta = 2;
+    if (balanceRatio < 0.2) delta = 10;
+    else if (balanceRatio < 0.4) delta = 8;
+    else if (balanceRatio < 0.6) delta = 6;
+    else if (balanceRatio < 0.8) delta = 4;
+    delta += Math.min(4, Math.max(0, Math.floor(impactRatio * 6)));
+    return Math.max(2, Math.min(14, delta));
+  };
+
+  const handleDefenseAidJoin = (location: Location, attacker: EnemyForce) => {
+    const defenderPower = Math.max(1, calculatePower(getDefenderTroops(location)));
+    const attackerPower = Math.max(1, calculatePower(attacker.troops));
+    const ratio = defenderPower / attackerPower;
+    const delta = getDefenseAidRelationDelta(location, attacker);
+    defenseAidMetaRef.current = { locationId: location.id, delta, ratio };
+    addLocationLog(location.id, `${playerRef.current.name} 协助守城，守军战力比 ${ratio.toFixed(2)}。`);
   };
 
   const getRelationTone = (value: number) => {
@@ -2789,10 +2838,15 @@ export default function App() {
            ...nextStationedArmies.flatMap(army => army.troops)
          ]);
          const attackerCount = getGarrisonCount(attackers);
+
+        if ((nextDay - siege.startDay) % 2 === 0) {
+          addLocalLog(loc.id, `围攻仍在继续：攻${attackerCount} 守${garrisonCount}。`);
+        }
          
          if (garrisonCount <= 0) {
              // Defenders wiped - Sacked!
              logsToAdd.push(`【据点陷落】${loc.name} 的守军全军覆没，据点被伪人占领！`);
+            addLocalLog(loc.id, `${loc.name} 守军覆灭，城池陷落。`);
              return {
                  ...loc,
                  owner: 'ENEMY',
@@ -2811,6 +2865,7 @@ export default function App() {
          if (attackerCount <= 0) {
              // Attackers wiped - Siege Broken
              logsToAdd.push(`【围攻解除】${loc.name} 的守军击溃了伪人进攻部队！`);
+            addLocalLog(loc.id, `伪人围攻被击溃，守军守住城池。`);
              return {
                  ...loc,
                  garrison: garrison,
@@ -2930,6 +2985,53 @@ export default function App() {
 
         newLocations[portalIndex] = portal;
       }
+
+      const hostileFactions = FACTIONS.filter(faction => getRelationValue(playerRef.current, 'FACTION', faction.id) <= -40);
+      const playerTargets = newLocations.filter(loc => (
+        loc.owner === 'PLAYER' &&
+        !loc.activeSiege &&
+        (loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE')
+      ));
+      hostileFactions.forEach(faction => {
+        if (playerTargets.length === 0) return;
+        const relationValue = getRelationValue(playerRef.current, 'FACTION', faction.id);
+        const baseChance = relationValue <= -70 ? 0.5 : relationValue <= -55 ? 0.35 : 0.22;
+        if (Math.random() > baseChance) return;
+        const factionLocations = getFactionLocations(faction.id, newLocations);
+        if (factionLocations.length === 0) return;
+        const source = [...factionLocations].sort((a, b) => getGarrisonCount(getLocationTroops(b)) - getGarrisonCount(getLocationTroops(a)))[0];
+        if (!source) return;
+        const target = playerTargets[Math.floor(Math.random() * playerTargets.length)];
+        const sourceLordParty = source.lord ? (source.stayParties ?? []).find(p => p.lordId === source.lord?.id) ?? null : null;
+        const useLordParty = !!sourceLordParty && sourceLordParty.troops.some(t => t.count > 0);
+        const sourceTroops = useLordParty ? sourceLordParty?.troops ?? [] : getLocationTroops(source);
+        const { attackers, remaining } = splitTroops(sourceTroops, 0.5);
+        if (getGarrisonCount(attackers) < 50) return;
+        const raidPower = calculatePower(attackers);
+        const nextTarget = {
+          ...target,
+          activeSiege: {
+            attackerName: `${faction.name}远征军`,
+            troops: attackers,
+            startDay: nextDay,
+            totalPower: raidPower,
+            siegeEngines: ['SIMPLE_LADDER'] as SiegeEngineType[]
+          },
+          isUnderSiege: true
+        };
+        logsToAdd.push(`【报复】${faction.name} 向你的据点 ${target.name} 发动围攻。`);
+        addLocalLog(target.id, `遭到 ${faction.name} 围攻。`);
+        newLocations = newLocations.map(loc => {
+          if (loc.id === target.id) return nextTarget;
+          if (loc.id === source.id) {
+            const nextLoc = useLordParty && sourceLordParty
+              ? updateStayPartyTroops(loc, sourceLordParty.id, remaining)
+              : { ...loc, garrison: remaining };
+            return updateLordAction(nextLoc, `奉命讨伐玩家据点 ${target.name}`);
+          }
+          return loc;
+        });
+      });
 
       if (nextDay % 7 === 0) {
         const councilFactions = FACTIONS.filter(faction => getFactionLocations(faction.id, newLocations).length > 0);
@@ -3656,6 +3758,17 @@ export default function App() {
         };
       });
       setAltarDrafts(prev => prev[location.id] ? prev : { ...prev, [location.id]: { domain: '', spread: '', blessing: '' } });
+    }
+
+    const relationTarget = getLocationRelationTarget(location);
+    if (relationTarget?.type === 'FACTION' && location.owner !== 'PLAYER' && (location.type === 'CITY' || location.type === 'CASTLE' || location.type === 'VILLAGE')) {
+      const relationValue = getRelationValue(playerRef.current, relationTarget.type, relationTarget.id);
+      if (relationValue <= -40) {
+        const factionName = FACTIONS.find(f => f.id === relationTarget.id)?.name ?? location.name;
+        addLog(`${factionName} 对你拒绝入城。`);
+        addLocationLog(location.id, `城门关闭，拒绝 ${playerRef.current.name} 入城。`);
+        return;
+      }
     }
 
      // Check for Recruit Refresh
@@ -4979,6 +5092,17 @@ export default function App() {
     const updatedLocation = { ...location, isUnderSiege: true };
     updateLocationState(updatedLocation);
     addLocationLog(location.id, `玩家军队开始围攻 ${location.name}。`);
+    if (location.type === 'CITY' || location.type === 'CASTLE' || location.type === 'VILLAGE') {
+      const relationTarget = getLocationRelationTarget(location);
+      const factionPenalty = location.type === 'CITY' ? -20 : location.type === 'CASTLE' ? -16 : -12;
+      const lordPenalty = location.type === 'CITY' ? -18 : location.type === 'CASTLE' ? -14 : -10;
+      if (relationTarget?.type === 'FACTION') {
+        updateRelation(relationTarget.type, relationTarget.id, factionPenalty, `进攻 ${location.name}`);
+      }
+      if (location.lord) {
+        updateLordRelation(location.id, lordPenalty, `遭到玩家围攻`);
+      }
+    }
     setActiveEnemy(enemy);
     setPendingBattleMeta({ mode: 'SIEGE', targetLocationId: location.id, siegeContext });
     setPendingBattleIsTraining(false);
@@ -5035,6 +5159,21 @@ export default function App() {
         const relationTarget = getLocationRelationTarget(target);
         const supportLabel = battleMeta.supportLabel || `${target.name}援军`;
         if (battleResult.outcome === 'A') {
+           const storedMeta = defenseAidMetaRef.current?.locationId === target.id ? defenseAidMetaRef.current : null;
+           const relationDelta = storedMeta?.delta ?? (activeEnemy ? getDefenseAidRelationDelta(target, activeEnemy) : 3);
+           const ratioValue = storedMeta?.ratio ?? (() => {
+             if (!activeEnemy) return null;
+             const defenderPower = Math.max(1, calculatePower(getDefenderTroops(target)));
+             const attackerPower = Math.max(1, calculatePower(activeEnemy.troops));
+             return defenderPower / attackerPower;
+           })();
+           if (relationTarget) {
+             const ratioText = ratioValue !== null ? `（战力比 ${ratioValue.toFixed(2)}）` : '';
+             updateRelation(relationTarget.type, relationTarget.id, relationDelta, `协助 ${target.name} 守城${ratioText}`);
+           }
+           if (target.lord) {
+             updateLordRelation(target.id, relationDelta, `协助 ${target.name} 守城`);
+           }
            const updated = target.activeSiege ? { ...target, activeSiege: undefined } : target;
            if (updated !== target) updateLocationState(updated);
            if (target.activeSiege) {
@@ -5043,10 +5182,8 @@ export default function App() {
            } else {
              addLog(`你与 ${supportLabel} 击退了 ${activeEnemy?.name ?? '敌军'}。`);
              addLocationLog(target.id, `守军援助成功，击退了来犯之敌。`);
-             if (relationTarget) {
-               updateRelation(relationTarget.type, relationTarget.id, 3, `协助 ${target.name} 击退敌军`);
-             }
            }
+           defenseAidMetaRef.current = null;
         } else {
            if (target.activeSiege) {
              addLog(`战斗失利，${target.name} 的围攻仍在继续。`);
@@ -5057,6 +5194,7 @@ export default function App() {
            }
         }
       }
+      defenseAidMetaRef.current = null;
       setBattleResult(null);
       setActiveEnemy(null);
       setIsBattling(false);
@@ -6379,6 +6517,20 @@ export default function App() {
       name: RACE_LABELS[raceId],
       value: matrix.races[raceId] ?? 0
     }));
+    const lordItems = Array.from(new Map(
+      locations
+        .filter(loc => loc.lord)
+        .map(loc => [
+          loc.lord!.id,
+          {
+            id: loc.lord!.id,
+            name: loc.lord!.name,
+            title: loc.lord!.title,
+            fief: loc.name,
+            value: loc.lord!.relation
+          }
+        ])
+    ).values()).sort((a, b) => b.value - a.value);
     const events = (player.relationEvents ?? []).slice(0, 18);
 
     return (
@@ -6422,6 +6574,34 @@ export default function App() {
               })}
             </div>
           </div>
+        </div>
+        <div className="bg-stone-900 border border-stone-700 rounded-lg p-4 mt-6">
+          <div className="text-stone-200 font-semibold mb-3">领主关系</div>
+          {lordItems.length > 0 ? (
+            <div className="max-h-72 overflow-y-auto pr-2 space-y-3">
+              {lordItems.map(item => (
+                <div key={item.id} className="border-b border-stone-800 pb-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-stone-200">{item.title} {item.name}</span>
+                    <span className="text-xs text-stone-500">{item.fief}</span>
+                  </div>
+                  <div className="flex items-center gap-3 mt-2">
+                    <input
+                      type="range"
+                      min={-100}
+                      max={100}
+                      value={item.value}
+                      readOnly
+                      className="w-full accent-amber-500"
+                    />
+                    <span className="text-sm text-stone-300 w-10 text-right">{item.value}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-sm text-stone-500">暂无领主关系。</div>
+          )}
         </div>
         <div className="bg-stone-900 border border-stone-700 rounded-lg p-4 mt-6">
           <div className="text-stone-200 font-semibold mb-3">近期关系事件</div>
@@ -6850,6 +7030,7 @@ export default function App() {
             setActiveEnemy={setActiveEnemy}
             setPendingBattleMeta={setPendingBattleMeta}
             setPendingBattleIsTraining={setPendingBattleIsTraining}
+            onDefenseAidJoin={handleDefenseAidJoin}
             onBackToMap={() => setView('MAP')}
             onEnterBattle={() => setView('BATTLE')}
             isBattling={isBattling}

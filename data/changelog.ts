@@ -6,6 +6,18 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.13',
+    date: '2026-02-22',
+    items: [
+      '伪人围攻写入据点日志并补充围攻进度记录',
+      '协助守城按战力影响幅度提升势力与领主关系',
+      '攻城行为同步降低势力与领主关系',
+      '敌对势力会拒绝入城并围攻玩家据点',
+      '关系网络新增领主关系滑动展示',
+      '地图与角色图片迁移至 public 目录'
+    ]
+  },
+  {
     version: '0.3.12',
     date: '2026-02-22',
     items: [
