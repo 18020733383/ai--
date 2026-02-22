@@ -3,6 +3,7 @@ import { Bird, MessageCircle, Plus, Heart, Zap, Star } from 'lucide-react';
 import { Hero, PlayerState } from '../types';
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
+import { getTroopRace, TROOP_RACE_LABELS } from '../constants';
 
 type PartyCategoryFilter = 'ALL' | 'NORMAL' | 'HEAVY';
 
@@ -43,6 +44,19 @@ export const PartyView = ({
     if (partyCategoryFilter === 'ALL') return true;
     return category === partyCategoryFilter;
   });
+  const raceSummary = player.troops.reduce((acc, troop) => {
+    const race = getTroopRace(troop);
+    acc[race] = (acc[race] ?? 0) + troop.count;
+    return acc;
+  }, {} as Record<string, number>);
+  const totalTroops = player.troops.reduce((sum, troop) => sum + troop.count, 0);
+  const raceEntries = Object.entries(raceSummary)
+    .map(([race, count]) => ({
+      race,
+      count,
+      ratio: totalTroops > 0 ? Math.round((count / totalTroops) * 100) : 0
+    }))
+    .sort((a, b) => b.count - a.count);
 
   return (
     <div className="max-w-4xl mx-auto p-4 pt-20 animate-fade-in">
@@ -70,6 +84,21 @@ export const PartyView = ({
           </div>
         </div>
         <Button variant="secondary" onClick={() => setPartyCategoryFilter('ALL')}>清空筛选</Button>
+      </div>
+
+      <div className="bg-stone-900/60 border border-stone-700 rounded p-3 mb-4">
+        <div className="text-xs text-stone-500 mb-2">队伍种族构成</div>
+        {totalTroops === 0 ? (
+          <div className="text-sm text-stone-500">暂无部队</div>
+        ) : (
+          <div className="flex flex-wrap gap-2 text-xs text-stone-400">
+            {raceEntries.map(entry => (
+              <span key={entry.race} className="px-2 py-1 rounded border border-stone-800 bg-stone-950/40">
+                {TROOP_RACE_LABELS[entry.race as keyof typeof TROOP_RACE_LABELS]} {entry.count}（{entry.ratio}%）
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">

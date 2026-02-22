@@ -1363,6 +1363,16 @@ type LordRaceContext = {
       attitude: number;
     } | null;
   };
+  playerTroops: {
+    total: number;
+    entries: Array<{
+      id: string;
+      label: string;
+      count: number;
+      ratio: number;
+    }>;
+  };
+  xenophobiaPenalty?: number;
 };
 
 export const chatWithLord = async (
@@ -1395,6 +1405,12 @@ export const chatWithLord = async (
   const otherRaceText = raceContext
     ? `- 整体态度(${raceContext.otherRace.label}): ${raceContext.otherRace.relation}\n- 对方代表领袖: ${otherRaceLeaderText}`
     : '（无）';
+  const playerTroopText = raceContext?.playerTroops?.entries?.length
+    ? raceContext.playerTroops.entries.map(item => `- ${item.label}:${item.count}（${item.ratio}%）`).join('\n')
+    : '（无）';
+  const playerTroopSummary = raceContext
+    ? `- 队伍总人数: ${raceContext.playerTroops.total}\n- 种族构成:\n${playerTroopText}`
+    : '（无）';
 
   const isRoachNest = location.type === 'ROACH_NEST';
   const isUndeadHold = location.type === 'GRAVEYARD';
@@ -1423,6 +1439,9 @@ ${sameRaceText}
 
 【对异族总体看法】
 ${otherRaceText}
+
+【玩家队伍种族】
+${playerTroopSummary}
 
 【你的记忆（近期）】
 ${memoriesText}
@@ -1467,6 +1486,9 @@ ${sameRaceText}
 【对异族总体看法】
 ${otherRaceText}
 
+【玩家队伍种族】
+${playerTroopSummary}
+
 【你的记忆（近期）】
 ${memoriesText}
 
@@ -1509,6 +1531,9 @@ ${sameRaceText}
 
 【对异族总体看法】
 ${otherRaceText}
+
+【玩家队伍种族】
+${playerTroopSummary}
 
 【你的记忆（近期）】
 ${memoriesText}

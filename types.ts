@@ -226,7 +226,9 @@ export type FactionInfo = {
 
 export type LordFocus = 'WAR' | 'TRADE' | 'DEFENSE' | 'DIPLOMACY';
 
-export type RaceId = 'ROACH' | 'UNDEAD' | 'IMPOSTER' | 'BANDIT' | 'AUTOMATON' | 'VOID' | 'MADNESS';
+export type RaceId = 'HUMAN' | 'ROACH' | 'UNDEAD' | 'IMPOSTER' | 'BANDIT' | 'AUTOMATON' | 'VOID' | 'MADNESS';
+
+export type TroopRace = RaceId | 'UNKNOWN';
 
 export type RelationEvent = {
   id: string;

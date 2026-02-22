@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, Lord } from './types';
-import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX } from './constants';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord } from './types';
+import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX, RACE_LABELS } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, ShaperDecision } from './services/geminiService';
 import { Button } from './components/Button';
 import { BigMapView } from './components/BigMapView';
@@ -74,16 +74,6 @@ const MINERAL_META: Record<MineralId, { name: string; effect: string }> = {
 };
 
 const STAY_PARTY_LOCATION_TYPES: Location['type'][] = ['CITY', 'CASTLE', 'ROACH_NEST', 'IMPOSTER_PORTAL'];
-
-const RACE_LABELS: Record<RaceId, string> = {
-  ROACH: '蟑螂族群',
-  UNDEAD: '亡灵族群',
-  IMPOSTER: '伪人族群',
-  BANDIT: '盗匪团伙',
-  AUTOMATON: '失控机兵',
-  VOID: '深渊势力',
-  MADNESS: '疯人群体'
-};
 
 const isUndeadFortressLocation = (location: Location) => location.type === 'GRAVEYARD' && location.id === 'death_city';
 const isCastleLikeLocation = (location: Location) => location.type === 'CASTLE' || isUndeadFortressLocation(location);
@@ -652,7 +642,7 @@ export default function App() {
   const [mapListQuery, setMapListQuery] = useState('');
   const [mapListTypeFilter, setMapListTypeFilter] = useState<Location['type'] | 'ALL' | 'MINE'>('ALL');
   const [isWorldTroopStatsOpen, setIsWorldTroopStatsOpen] = useState(false);
-  const [worldTroopFactionFilter, setWorldTroopFactionFilter] = useState<'ALL' | 'IMPOSTER' | 'NON_IMPOSTER'>('ALL');
+  const [worldTroopRaceFilter, setWorldTroopRaceFilter] = useState<TroopRace | 'ALL'>('ALL');
   const [worldTroopTierFilter, setWorldTroopTierFilter] = useState<TroopTier | 'ALL'>('ALL');
   const [worldTroopIdFilter, setWorldTroopIdFilter] = useState('ALL');
   const [troopArchiveQuery, setTroopArchiveQuery] = useState('');
@@ -1014,6 +1004,7 @@ export default function App() {
       RED_DUNE: matrix?.factions?.RED_DUNE ?? INITIAL_PLAYER_STATE.relationMatrix.factions.RED_DUNE
     },
     races: {
+      HUMAN: matrix?.races?.HUMAN ?? INITIAL_PLAYER_STATE.relationMatrix.races.HUMAN,
       ROACH: matrix?.races?.ROACH ?? INITIAL_PLAYER_STATE.relationMatrix.races.ROACH,
       UNDEAD: matrix?.races?.UNDEAD ?? INITIAL_PLAYER_STATE.relationMatrix.races.UNDEAD,
       IMPOSTER: matrix?.races?.IMPOSTER ?? INITIAL_PLAYER_STATE.relationMatrix.races.IMPOSTER,
@@ -1171,6 +1162,7 @@ export default function App() {
     if (value <= -60) return { label: '死敌', color: 'text-red-400' };
     if (value <= -40) return { label: '敌对', color: 'text-red-300' };
     if (value <= -20) return { label: '紧张', color: 'text-red-200' };
+    if (value >= -5 && value <= 5) return { label: '陌生', color: 'text-stone-300' };
     return { label: '中立', color: 'text-stone-300' };
   };
 
@@ -6432,9 +6424,8 @@ export default function App() {
     <WorldTroopStatsModal
       collectWorldTroops={collectWorldTroops}
       getTroopTemplate={getTroopTemplate}
-      imposterTroopIds={IMPOSTER_TROOP_IDS}
-      worldTroopFactionFilter={worldTroopFactionFilter}
-      setWorldTroopFactionFilter={setWorldTroopFactionFilter}
+      worldTroopRaceFilter={worldTroopRaceFilter}
+      setWorldTroopRaceFilter={setWorldTroopRaceFilter}
       worldTroopTierFilter={worldTroopTierFilter}
       setWorldTroopTierFilter={setWorldTroopTierFilter}
       worldTroopIdFilter={worldTroopIdFilter}

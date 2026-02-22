@@ -3,6 +3,7 @@ import { AlertTriangle, Beer, Coins, Ghost, Hammer, History, Home, MessageCircle
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
 import { chatWithAltar, chatWithLord } from '../services/geminiService';
+import { getTroopRace, TROOP_RACE_LABELS } from '../constants';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, BuildingType, EnemyForce, Enchantment, Hero, Location, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, StayParty, Troop, TroopTier } from '../types';
 
 type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT';
@@ -416,6 +417,21 @@ export const TownView = ({
     const currentRace = getLocationRaceTag(currentLocation);
     const otherRace: 'ROACH' | 'HUMAN' = currentRace === 'ROACH' ? 'HUMAN' : 'ROACH';
     const resolvedOtherRace: 'ROACH' | 'HUMAN' = currentRace === 'UNDEAD' ? 'HUMAN' : otherRace;
+    const playerTroops = playerRef.current.troops ?? [];
+    const playerTotal = playerTroops.reduce((sum, troop) => sum + troop.count, 0);
+    const playerRaceCounts = playerTroops.reduce((acc, troop) => {
+      const race = getTroopRace(troop);
+      acc[race] = (acc[race] ?? 0) + troop.count;
+      return acc;
+    }, {} as Record<string, number>);
+    const playerRaceEntries = Object.entries(playerRaceCounts)
+      .map(([race, count]) => ({
+        id: race,
+        label: TROOP_RACE_LABELS[race as keyof typeof TROOP_RACE_LABELS] ?? '未知',
+        count,
+        ratio: playerTotal > 0 ? Math.round((count / playerTotal) * 100) : 0
+      }))
+      .sort((a, b) => b.count - a.count);
     const sameRaceLocations = locations.filter(loc => loc.lord && getLocationRaceTag(loc) === currentRace);
     const sameRaceLords = sameRaceLocations
       .filter(loc => loc.lord && loc.lord.id !== currentLord.id)
@@ -440,6 +456,10 @@ export const TownView = ({
     const leaderAttitude = otherRaceLeader?.lord
       ? clampValue(otherRaceRelation + ((hashString(`${currentLord.id}:${otherRaceLeader.lord.id}`) % 11) - 5), -90, 30)
       : undefined;
+    const otherCount = playerTotal - (playerRaceCounts[currentRace] ?? 0);
+    const otherRatio = playerTotal > 0 ? otherCount / playerTotal : 0;
+    const xenoScore = getXenoAcceptanceScore(currentLord.temperament, currentLord.traits || []);
+    const xenophobiaPenalty = playerTotal > 0 && otherRatio >= 0.35 && xenoScore <= -10 ? -1 : 0;
     return {
       race: currentRace,
       sameRaceLords,
@@ -453,7 +473,12 @@ export const TownView = ({
               attitude: leaderAttitude ?? otherRaceRelation
             }
           : null
-      }
+      },
+      playerTroops: {
+        total: playerTotal,
+        entries: playerRaceEntries
+      },
+      xenophobiaPenalty
     };
   };
   const buildLordAttackPlan = (ratio: number) => {
@@ -602,7 +627,9 @@ export const TownView = ({
       );
       const reply = response.reply;
       setLordDialogue(prev => [...prev, { role: 'LORD' as const, text: reply }].slice(-16));
-      const relationDelta = Math.max(-2, Math.min(2, Number(response.relationDelta ?? 0)));
+      const baseDelta = Math.max(-2, Math.min(2, Number(response.relationDelta ?? 0)));
+      const racePenalty = raceContext?.xenophobiaPenalty ?? 0;
+      const relationDelta = Math.max(-2, Math.min(2, baseDelta + racePenalty));
       const memory = String(response.memory ?? '').trim();
       if (relationDelta !== 0 || memory) {
         const nextRelation = Math.max(-100, Math.min(100, currentLord.relation + relationDelta));

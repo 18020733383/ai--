@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Troop } from '../types';
+import { getTroopRace, TROOP_RACE_LABELS } from '../constants';
 import { Shield, Users, Sword, ChevronUp, Hammer, ShieldAlert, Star } from 'lucide-react';
 
 interface TroopCardProps {
@@ -43,6 +44,8 @@ export const TroopCard: React.FC<TroopCardProps> = ({
   const normalizedId = troop.id.startsWith('garrison_') ? troop.id.slice('garrison_'.length) : troop.id;
   const doctrineLabel = troop.doctrine?.trim();
   const isEvangelist = troop.evangelist || normalizedId.startsWith('altar_') || !!doctrineLabel;
+  const troopRace = getTroopRace({ id: troop.id, name: troop.name, doctrine: troop.doctrine, evangelist: troop.evangelist });
+  const raceLabel = TROOP_RACE_LABELS[troopRace];
 
   return (
     <div className="bg-stone-900/80 border border-stone-700 p-4 rounded-sm flex flex-col gap-3 group hover:border-stone-500 transition-colors relative overflow-hidden">
@@ -72,6 +75,11 @@ export const TroopCard: React.FC<TroopCardProps> = ({
                {isEvangelist && (
                  <span className="bg-amber-900/40 text-amber-200 px-1 rounded border border-amber-700/60 inline-flex items-center gap-1">
                    <Star className="w-3 h-3" /> {doctrineLabel ? `教义·${doctrineLabel}` : '传教'}
+                 </span>
+               )}
+               {raceLabel && (
+                 <span className="bg-slate-900/40 text-slate-200 px-1 rounded border border-slate-700/60 inline-flex items-center gap-1">
+                   {raceLabel}
                  </span>
                )}
                <span>•</span>

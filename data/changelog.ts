@@ -6,6 +6,16 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.14',
+    date: '2026-02-22',
+    items: [
+      '士兵卡片新增种族标识与部队管理种族构成汇总',
+      '领主对话增加玩家队伍种族信息并触发排外轻微扣分',
+      '世界士兵统计新增种族筛选与种族概览',
+      '种族关系矩阵补充人类并新增陌生态度显示'
+    ]
+  },
+  {
     version: '0.3.13',
     date: '2026-02-22',
     items: [

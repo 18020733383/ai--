@@ -1,5 +1,5 @@
 
-import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, ParrotVariant, Hero, RaceId } from './types';
+import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, ParrotVariant, Hero, RaceId, TroopRace } from './types';
 
 export const MAP_WIDTH = 400;
 export const MAP_HEIGHT = 400;
@@ -13,8 +13,30 @@ export const WORLD_BOOK = [
   '魔法水晶：系统 bug 凝结形成的实体，用于附魔或触发异常。'
 ].join('\n');
 
+export const RACE_LABELS: Record<RaceId, string> = {
+  HUMAN: '人类',
+  ROACH: '蟑螂族群',
+  UNDEAD: '亡灵族群',
+  IMPOSTER: '伪人族群',
+  BANDIT: '盗匪团伙',
+  AUTOMATON: '失控机兵',
+  VOID: '深渊势力',
+  MADNESS: '疯人群体'
+};
+
 export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
+  HUMAN: {
+    HUMAN: 0,
+    ROACH: 0,
+    UNDEAD: 0,
+    IMPOSTER: 0,
+    BANDIT: 0,
+    AUTOMATON: 0,
+    VOID: 0,
+    MADNESS: 0
+  },
   ROACH: {
+    HUMAN: 0,
     ROACH: 0,
     UNDEAD: 0,
     IMPOSTER: 0,
@@ -24,6 +46,7 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     MADNESS: 0
   },
   UNDEAD: {
+    HUMAN: 0,
     ROACH: 0,
     UNDEAD: 0,
     IMPOSTER: 0,
@@ -33,6 +56,7 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     MADNESS: 0
   },
   IMPOSTER: {
+    HUMAN: 0,
     ROACH: 0,
     UNDEAD: 0,
     IMPOSTER: 0,
@@ -42,6 +66,7 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     MADNESS: 0
   },
   BANDIT: {
+    HUMAN: 0,
     ROACH: 0,
     UNDEAD: 0,
     IMPOSTER: 0,
@@ -51,6 +76,7 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     MADNESS: 0
   },
   AUTOMATON: {
+    HUMAN: 0,
     ROACH: 0,
     UNDEAD: 0,
     IMPOSTER: 0,
@@ -60,6 +86,7 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     MADNESS: 0
   },
   VOID: {
+    HUMAN: 0,
     ROACH: 0,
     UNDEAD: 0,
     IMPOSTER: 0,
@@ -69,6 +96,7 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     MADNESS: 0
   },
   MADNESS: {
+    HUMAN: 0,
     ROACH: 0,
     UNDEAD: 0,
     IMPOSTER: 0,
@@ -2485,6 +2513,38 @@ export const IMPOSTER_TROOP_IDS = new Set([
   'legacy_code_abomination', 'system_crash_titan', 'infinite_loop_devourer'
 ]);
 
+export const TROOP_RACE_LABELS: Record<TroopRace, string> = {
+  HUMAN: '人类',
+  ROACH: '蟑螂',
+  UNDEAD: '亡灵',
+  IMPOSTER: '伪人',
+  BANDIT: '盗匪',
+  AUTOMATON: '机兵',
+  VOID: '深渊',
+  MADNESS: '疯人',
+  UNKNOWN: '未知'
+};
+
+export const getTroopRace = (
+  troop: Pick<Troop, 'id' | 'name' | 'doctrine' | 'evangelist'>,
+  imposterTroopIds: Set<string> = IMPOSTER_TROOP_IDS
+): TroopRace => {
+  const normalizedId = troop.id.startsWith('garrison_') ? troop.id.slice('garrison_'.length) : troop.id;
+  const doctrineLabel = troop.doctrine?.trim();
+  if (normalizedId.startsWith('shaped_')) return 'UNKNOWN';
+  if (normalizedId.startsWith('altar_') || troop.evangelist || !!doctrineLabel) return 'HUMAN';
+  if (imposterTroopIds.has(normalizedId)) return 'IMPOSTER';
+  if (normalizedId.startsWith('roach_')) return 'ROACH';
+  if (normalizedId.startsWith('undead_') || normalizedId.startsWith('skeleton') || normalizedId.startsWith('zombie') || normalizedId.startsWith('specter')) return 'UNDEAD';
+  if (normalizedId.startsWith('automaton') || normalizedId.startsWith('ai_')) return 'AUTOMATON';
+  if (normalizedId.startsWith('void_')) return 'VOID';
+  if (normalizedId.startsWith('mad_') || normalizedId.includes('patient')) return 'MADNESS';
+  if (normalizedId.includes('bandit') || normalizedId.includes('raider') || normalizedId.includes('thief')) return 'BANDIT';
+  const name = String(troop.name ?? '');
+  if (name.includes('匪') || name.includes('盗') || name.includes('强盗') || name.includes('劫匪')) return 'BANDIT';
+  return 'HUMAN';
+};
+
 // Helper to create fresh troops
 export const createTroop = (id: string, count: number = 1): Troop => {
   const template = TROOP_TEMPLATES[id];
@@ -2773,8 +2833,9 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
       RED_DUNE: 0
     },
     races: {
+      HUMAN: 0,
       ROACH: 0,
-      UNDEAD: -40,
+      UNDEAD: 0,
       IMPOSTER: 0,
       BANDIT: 0,
       AUTOMATON: 0,

@@ -1,14 +1,14 @@
 import React from 'react';
 import { Activity } from 'lucide-react';
 import { Button } from './Button';
-import { Troop, TroopTier } from '../types';
+import { Troop, TroopTier, TroopRace } from '../types';
+import { getTroopRace, TROOP_RACE_LABELS } from '../constants';
 
 type WorldTroopStatsModalProps = {
   collectWorldTroops: () => Troop[];
   getTroopTemplate: (id: string) => Omit<Troop, 'count' | 'xp'> | undefined;
-  imposterTroopIds: Set<string>;
-  worldTroopFactionFilter: 'ALL' | 'IMPOSTER' | 'NON_IMPOSTER';
-  setWorldTroopFactionFilter: (value: 'ALL' | 'IMPOSTER' | 'NON_IMPOSTER') => void;
+  worldTroopRaceFilter: TroopRace | 'ALL';
+  setWorldTroopRaceFilter: (value: TroopRace | 'ALL') => void;
   worldTroopTierFilter: TroopTier | 'ALL';
   setWorldTroopTierFilter: (value: TroopTier | 'ALL') => void;
   worldTroopIdFilter: string;
@@ -20,9 +20,8 @@ type WorldTroopStatsModalProps = {
 export const WorldTroopStatsModal = ({
   collectWorldTroops,
   getTroopTemplate,
-  imposterTroopIds,
-  worldTroopFactionFilter,
-  setWorldTroopFactionFilter,
+  worldTroopRaceFilter,
+  setWorldTroopRaceFilter,
   worldTroopTierFilter,
   setWorldTroopTierFilter,
   worldTroopIdFilter,
@@ -38,6 +37,12 @@ export const WorldTroopStatsModal = ({
     const description = template?.description ?? troop.description ?? '';
     const equipment = template?.equipment ?? troop.equipment ?? [];
     const entry = acc[id];
+    const race = getTroopRace({
+      id,
+      name,
+      doctrine: template?.doctrine ?? troop.doctrine,
+      evangelist: template?.evangelist ?? troop.evangelist
+    });
     if (entry) {
       entry.count += troop.count;
     } else {
@@ -48,19 +53,18 @@ export const WorldTroopStatsModal = ({
         count: troop.count,
         description,
         equipment,
-        isImposter: imposterTroopIds.has(id)
+        race
       };
     }
     return acc;
-  }, {} as Record<string, { id: string; name: string; tier: TroopTier; count: number; description: string; equipment: string[]; isImposter: boolean }>)).sort((a, b) => {
+  }, {} as Record<string, { id: string; name: string; tier: TroopTier; count: number; description: string; equipment: string[]; race: TroopRace }>)).sort((a, b) => {
     const tierCmp = a.tier - b.tier;
     if (tierCmp !== 0) return tierCmp;
     return a.name.localeCompare(b.name, 'zh-CN');
   });
 
   const filtered = aggregated.filter(entry => {
-    if (worldTroopFactionFilter === 'IMPOSTER' && !entry.isImposter) return false;
-    if (worldTroopFactionFilter === 'NON_IMPOSTER' && entry.isImposter) return false;
+    if (worldTroopRaceFilter !== 'ALL' && entry.race !== worldTroopRaceFilter) return false;
     if (worldTroopTierFilter !== 'ALL' && entry.tier !== worldTroopTierFilter) return false;
     if (worldTroopIdFilter !== 'ALL' && entry.id !== worldTroopIdFilter) return false;
     return true;
@@ -68,14 +72,19 @@ export const WorldTroopStatsModal = ({
 
   const totals = filtered.reduce((acc, entry) => {
     acc.totalCount += entry.count;
-    if (entry.isImposter) acc.imposterCount += entry.count;
     return acc;
-  }, { totalCount: 0, imposterCount: 0 });
-  const nonImposterCount = totals.totalCount - totals.imposterCount;
+  }, { totalCount: 0 });
+  const raceTotals = aggregated.reduce((acc, entry) => {
+    acc[entry.race] = (acc[entry.race] ?? 0) + entry.count;
+    return acc;
+  }, {} as Record<TroopRace, number>);
+  const raceTypes = Object.keys(raceTotals).length;
+  const unknownCount = raceTotals.UNKNOWN ?? 0;
   const tierTotals = [1, 2, 3, 4, 5].map(tier => ({
     tier,
     count: filtered.filter(entry => entry.tier === tier).reduce((sum, entry) => sum + entry.count, 0)
   }));
+  const raceOrder: TroopRace[] = ['HUMAN', 'ROACH', 'UNDEAD', 'IMPOSTER', 'BANDIT', 'AUTOMATON', 'VOID', 'MADNESS', 'UNKNOWN'];
 
   return (
     <div
@@ -106,13 +115,16 @@ export const WorldTroopStatsModal = ({
         <div className="px-4 pt-4 pb-2 border-b border-stone-800">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <select
-              value={worldTroopFactionFilter}
-              onChange={(e) => setWorldTroopFactionFilter(e.target.value as 'ALL' | 'IMPOSTER' | 'NON_IMPOSTER')}
+              value={worldTroopRaceFilter}
+              onChange={(e) => setWorldTroopRaceFilter(e.target.value as TroopRace | 'ALL')}
               className="bg-stone-950 border border-stone-700 rounded px-3 py-2 text-stone-200"
             >
-              <option value="ALL">全部阵营</option>
-              <option value="IMPOSTER">伪人</option>
-              <option value="NON_IMPOSTER">非伪人</option>
+              <option value="ALL">全部种族</option>
+              {raceOrder.map(race => (
+                <option key={race} value={race}>
+                  {TROOP_RACE_LABELS[race]}
+                </option>
+              ))}
             </select>
             <select
               value={worldTroopTierFilter}
@@ -144,11 +156,11 @@ export const WorldTroopStatsModal = ({
             <Button
               variant="secondary"
               onClick={() => {
-                setWorldTroopFactionFilter('ALL');
+                setWorldTroopRaceFilter('ALL');
                 setWorldTroopTierFilter('ALL');
                 setWorldTroopIdFilter('ALL');
               }}
-              disabled={worldTroopFactionFilter === 'ALL' && worldTroopTierFilter === 'ALL' && worldTroopIdFilter === 'ALL'}
+              disabled={worldTroopRaceFilter === 'ALL' && worldTroopTierFilter === 'ALL' && worldTroopIdFilter === 'ALL'}
             >
               清空筛选
             </Button>
@@ -166,12 +178,12 @@ export const WorldTroopStatsModal = ({
               <div className="text-2xl font-mono text-stone-100">{filtered.length}</div>
             </div>
             <div className="bg-stone-950/40 border border-stone-800 rounded p-3">
-              <div className="text-xs text-stone-500">伪人</div>
-              <div className="text-2xl font-mono text-fuchsia-300">{totals.imposterCount}</div>
+              <div className="text-xs text-stone-500">种族数</div>
+              <div className="text-2xl font-mono text-fuchsia-300">{raceTypes}</div>
             </div>
             <div className="bg-stone-950/40 border border-stone-800 rounded p-3">
-              <div className="text-xs text-stone-500">非伪人</div>
-              <div className="text-2xl font-mono text-amber-300">{nonImposterCount}</div>
+              <div className="text-xs text-stone-500">未知</div>
+              <div className="text-2xl font-mono text-amber-300">{unknownCount}</div>
             </div>
           </div>
 
@@ -192,11 +204,9 @@ export const WorldTroopStatsModal = ({
                     <span className="text-[10px] px-2 py-0.5 rounded border border-stone-700 text-stone-400 bg-stone-900/30">
                       T{entry.tier}
                     </span>
-                    {entry.isImposter && (
-                      <span className="text-[10px] px-2 py-0.5 rounded border border-fuchsia-800 text-fuchsia-300 bg-fuchsia-950/40">
-                        伪人
-                      </span>
-                    )}
+                    <span className="text-[10px] px-2 py-0.5 rounded border border-slate-800 text-slate-300 bg-slate-950/40">
+                      {TROOP_RACE_LABELS[entry.race]}
+                    </span>
                   </div>
                   {entry.description && (
                     <div className="text-xs text-stone-500 mt-1 leading-relaxed">{entry.description}</div>
