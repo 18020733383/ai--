@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>本地英雄管理器</title>
+    <style>
+      body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #0f1115; color: #e6e8ef; }
+      .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+      .card { background: #151820; border: 1px solid #2a2f3a; border-radius: 12px; padding: 16px; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+      .row + .row { margin-top: 16px; }
+      label { font-size: 12px; color: #9aa3b2; display: block; margin-bottom: 6px; }
+      select, input, button { width: 100%; padding: 10px; border-radius: 8px; border: 1px solid #2a2f3a; background: #0f1115; color: #e6e8ef; }
+      button { background: #2a3647; cursor: pointer; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 12px; }
+      .thumb { border: 1px solid #2a2f3a; border-radius: 10px; padding: 8px; background: #0f1115; text-align: center; }
+      .thumb img { width: 100%; height: 120px; object-fit: contain; background: #111; border-radius: 6px; }
+      .muted { color: #8a93a3; font-size: 12px; }
+      .title { font-size: 20px; font-weight: 600; margin-bottom: 12px; }
+      .status { font-size: 12px; color: #7dd3fc; min-height: 16px; }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <div class="title">本地英雄管理器</div>
+      <div class="card">
+        <div class="row">
+          <div>
+            <label>英雄</label>
+            <select id="heroSelect"></select>
+          </div>
+          <div>
+            <label>表情</label>
+            <select id="expressionSelect">
+              <option value="IDLE">IDLE</option>
+              <option value="HAPPY">HAPPY</option>
+              <option value="SAD">SAD</option>
+              <option value="ANGRY">ANGRY</option>
+              <option value="AFRAID">AFRAID</option>
+              <option value="SURPRISED">SURPRISED</option>
+              <option value="AWKWARD">AWKWARD</option>
+              <option value="SILENT">SILENT</option>
+              <option value="DEAD">DEAD</option>
+            </select>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>上传文件（png/jpg/jpeg）</label>
+            <input id="fileInput" type="file" accept=".png,.jpg,.jpeg" />
+          </div>
+          <div>
+            <label>操作</label>
+            <button id="uploadBtn" disabled>上传并覆盖该表情</button>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>已有文件</label>
+            <select id="existingFileSelect"></select>
+          </div>
+          <div>
+            <label>操作</label>
+            <button id="renameBtn" disabled>直接改名为该表情</button>
+          </div>
+        </div>
+        <div class="row">
+          <div class="status" id="statusText"></div>
+          <div class="muted" id="currentFile"></div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-top: 16px;">
+        <div class="title" style="font-size: 16px;">当前英雄文件</div>
+        <div class="grid" id="fileGrid"></div>
+      </div>
+    </div>
+
+    <script>
+      const heroSelect = document.getElementById('heroSelect');
+      const expressionSelect = document.getElementById('expressionSelect');
+      const fileInput = document.getElementById('fileInput');
+      const uploadBtn = document.getElementById('uploadBtn');
+      const existingFileSelect = document.getElementById('existingFileSelect');
+      const renameBtn = document.getElementById('renameBtn');
+      const statusText = document.getElementById('statusText');
+      const currentFile = document.getElementById('currentFile');
+      const fileGrid = document.getElementById('fileGrid');
+
+      const setStatus = (text) => { statusText.textContent = text || ''; };
+
+      const fetchHeroes = async () => {
+        const res = await fetch('/api/heroes');
+        const data = await res.json();
+        heroSelect.innerHTML = data.heroes.map(h => `<option value="${h}">${h}</option>`).join('');
+      };
+
+      const fetchHeroFiles = async () => {
+        const heroId = heroSelect.value;
+        if (!heroId) return;
+        const res = await fetch(`/api/hero/${encodeURIComponent(heroId)}`);
+        const data = await res.json();
+        const files = data.files || [];
+        renderFiles(heroId, files);
+        renderCurrentExpression(files);
+        renderFileOptions(files);
+      };
+
+      const renderFiles = (heroId, files) => {
+        if (!files.length) {
+          fileGrid.innerHTML = '<div class="muted">没有文件</div>';
+          return;
+        }
+        fileGrid.innerHTML = files.map(file => `
+          <div class="thumb">
+            <img src="/files/${encodeURIComponent(heroId)}/${encodeURIComponent(file)}" alt="${file}" />
+            <div class="muted">${file}</div>
+          </div>
+        `).join('');
+      };
+
+      const renderCurrentExpression = (files) => {
+        const expr = expressionSelect.value;
+        const match = files.find(f => f.startsWith(expr + '.'));
+        currentFile.textContent = match ? `当前文件：${match}` : '当前文件：无';
+      };
+
+      const renderFileOptions = (files) => {
+        if (!files.length) {
+          existingFileSelect.innerHTML = '';
+          renameBtn.disabled = true;
+          return;
+        }
+        existingFileSelect.innerHTML = files.map(f => `<option value="${f}">${f}</option>`).join('');
+        renameBtn.disabled = !existingFileSelect.value;
+      };
+
+      const uploadFile = async () => {
+        const heroId = heroSelect.value;
+        const expression = expressionSelect.value;
+        const file = fileInput.files[0];
+        if (!heroId || !expression || !file) return;
+        setStatus('上传中...');
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const res = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ heroId, expression, dataUrl })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setStatus(data.error || '上传失败');
+          return;
+        }
+        setStatus('上传成功');
+        fileInput.value = '';
+        uploadBtn.disabled = true;
+        await fetchHeroFiles();
+      };
+
+      const renameFile = async () => {
+        const heroId = heroSelect.value;
+        const expression = expressionSelect.value;
+        const fileName = existingFileSelect.value;
+        if (!heroId || !expression || !fileName) return;
+        setStatus('改名中...');
+        const res = await fetch('/api/rename', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ heroId, expression, fileName })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setStatus(data.error || '改名失败');
+          return;
+        }
+        setStatus('改名成功');
+        await fetchHeroFiles();
+      };
+
+      fileInput.addEventListener('change', () => {
+        uploadBtn.disabled = !fileInput.files.length;
+      });
+      existingFileSelect.addEventListener('change', () => {
+        renameBtn.disabled = !existingFileSelect.value;
+      });
+      heroSelect.addEventListener('change', fetchHeroFiles);
+      expressionSelect.addEventListener('change', fetchHeroFiles);
+      uploadBtn.addEventListener('click', uploadFile);
+      renameBtn.addEventListener('click', renameFile);
+
+      fetchHeroes().then(fetchHeroFiles);
+    </script>
+  </body>
+</html>
