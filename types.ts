@@ -12,6 +12,7 @@ export type AIProvider = 'CUSTOM' | 'GPT' | 'GEMINI' | 'DOUBAO';
 export type MineralId = 'NULL_CRYSTAL' | 'STACK_OVERFLOW' | 'DEADLOCK_SHARD';
 export type MineralPurity = 1 | 2 | 3 | 4 | 5;
 export type MineralInventory = Record<MineralId, Record<MineralPurity, number>>;
+export type AnomalyInventory = Record<string, number>;
 
 export type EnchantmentCategory = '空间逻辑类' | '运算过载类' | '逻辑锁死类' | '系统底层类';
 export type Enchantment = {
@@ -20,6 +21,15 @@ export type Enchantment = {
   category: EnchantmentCategory;
   description: string;
   powerBonus: number;
+};
+
+export type Anomaly = {
+  id: string;
+  name: string;
+  crystal: MineralId;
+  troopId: string;
+  tier: TroopTier;
+  description: string;
 };
 
 export type TroopAttributes = {
@@ -194,6 +204,7 @@ export interface PlayerState {
   status: 'ACTIVE' | 'INJURED'; // 受伤状态无法战斗，随时间恢复
   position: { x: number; y: number }; // Map coordinates (Now 0-200)
   minerals: MineralInventory;
+  anomalies: AnomalyInventory;
   relationMatrix: RelationMatrix;
   relationEvents: RelationEvent[];
 }

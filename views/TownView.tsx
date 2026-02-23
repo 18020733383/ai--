@@ -3,8 +3,8 @@ import { AlertTriangle, Beer, Coins, Ghost, Hammer, History, Home, MessageCircle
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
 import { chatWithAltar, chatWithLord } from '../services/geminiService';
-import { BUG_SUMMON_RECIPES, getTroopRace, TROOP_RACE_LABELS } from '../constants';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, BugSummonRecipe, BuildingType, EnemyForce, Enchantment, Hero, Location, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, StayParty, Troop, TroopTier } from '../types';
+import { ANOMALY_CATALOG, getTroopRace, TROOP_RACE_LABELS } from '../constants';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, EnemyForce, Enchantment, Hero, Location, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, StayParty, Troop, TroopTier } from '../types';
 
 type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY';
 
@@ -336,6 +336,18 @@ export const TownView = ({
   };
   const workIncomePerDay = 20;
   const mineralInventory = player.minerals ?? initialMinerals;
+  const anomalyInventory = player.anomalies ?? {};
+  const anomalyPools = (Object.keys(mineralMeta) as MineralId[]).reduce((acc, mineralId) => {
+    acc[mineralId] = ANOMALY_CATALOG.filter(anomaly => anomaly.crystal === mineralId);
+    return acc;
+  }, {} as Record<MineralId, Anomaly[]>);
+  const ownedAnomalies = Object.entries(anomalyInventory)
+    .map(([id, count]) => ({
+      anomaly: ANOMALY_CATALOG.find(item => item.id === id),
+      count
+    }))
+    .filter(item => item.anomaly && item.count > 0)
+    .sort((a, b) => (a.anomaly?.tier ?? 0) - (b.anomaly?.tier ?? 0));
   const pushLordLine = (role: 'PLAYER' | 'LORD', text: string) => {
     setLordDialogue(prev => [...prev, { role, text }].slice(-16));
   };
@@ -876,30 +888,87 @@ export const TownView = ({
     onBackToMap();
   };
 
-  const handleBugSummon = (recipe: BugSummonRecipe) => {
+  const pickWeightedAnomaly = (pool: Anomaly[]) => {
+    if (pool.length === 0) return null;
+    const weights = pool.map(item => Math.max(1, 6 - item.tier));
+    const total = weights.reduce((sum, value) => sum + value, 0);
+    let roll = Math.random() * total;
+    for (let i = 0; i < pool.length; i += 1) {
+      roll -= weights[i];
+      if (roll <= 0) return pool[i];
+    }
+    return pool[pool.length - 1];
+  };
+
+  const handleDrawAnomaly = (mineralId: MineralId) => {
     if (!isMagicianLibrary) return;
+    const available = getMineralAvailable(mineralInventory, mineralId, 1);
+    if (available < 1) {
+      addLog("水晶不足，无法抽取异常。");
+      return;
+    }
+    const pool = anomalyPools[mineralId] ?? [];
+    if (pool.length === 0) {
+      addLog("该水晶尚未形成可抽取的异常。");
+      return;
+    }
+    const updatedMinerals = spendMineral(mineralInventory, mineralId, 1, 1);
+    if (!updatedMinerals) {
+      addLog("水晶不足，无法抽取异常。");
+      return;
+    }
+    if (Math.random() < 0.2) {
+      setPlayer(prev => ({ ...prev, minerals: updatedMinerals }));
+      addLog("水晶失稳崩解，异常未能成型。");
+      return;
+    }
+    const picked = pickWeightedAnomaly(pool);
+    if (!picked) {
+      addLog("抽取失败，未能定位异常。");
+      return;
+    }
+    setPlayer(prev => {
+      const nextAnomalies = { ...(prev.anomalies ?? {}) };
+      nextAnomalies[picked.id] = (nextAnomalies[picked.id] ?? 0) + 1;
+      return { ...prev, minerals: updatedMinerals, anomalies: nextAnomalies };
+    });
+    addLog(`捕获异常「${picked.name}」。`);
+  };
+
+  const handleAnomalySummon = (anomaly: Anomaly) => {
+    if (!isMagicianLibrary) return;
+    const count = anomalyInventory[anomaly.id] ?? 0;
+    if (count <= 0) {
+      addLog("异常样本不足，无法召唤。");
+      return;
+    }
     if (currentTroopCount >= maxTroops) {
       addLog("队伍人数已达上限，无法召唤。");
       return;
     }
-    if (Math.random() < 0.2) {
-      addLog(`法阵失稳，${recipe.name} 未能回应。`);
-      return;
-    }
-    const template = getTroopTemplate(recipe.troopId);
+    const template = getTroopTemplate(anomaly.troopId);
     if (!template) {
       addLog("召唤失败，未找到对应兵种。");
       return;
     }
     const updatedTroops = [...player.troops];
-    const idx = updatedTroops.findIndex(t => t.id === recipe.troopId);
+    const idx = updatedTroops.findIndex(t => t.id === anomaly.troopId);
     if (idx >= 0) {
       updatedTroops[idx] = { ...updatedTroops[idx], count: updatedTroops[idx].count + 1 };
     } else {
       updatedTroops.push({ ...template, count: 1, xp: 0 });
     }
-    setPlayer(prev => ({ ...prev, troops: updatedTroops }));
-    addLog(`法阵闪光，召唤出 1 名 ${template.name}。`);
+    setPlayer(prev => {
+      const nextAnomalies = { ...(prev.anomalies ?? {}) };
+      const nextCount = (nextAnomalies[anomaly.id] ?? 0) - 1;
+      if (nextCount > 0) {
+        nextAnomalies[anomaly.id] = nextCount;
+      } else {
+        delete nextAnomalies[anomaly.id];
+      }
+      return { ...prev, troops: updatedTroops, anomalies: nextAnomalies };
+    });
+    addLog(`异常共鸣，召唤出 1 名 ${template.name}。`);
   };
 
   const handleStartAltarRecruit = () => {
@@ -1703,43 +1772,72 @@ export const TownView = ({
           <div className="space-y-6 animate-fade-in">
             <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
               <p className="text-stone-400 text-sm">
-                将经典 bug 组合投入魔法阵，有 20% 概率召唤失败。成功后会获得 1 名对应兵种。
+                消耗异常水晶抽取异常样本，抽取有 20% 概率失稳。收集异常后即可进行召唤。
               </p>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {BUG_SUMMON_RECIPES.map(recipe => {
-                const troop = getTroopTemplate(recipe.troopId);
-                const canSummon = currentTroopCount < maxTroops;
-                const label = canSummon ? '投入法阵' : '队伍已满';
-                return (
-                  <div key={recipe.id} className="bg-stone-900/60 border border-stone-800 rounded p-4 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="text-stone-200 font-bold">{recipe.name}</div>
-                      <span className="text-xs text-sky-300">T{recipe.tier}</span>
-                    </div>
-                    <div className="text-xs text-stone-500">{recipe.description}</div>
-                    <div className="flex flex-wrap gap-2">
-                      {recipe.components.map(component => (
-                        <span
-                          key={`${recipe.id}-${component}`}
-                          className="text-[10px] px-2 py-1 rounded-full bg-sky-950/40 border border-sky-900/50 text-sky-200"
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-stone-900/60 border border-stone-800 rounded p-4 space-y-3">
+                <div className="text-stone-200 font-bold">水晶抽异常</div>
+                <div className="space-y-3">
+                  {(Object.keys(mineralMeta) as MineralId[]).map(id => {
+                    const pool = anomalyPools[id] ?? [];
+                    const available = getMineralAvailable(mineralInventory, id, 1);
+                    return (
+                      <div key={id} className="bg-stone-900 border border-stone-800 rounded p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <div className="text-stone-200 font-semibold">{mineralMeta[id].name}</div>
+                          <span className="text-xs text-stone-400">库存 {available}</span>
+                        </div>
+                        <div className="text-xs text-stone-500">{mineralMeta[id].effect}</div>
+                        <div className="text-xs text-stone-500">异常池：{pool.length} 种</div>
+                        <Button
+                          onClick={() => handleDrawAnomaly(id)}
+                          variant="secondary"
+                          disabled={available < 1 || pool.length === 0}
+                          className="w-full"
                         >
-                          {component}
-                        </span>
-                      ))}
-                    </div>
-                    <div className="text-xs text-stone-400">召唤兵种：{troop?.name ?? recipe.troopId}</div>
-                    <Button
-                      onClick={() => handleBugSummon(recipe)}
-                      variant="secondary"
-                      disabled={!canSummon}
-                      className="w-full"
-                    >
-                      {label}
-                    </Button>
+                          消耗 1 抽取
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-stone-900/60 border border-stone-800 rounded p-4 space-y-3">
+                <div className="text-stone-200 font-bold">异常召唤</div>
+                {ownedAnomalies.length === 0 ? (
+                  <div className="text-stone-500 text-sm">尚未收集到异常样本。</div>
+                ) : (
+                  <div className="space-y-3">
+                    {ownedAnomalies.map(({ anomaly, count }) => {
+                      if (!anomaly) return null;
+                      const troop = getTroopTemplate(anomaly.troopId);
+                      const canSummon = currentTroopCount < maxTroops;
+                      const label = canSummon ? '召唤' : '队伍已满';
+                      return (
+                        <div key={anomaly.id} className="bg-stone-900 border border-stone-800 rounded p-3 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <div className="text-stone-200 font-semibold">{anomaly.name}</div>
+                            <span className="text-xs text-sky-300">T{anomaly.tier}</span>
+                          </div>
+                          <div className="text-xs text-stone-500">{anomaly.description}</div>
+                          <div className="text-xs text-stone-400">异常样本：{count}</div>
+                          <div className="text-xs text-stone-400">召唤兵种：{troop?.name ?? anomaly.troopId}</div>
+                          <Button
+                            onClick={() => handleAnomalySummon(anomaly)}
+                            variant="secondary"
+                            disabled={!canSummon}
+                            className="w-full"
+                          >
+                            {label}
+                          </Button>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                )}
+              </div>
             </div>
           </div>
         )}

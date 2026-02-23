@@ -1,5 +1,5 @@
 
-import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, ParrotVariant, Hero, RaceId, TroopRace, BugSummonRecipe } from './types';
+import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, ParrotVariant, Hero, RaceId, TroopRace, BugSummonRecipe, MineralId, Anomaly } from './types';
 
 export const MAP_WIDTH = 400;
 export const MAP_HEIGHT = 400;
@@ -2859,6 +2859,22 @@ export const BUG_SUMMON_RECIPES: BugSummonRecipe[] = [
   { id: 'bug_system_reset_leviathan', name: '系统重置利维坦', components: ['栈溢出', '系统重置'], troopId: 'bug_system_reset_leviathan', tier: TroopTier.TIER_5, description: '重置战场节奏。' }
 ];
 
+const getAnomalyCrystal = (recipe: BugSummonRecipe): MineralId => {
+  const text = `${recipe.name}${recipe.description}${recipe.components.join('')}`;
+  if (/死锁|竞态|活锁|线程|并发/.test(text)) return 'DEADLOCK_SHARD';
+  if (/栈|递归|循环|溢出|偏一|索引|数组|缓冲|浮点|NaN|上溢|下溢/.test(text)) return 'STACK_OVERFLOW';
+  return 'NULL_CRYSTAL';
+};
+
+export const ANOMALY_CATALOG: Anomaly[] = BUG_SUMMON_RECIPES.map(recipe => ({
+  id: recipe.id,
+  name: recipe.name,
+  crystal: getAnomalyCrystal(recipe),
+  troopId: recipe.troopId,
+  tier: recipe.tier,
+  description: recipe.description
+}));
+
 export const PARROT_VARIANTS: ParrotVariant[] = [
   { name: '玄风鹦鹉', type: 'XUANFENG', color: 'text-slate-300', price: 40, personality: 'MANIC', description: '最便宜的吵闹鸟，基本只会乱叫。' },
   { name: '虎皮鹦鹉', type: 'BUDGERIGAR', color: 'text-lime-400', price: 60, personality: 'MANIC', description: '活泼又聒噪，学不会战术，只会学你骂人。' },
@@ -3330,6 +3346,7 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
     STACK_OVERFLOW: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
     DEADLOCK_SHARD: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
   },
+  anomalies: {},
   relationMatrix: {
     factions: {
       VERDANT_COVENANT: 0,

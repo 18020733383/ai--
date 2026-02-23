@@ -2943,7 +2943,7 @@ export default function App() {
              };
          }
          
-         if (attackerCount <= 0) {
+        if (attackerCount <= 0) {
              // Attackers wiped - Siege Broken
              logsToAdd.push(`【围攻解除】${loc.name} 的守军击溃了伪人进攻部队！`);
             addLocalLog(loc.id, `伪人围攻被击溃，守军守住城池。`);
@@ -2952,7 +2952,8 @@ export default function App() {
                  garrison: garrison,
                  stayParties: nextStayParties,
                  stationedArmies: nextStationedArmies,
-                 activeSiege: undefined
+                activeSiege: undefined,
+                isUnderSiege: false
              };
          }
          
@@ -2995,11 +2996,10 @@ export default function App() {
              // Silent init or log if needed
         }
 
-        if (!suppressEncounter) {
-          // 2. Spawn Attack Waves into Stationed Armies
-          const spawnCooldown = 6;
-          const lastInvasionDay = portal.lastInvasionDay ?? 0;
-          const stationedArmies = portal.stationedArmies ?? [];
+        // 2. Spawn Attack Waves into Stationed Armies
+        const spawnCooldown = 6;
+        const lastInvasionDay = portal.lastInvasionDay ?? 0;
+        const stationedArmies = portal.stationedArmies ?? [];
 
           if (nextDay - lastInvasionDay >= spawnCooldown) {
             const newForces = buildImposterTroops();
@@ -3018,10 +3018,10 @@ export default function App() {
             logsToAdd.push(`【伪人传送门】裂隙喷涌出新的军团（${getGarrisonCount(newForces)}人），正在集结。`);
           }
 
-          // 3. March Logic (Use first stationed army)
-          const updatedStationed = portal.stationedArmies ?? [];
-          const hasRaidingArmy = updatedStationed.length > 0;
-          const isRaiding = !!portal.imposterRaidTargetId;
+        // 3. March Logic (Use first stationed army)
+        const updatedStationed = portal.stationedArmies ?? [];
+        const hasRaidingArmy = updatedStationed.length > 0;
+        const isRaiding = !!portal.imposterRaidTargetId;
 
           if (hasRaidingArmy && !isRaiding) {
              const target = pickImposterTarget(portal, newLocations);
@@ -3036,40 +3036,39 @@ export default function App() {
              }
           }
 
-          // 4. Arrival Logic
-          if (portal.imposterRaidTargetId && portal.imposterRaidEtaDay && nextDay >= portal.imposterRaidEtaDay) {
-             const targetIndex = newLocations.findIndex(loc => loc.id === portal.imposterRaidTargetId);
-             if (targetIndex >= 0) {
-               const target = { ...newLocations[targetIndex] };
-               const armies = portal.stationedArmies ?? [];
-               if (armies.length > 0) {
-                   const raidingArmy = armies[0];
-                   const raidPower = calculatePower(raidingArmy.troops);
-                   
-                   target.activeSiege = {
-                      attackerName: raidingArmy.name,
-                      troops: raidingArmy.troops.map(t => ({...t})),
-                      startDay: nextDay,
-                      totalPower: raidPower,
-                      siegeEngines: ['SIMPLE_LADDER']
-                   };
-                   
-                   portal.stationedArmies = armies.slice(1);
-                   
-                   logsToAdd.push(`【伪人入侵】${raidingArmy.name} 抵达 ${target.name}，开始围攻！`);
-                   addLocalLog(target.id, `遭到 ${raidingArmy.name} 围攻。`);
-               }
-               
-               target.imposterAlertUntilDay = undefined;
-               newLocations[targetIndex] = target;
-               
-               portal.imposterRaidTargetId = undefined;
-               portal.imposterRaidEtaDay = undefined;
-             } else {
-               portal.imposterRaidTargetId = undefined;
-               portal.imposterRaidEtaDay = undefined;
+        // 4. Arrival Logic
+        if (portal.imposterRaidTargetId && portal.imposterRaidEtaDay && nextDay >= portal.imposterRaidEtaDay) {
+           const targetIndex = newLocations.findIndex(loc => loc.id === portal.imposterRaidTargetId);
+           if (targetIndex >= 0) {
+             const target = { ...newLocations[targetIndex] };
+             const armies = portal.stationedArmies ?? [];
+             if (armies.length > 0) {
+                 const raidingArmy = armies[0];
+                 const raidPower = calculatePower(raidingArmy.troops);
+                 
+                 target.activeSiege = {
+                    attackerName: raidingArmy.name,
+                    troops: raidingArmy.troops.map(t => ({...t})),
+                    startDay: nextDay,
+                    totalPower: raidPower,
+                    siegeEngines: ['SIMPLE_LADDER']
+                 };
+                 
+                 portal.stationedArmies = armies.slice(1);
+                 
+                 logsToAdd.push(`【伪人入侵】${raidingArmy.name} 抵达 ${target.name}，开始围攻！`);
+                 addLocalLog(target.id, `遭到 ${raidingArmy.name} 围攻。`);
              }
-          }
+             
+             target.imposterAlertUntilDay = undefined;
+             newLocations[targetIndex] = target;
+             
+             portal.imposterRaidTargetId = undefined;
+             portal.imposterRaidEtaDay = undefined;
+           } else {
+             portal.imposterRaidTargetId = undefined;
+             portal.imposterRaidEtaDay = undefined;
+           }
         }
 
         newLocations[portalIndex] = portal;
@@ -3978,8 +3977,8 @@ export default function App() {
        // Only set view to TOWN if not working.
        // The work loop will handle the view.
       if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive) {
-         setView('TOWN');
-         setTownTab(location.type === 'ROACH_NEST' ? 'ROACH_LURE' : location.type === 'MAGICIAN_LIBRARY' ? 'MAGICIAN_LIBRARY' : 'RECRUIT');
+        setView('TOWN');
+        setTownTab('RECRUIT');
        }
      }
     addLocationLog(location.id, `有部队抵达：${playerRef.current.name}。`);
@@ -5295,7 +5294,7 @@ export default function App() {
            if (target.lord) {
              updateLordRelation(target.id, relationDelta, `协助 ${target.name} 守城`);
            }
-           const updated = target.activeSiege ? { ...target, activeSiege: undefined } : target;
+           const updated = target.activeSiege ? { ...target, activeSiege: undefined, isUnderSiege: false } : target;
            if (updated !== target) updateLocationState(updated);
            if (target.activeSiege) {
              addLog(`你协助 ${target.name} 的守军击溃了伪人！围攻解除了。`);
