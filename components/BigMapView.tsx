@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Brain, Coffee, Coins, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, ShieldAlert, ShoppingBag, Skull, Snowflake, Sun, Swords, Tent, Trees, Utensils, Zap } from 'lucide-react';
+import { AlertTriangle, Brain, Coffee, Coins, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Utensils, Zap } from 'lucide-react';
 import { Location, MineralId, MineralPurity, PlayerState } from '../types';
 import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../constants';
 
@@ -92,6 +92,45 @@ export const BigMapView = ({
     const dashGap = Math.max(6, 8 * zoom);
     return { startX, startY, endX, endY, controlX, controlY, headSize, lineWidth, dashLength, dashGap };
   })() : null;
+  const factionRaidPaths = locations.flatMap(loc => {
+    if (!loc.factionRaidTargetId || !loc.factionRaidEtaDay || loc.factionRaidEtaDay < player.day) return [];
+    const target = locations.find(item => item.id === loc.factionRaidTargetId);
+    if (!target) return [];
+    const startX = loc.coordinates.x * unitSize;
+    const startY = loc.coordinates.y * unitSize;
+    const endX = target.coordinates.x * unitSize;
+    const endY = target.coordinates.y * unitSize;
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const length = Math.max(40, Math.hypot(dx, dy));
+    const nx = length > 0 ? -dy / length : 0;
+    const ny = length > 0 ? dx / length : 0;
+    const curveOffset = Math.max(24 * zoom, Math.min(80 * zoom, length * 0.2));
+    const controlX = (startX + endX) / 2 + nx * curveOffset;
+    const controlY = (startY + endY) / 2 + ny * curveOffset;
+    const headSize = Math.max(8, 12 * zoom);
+    const lineWidth = Math.max(2.5, 3.5 * zoom);
+    const dashLength = Math.max(6, 10 * zoom);
+    const dashGap = Math.max(5, 7 * zoom);
+    const color = loc.factionRaidFactionId ? (factionColors[loc.factionRaidFactionId] ?? '#60a5fa') : '#60a5fa';
+    return [{
+      id: `${loc.id}-${target.id}`,
+      sourceId: loc.id,
+      targetId: target.id,
+      startX,
+      startY,
+      endX,
+      endY,
+      controlX,
+      controlY,
+      headSize,
+      lineWidth,
+      dashLength,
+      dashGap,
+      color
+    }];
+  });
+  const factionRaidTargets = new Set(factionRaidPaths.map(path => path.targetId));
 
   return (
     <div
@@ -106,6 +145,10 @@ export const BigMapView = ({
         @keyframes imposter-raid-dash {
           0% { stroke-dashoffset: 0; }
           100% { stroke-dashoffset: -32px; }
+        }
+        @keyframes faction-raid-dash {
+          0% { stroke-dashoffset: 0; }
+          100% { stroke-dashoffset: -26px; }
         }
         @keyframes imposter-raid-pulse {
           0%, 100% { transform: translateY(-50%) scale(0.95); opacity: 0.8; }
@@ -301,6 +344,47 @@ export const BigMapView = ({
             />
           </svg>
         )}
+        {factionRaidPaths.length > 0 && (
+          <svg
+            className="absolute left-0 top-0 pointer-events-none z-20"
+            width={MAP_WIDTH * unitSize}
+            height={MAP_HEIGHT * unitSize}
+            viewBox={`0 0 ${MAP_WIDTH * unitSize} ${MAP_HEIGHT * unitSize}`}
+          >
+            <defs>
+              {factionRaidPaths.map(path => (
+                <marker
+                  key={path.id}
+                  id={`faction-raid-arrowhead-${path.id}`}
+                  markerWidth={path.headSize}
+                  markerHeight={path.headSize}
+                  refX={path.headSize * 0.4}
+                  refY={path.headSize * 0.4}
+                  orient="auto"
+                  markerUnits="userSpaceOnUse"
+                >
+                  <path d={`M0,0 L${path.headSize},${path.headSize * 0.4} L0,${path.headSize * 0.8}`} fill={path.color} />
+                </marker>
+              ))}
+            </defs>
+            {factionRaidPaths.map(path => (
+              <path
+                key={path.id}
+                d={`M ${path.startX} ${path.startY} Q ${path.controlX} ${path.controlY} ${path.endX} ${path.endY}`}
+                fill="none"
+                stroke={path.color}
+                strokeWidth={path.lineWidth}
+                strokeLinecap="round"
+                strokeDasharray={`${path.dashLength} ${path.dashGap}`}
+                style={{
+                  animation: 'faction-raid-dash 1.2s linear infinite',
+                  filter: `drop-shadow(0 0 6px ${path.color}66)`
+                }}
+                markerEnd={`url(#faction-raid-arrowhead-${path.id})`}
+              />
+            ))}
+          </svg>
+        )}
         {locations.map(loc => (
           <div
             key={loc.id}
@@ -333,6 +417,7 @@ export const BigMapView = ({
                   loc.type === 'VOID_BUFFER_MINE' || loc.type === 'MEMORY_OVERFLOW_MINE' || loc.type === 'LOGIC_PARADOX_MINE' ? <Mountain className="text-emerald-400" size={20} /> :
                   loc.type === 'BLACKSMITH' ? <Hammer className="text-orange-400" size={20} /> :
                   loc.type === 'ALTAR' ? <span className="text-[20px] leading-none">🛐</span> :
+                  loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={20} /> :
                   <Tent className="text-green-500" size={16} />}
                 {loc.factionId && loc.owner !== 'PLAYER' && (
                   <span
@@ -342,6 +427,11 @@ export const BigMapView = ({
                 )}
                 {(loc.imposterAlertUntilDay ?? 0) >= player.day && (
                   <span className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5 shadow">
+                    <AlertTriangle size={10} />
+                  </span>
+                )}
+                {factionRaidTargets.has(loc.id) && !loc.activeSiege && (
+                  <span className="absolute -top-1 -left-1 bg-sky-600 text-white rounded-full p-0.5 shadow">
                     <AlertTriangle size={10} />
                   </span>
                 )}

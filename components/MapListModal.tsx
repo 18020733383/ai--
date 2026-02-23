@@ -45,7 +45,8 @@ export const MapListModal = ({
     MEMORY_OVERFLOW_MINE: '内存溢出大峡谷',
     LOGIC_PARADOX_MINE: '逻辑悖论深渊',
     BLACKSMITH: '铁匠铺',
-    ALTAR: '祭坛'
+    ALTAR: '祭坛',
+    MAGICIAN_LIBRARY: '魔法师图书馆'
   };
 
   const typeBadge: Record<Location['type'], string> = {
@@ -69,7 +70,8 @@ export const MapListModal = ({
     MEMORY_OVERFLOW_MINE: 'bg-emerald-900/30 border-emerald-900/60 text-emerald-200',
     LOGIC_PARADOX_MINE: 'bg-violet-900/25 border-violet-900/50 text-violet-200',
     BLACKSMITH: 'bg-orange-900/25 border-orange-900/50 text-orange-200',
-    ALTAR: 'bg-indigo-950/30 border-indigo-900/50 text-indigo-200'
+    ALTAR: 'bg-indigo-950/30 border-indigo-900/50 text-indigo-200',
+    MAGICIAN_LIBRARY: 'bg-sky-950/30 border-sky-900/50 text-sky-200'
   };
 
   const mineTypes: Location['type'][] = ['VOID_BUFFER_MINE', 'MEMORY_OVERFLOW_MINE', 'LOGIC_PARADOX_MINE'];

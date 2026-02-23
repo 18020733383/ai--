@@ -3,10 +3,10 @@ import { AlertTriangle, Beer, Coins, Ghost, Hammer, History, Home, MessageCircle
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
 import { chatWithAltar, chatWithLord } from '../services/geminiService';
-import { getTroopRace, TROOP_RACE_LABELS } from '../constants';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, BuildingType, EnemyForce, Enchantment, Hero, Location, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, StayParty, Troop, TroopTier } from '../types';
+import { BUG_SUMMON_RECIPES, getTroopRace, TROOP_RACE_LABELS } from '../constants';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, BugSummonRecipe, BuildingType, EnemyForce, Enchantment, Hero, Location, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, StayParty, Troop, TroopTier } from '../types';
 
-type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT';
+type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY';
 
 type WorkState = {
   isActive: boolean;
@@ -240,12 +240,13 @@ export const TownView = ({
   const mineConfig = mineConfigs[currentLocation.type];
   const isMine = !!mineConfig;
   const isBlacksmith = currentLocation.type === 'BLACKSMITH';
-  const isSpecialLocation = isMine || isBlacksmith || isAltar;
+  const isMagicianLibrary = currentLocation.type === 'MAGICIAN_LIBRARY';
+  const isSpecialLocation = isMine || isBlacksmith || isAltar || isMagicianLibrary;
   const isOwnedByPlayer = currentLocation.owner === 'PLAYER';
   const isRestricted = (currentLocation.sackedUntilDay ?? 0) >= player.day || currentLocation.owner === 'ENEMY' || !!currentLocation.isUnderSiege;
-  const restrictedTabs = ['RECRUIT', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'OWNED', 'MINING', 'FORGE', 'ROACH_LURE', 'LORD'];
+  const restrictedTabs = ['RECRUIT', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'OWNED', 'MINING', 'FORGE', 'ROACH_LURE', 'LORD', 'MAGICIAN_LIBRARY'];
   const specialHiddenTabs = ['RECRUIT', 'GARRISON', 'LOCAL_GARRISON', 'DEFENSE', 'SIEGE', 'OWNED', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'LORD'];
-  const specialFallbackTab = isMine ? 'MINING' : isBlacksmith ? 'FORGE' : isAltar ? 'ALTAR' : 'LOCAL_GARRISON';
+  const specialFallbackTab = isMine ? 'MINING' : isBlacksmith ? 'FORGE' : isAltar ? 'ALTAR' : isMagicianLibrary ? 'MAGICIAN_LIBRARY' : 'LOCAL_GARRISON';
   const activeTownTab = (isOwnedByPlayer && townTab === 'LORD')
     ? 'LOCAL_GARRISON'
     : (isSpecialLocation && specialHiddenTabs.includes(townTab))
@@ -875,6 +876,32 @@ export const TownView = ({
     onBackToMap();
   };
 
+  const handleBugSummon = (recipe: BugSummonRecipe) => {
+    if (!isMagicianLibrary) return;
+    if (currentTroopCount >= maxTroops) {
+      addLog("队伍人数已达上限，无法召唤。");
+      return;
+    }
+    if (Math.random() < 0.2) {
+      addLog(`法阵失稳，${recipe.name} 未能回应。`);
+      return;
+    }
+    const template = getTroopTemplate(recipe.troopId);
+    if (!template) {
+      addLog("召唤失败，未找到对应兵种。");
+      return;
+    }
+    const updatedTroops = [...player.troops];
+    const idx = updatedTroops.findIndex(t => t.id === recipe.troopId);
+    if (idx >= 0) {
+      updatedTroops[idx] = { ...updatedTroops[idx], count: updatedTroops[idx].count + 1 };
+    } else {
+      updatedTroops.push({ ...template, count: 1, xp: 0 });
+    }
+    setPlayer(prev => ({ ...prev, troops: updatedTroops }));
+    addLog(`法阵闪光，召唤出 1 名 ${template.name}。`);
+  };
+
   const handleStartAltarRecruit = () => {
     if (!isAltar) return;
     if ((currentLocation.altar?.troopIds ?? []).length === 0) {
@@ -1304,6 +1331,14 @@ export const TownView = ({
             <Hammer size={16} className="inline mr-2" /> 铁匠铺
           </button>
         )}
+        {isMagicianLibrary && !isRestricted && (
+          <button
+            onClick={() => setTownTab('MAGICIAN_LIBRARY')}
+            className={`px-6 py-3 font-serif font-bold text-sm whitespace-nowrap ${activeTownTab === 'MAGICIAN_LIBRARY' ? 'bg-stone-800 text-sky-300 border-t-2 border-sky-500' : 'text-stone-500 hover:text-stone-300'}`}
+          >
+            <History size={16} className="inline mr-2" /> 魔法师图书馆
+          </button>
+        )}
         {isAltar && (
           <button
             onClick={() => setTownTab('ALTAR')}
@@ -1660,6 +1695,51 @@ export const TownView = ({
               >
                 <span>🪳</span> 开始吸引
               </Button>
+            </div>
+          </div>
+        )}
+
+        {isMagicianLibrary && activeTownTab === 'MAGICIAN_LIBRARY' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
+              <p className="text-stone-400 text-sm">
+                将经典 bug 组合投入魔法阵，有 20% 概率召唤失败。成功后会获得 1 名对应兵种。
+              </p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+              {BUG_SUMMON_RECIPES.map(recipe => {
+                const troop = getTroopTemplate(recipe.troopId);
+                const canSummon = currentTroopCount < maxTroops;
+                const label = canSummon ? '投入法阵' : '队伍已满';
+                return (
+                  <div key={recipe.id} className="bg-stone-900/60 border border-stone-800 rounded p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="text-stone-200 font-bold">{recipe.name}</div>
+                      <span className="text-xs text-sky-300">T{recipe.tier}</span>
+                    </div>
+                    <div className="text-xs text-stone-500">{recipe.description}</div>
+                    <div className="flex flex-wrap gap-2">
+                      {recipe.components.map(component => (
+                        <span
+                          key={`${recipe.id}-${component}`}
+                          className="text-[10px] px-2 py-1 rounded-full bg-sky-950/40 border border-sky-900/50 text-sky-200"
+                        >
+                          {component}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="text-xs text-stone-400">召唤兵种：{troop?.name ?? recipe.troopId}</div>
+                    <Button
+                      onClick={() => handleBugSummon(recipe)}
+                      variant="secondary"
+                      disabled={!canSummon}
+                      className="w-full"
+                    >
+                      {label}
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

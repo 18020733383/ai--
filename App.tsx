@@ -550,7 +550,7 @@ export default function App() {
   const [trainInputEnemy, setTrainInputEnemy] = useState({ id: 'peasant', count: 10 });
 
   // Town View State
-  const [townTab, setTownTab] = useState<'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT'>('RECRUIT');
+  const [townTab, setTownTab] = useState<'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY'>('RECRUIT');
   const [workDays, setWorkDays] = useState(1);
   const [miningDays, setMiningDays] = useState(2);
   const [roachLureDays, setRoachLureDays] = useState(2);
@@ -3075,6 +3075,56 @@ export default function App() {
         newLocations[portalIndex] = portal;
       }
 
+      const factionRaidSources = newLocations
+        .map((loc, index) => ({ loc, index }))
+        .filter(entry => (
+          entry.loc.factionRaidTargetId &&
+          entry.loc.factionRaidEtaDay &&
+          entry.loc.factionRaidEtaDay <= nextDay &&
+          (entry.loc.factionRaidTroops ?? []).length > 0
+        ));
+      factionRaidSources.forEach(({ loc, index }) => {
+        const targetIndex = newLocations.findIndex(targetLoc => targetLoc.id === loc.factionRaidTargetId);
+        const raidTroops = loc.factionRaidTroops ?? [];
+        const attackerFactionName = loc.factionRaidFactionId
+          ? FACTIONS.find(f => f.id === loc.factionRaidFactionId)?.name ?? loc.factionRaidAttackerName ?? '远征军'
+          : loc.factionRaidAttackerName ?? '远征军';
+        let shouldReturn = false;
+        if (targetIndex >= 0) {
+          const target = { ...newLocations[targetIndex] };
+          if (!target.activeSiege) {
+            const raidPower = calculatePower(raidTroops);
+            target.activeSiege = {
+              attackerName: loc.factionRaidAttackerName ?? attackerFactionName,
+              troops: raidTroops.map(t => ({ ...t })),
+              startDay: nextDay,
+              totalPower: raidPower,
+              siegeEngines: ['SIMPLE_LADDER']
+            };
+            target.isUnderSiege = true;
+            newLocations[targetIndex] = target;
+            logsToAdd.push(`【远征军】${attackerFactionName} 抵达 ${target.name}，开始围攻。`);
+            addLocalLog(target.id, `遭到 ${attackerFactionName} 围攻。`);
+          } else {
+            logsToAdd.push(`【远征军】${attackerFactionName} 抵达 ${target.name} 时战场已被占据，部队撤回。`);
+            shouldReturn = true;
+          }
+        } else {
+          logsToAdd.push(`【远征军】${attackerFactionName} 迷失方向，部队撤回。`);
+          shouldReturn = true;
+        }
+        const updatedSource = {
+          ...loc,
+          garrison: shouldReturn ? mergeTroops(loc.garrison ?? [], raidTroops) : loc.garrison,
+          factionRaidTargetId: undefined,
+          factionRaidEtaDay: undefined,
+          factionRaidTroops: undefined,
+          factionRaidAttackerName: undefined,
+          factionRaidFactionId: undefined
+        };
+        newLocations[index] = updatedSource;
+      });
+
       const hostileFactions = FACTIONS.filter(faction => getRelationValue(playerRef.current, 'FACTION', faction.id) <= -40);
       const playerTargets = newLocations.filter(loc => (
         loc.owner === 'PLAYER' &&
@@ -3091,32 +3141,29 @@ export default function App() {
         const source = [...factionLocations].sort((a, b) => getGarrisonCount(getLocationTroops(b)) - getGarrisonCount(getLocationTroops(a)))[0];
         if (!source) return;
         const target = playerTargets[Math.floor(Math.random() * playerTargets.length)];
+        if (source.factionRaidTargetId || source.factionRaidEtaDay || target.activeSiege || target.isUnderSiege) return;
         const sourceLordParty = source.lord ? (source.stayParties ?? []).find(p => p.lordId === source.lord?.id) ?? null : null;
         const useLordParty = !!sourceLordParty && sourceLordParty.troops.some(t => t.count > 0);
         const sourceTroops = useLordParty ? sourceLordParty?.troops ?? [] : getLocationTroops(source);
         const { attackers, remaining } = splitTroops(sourceTroops, 0.5);
         if (getGarrisonCount(attackers) < 50) return;
-        const raidPower = calculatePower(attackers);
-        const nextTarget = {
-          ...target,
-          activeSiege: {
-            attackerName: `${faction.name}远征军`,
-            troops: attackers,
-            startDay: nextDay,
-            totalPower: raidPower,
-            siegeEngines: ['SIMPLE_LADDER'] as SiegeEngineType[]
-          },
-          isUnderSiege: true
-        };
-        logsToAdd.push(`【报复】${faction.name} 向你的据点 ${target.name} 发动围攻。`);
-        addLocalLog(target.id, `遭到 ${faction.name} 围攻。`);
+        const marchDays = 2 + Math.floor(Math.random() * 3);
+        const etaDay = nextDay + marchDays;
+        logsToAdd.push(`【报复】${faction.name} 远征军从 ${source.name} 出发，目标 ${target.name}，预计 ${marchDays} 天后抵达。`);
+        addLocalLog(target.id, `侦查到 ${faction.name} 远征军正向此地逼近。`);
         newLocations = newLocations.map(loc => {
-          if (loc.id === target.id) return nextTarget;
           if (loc.id === source.id) {
             const nextLoc = useLordParty && sourceLordParty
               ? updateStayPartyTroops(loc, sourceLordParty.id, remaining)
               : { ...loc, garrison: remaining };
-            return updateLordAction(nextLoc, `奉命讨伐玩家据点 ${target.name}`);
+            return updateLordAction({
+              ...nextLoc,
+              factionRaidTargetId: target.id,
+              factionRaidEtaDay: etaDay,
+              factionRaidTroops: attackers,
+              factionRaidAttackerName: `${faction.name}远征军`,
+              factionRaidFactionId: faction.id
+            }, `奉命讨伐玩家据点 ${target.name}`);
           }
           return loc;
         });
@@ -3166,6 +3213,10 @@ export default function App() {
             return;
           }
           const target = targetCandidates[Math.floor(Math.random() * targetCandidates.length)];
+          if (source.factionRaidTargetId || source.factionRaidEtaDay || target.activeSiege || target.isUnderSiege) {
+            logsToAdd.push(`【议会】${faction.name} 决定保持戒备。`);
+            return;
+          }
           const sourceLordParty = source.lord ? (source.stayParties ?? []).find(p => p.lordId === source.lord?.id) ?? null : null;
           const useLordParty = !!sourceLordParty && sourceLordParty.troops.some(t => t.count > 0);
           const sourceTroops = useLordParty ? sourceLordParty?.troops ?? [] : getLocationTroops(source);
@@ -3174,53 +3225,29 @@ export default function App() {
             logsToAdd.push(`【议会】${faction.name} 决定暂缓出兵。`);
             return;
           }
-          const defenders = getLocationTroops(target);
-          logsToAdd.push(`【议会】${faction.name} 决定出兵。`);
           const defenderFactionName = FACTIONS.find(f => f.id === target.factionId)?.name ?? target.name;
           logsToAdd.push(`【宣战】${faction.name} 向 ${defenderFactionName} 宣战。`);
-          const enemyForce: EnemyForce = {
-            name: `${target.name}守军`,
-            description: `${target.name} 驻军正在坚守。`,
-            troops: defenders,
-            difficulty: '一般',
-            lootPotential: 0,
-            terrain: target.terrain,
-            baseTroopId: defenders[0]?.id ?? 'militia'
-          };
-          const result = resolveBattleProgrammatic(attackers, enemyForce, target.terrain, playerRef.current, { mode: 'FIELD' });
-          const survivorsA = (result as BattleResult & { remainingA?: Troop[] }).remainingA ?? [];
-          const survivorsB = (result as BattleResult & { remainingB?: Troop[] }).remainingB ?? [];
-          const attackerWins = result.outcome === 'A';
-          logsToAdd.push(`【战报】${faction.name} 对 ${target.name} 的战斗${attackerWins ? '获胜' : '失利'}。`);
-          addLocalLog(target.id, `遭到 ${faction.name} 攻击，战斗${attackerWins ? '失守' : '守住'}。`);
-          if (attackerWins) {
-            newLocations = newLocations.map(loc => {
-              if (loc.id === target.id) {
-                return { ...loc, factionId: faction.id, garrison: survivorsA };
-              }
-              if (loc.id === source.id) {
-                const nextLoc = useLordParty && sourceLordParty
-                  ? updateStayPartyTroops(loc, sourceLordParty.id, remaining)
-                  : { ...loc, garrison: remaining };
-                return updateLordAction(nextLoc, `奉命出兵，攻打了 ${target.name}`);
-              }
-              return loc;
-            });
-          } else {
-            newLocations = newLocations.map(loc => {
-              if (loc.id === target.id) {
-                return { ...loc, garrison: survivorsB };
-              }
-              if (loc.id === source.id) {
-                const merged = mergeTroops(remaining, survivorsA);
-                const nextLoc = useLordParty && sourceLordParty
-                  ? updateStayPartyTroops(loc, sourceLordParty.id, merged)
-                  : { ...loc, garrison: merged };
-                return updateLordAction(nextLoc, `奉命出兵，攻打了 ${target.name}`);
-              }
-              return loc;
-            });
-          }
+          logsToAdd.push(`【议会】${faction.name} 决定出兵。`);
+          const marchDays = 2 + Math.floor(Math.random() * 3);
+          const etaDay = nextDay + marchDays;
+          logsToAdd.push(`【远征军】${faction.name} 远征军从 ${source.name} 出发，目标 ${target.name}，预计 ${marchDays} 天后抵达。`);
+          addLocalLog(target.id, `侦查到 ${faction.name} 远征军正向此地逼近。`);
+          newLocations = newLocations.map(loc => {
+            if (loc.id === source.id) {
+              const nextLoc = useLordParty && sourceLordParty
+                ? updateStayPartyTroops(loc, sourceLordParty.id, remaining)
+                : { ...loc, garrison: remaining };
+              return updateLordAction({
+                ...nextLoc,
+                factionRaidTargetId: target.id,
+                factionRaidEtaDay: etaDay,
+                factionRaidTroops: attackers,
+                factionRaidAttackerName: `${faction.name}远征军`,
+                factionRaidFactionId: faction.id
+              }, `奉命出兵，攻打了 ${target.name}`);
+            }
+            return loc;
+          });
         });
         const lordLocations = newLocations.filter(loc => (
           loc.lord &&
@@ -3292,7 +3319,7 @@ export default function App() {
     logsToAdd.forEach(addLog);
 
     const finalLocation = location ? newLocations.find(l => l.id === location.id) ?? location : undefined;
-    if (!suppressEncounter && finalLocation && finalLocation.type !== 'TRAINING_GROUNDS' && finalLocation.type !== 'ASYLUM' && finalLocation.type !== 'CITY' && finalLocation.type !== 'MARKET' && finalLocation.type !== 'HOTPOT_RESTAURANT' && finalLocation.type !== 'BANDIT_CAMP' && finalLocation.type !== 'MYSTERIOUS_CAVE' && finalLocation.type !== 'COFFEE' && finalLocation.type !== 'IMPOSTER_PORTAL' && finalLocation.type !== 'WORLD_BOARD' && finalLocation.type !== 'ROACH_NEST') {
+    if (!suppressEncounter && finalLocation && finalLocation.type !== 'TRAINING_GROUNDS' && finalLocation.type !== 'ASYLUM' && finalLocation.type !== 'CITY' && finalLocation.type !== 'MARKET' && finalLocation.type !== 'HOTPOT_RESTAURANT' && finalLocation.type !== 'BANDIT_CAMP' && finalLocation.type !== 'MYSTERIOUS_CAVE' && finalLocation.type !== 'COFFEE' && finalLocation.type !== 'IMPOSTER_PORTAL' && finalLocation.type !== 'WORLD_BOARD' && finalLocation.type !== 'ROACH_NEST' && finalLocation.type !== 'MAGICIAN_LIBRARY') {
       const relationTarget = getLocationRelationTarget(finalLocation);
       const relationValue = relationTarget ? getRelationValue(playerRef.current, relationTarget.type, relationTarget.id) : 0;
       const encounterChance = getEncounterChance(0.25, relationValue);
@@ -3942,12 +3969,17 @@ export default function App() {
         setView('TOWN');
         setTownTab('FORGE');
       }
+    } else if (location.type === 'MAGICIAN_LIBRARY') {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive) {
+        setView('TOWN');
+        setTownTab('MAGICIAN_LIBRARY');
+      }
      } else {
        // Only set view to TOWN if not working.
        // The work loop will handle the view.
       if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive) {
          setView('TOWN');
-         setTownTab(location.type === 'ROACH_NEST' ? 'ROACH_LURE' : 'RECRUIT'); // Default tab
+         setTownTab(location.type === 'ROACH_NEST' ? 'ROACH_LURE' : location.type === 'MAGICIAN_LIBRARY' ? 'MAGICIAN_LIBRARY' : 'RECRUIT');
        }
      }
     addLocationLog(location.id, `有部队抵达：${playerRef.current.name}。`);

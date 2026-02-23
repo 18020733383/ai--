@@ -1,5 +1,5 @@
 
-import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, ParrotVariant, Hero, RaceId, TroopRace } from './types';
+import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, ParrotVariant, Hero, RaceId, TroopRace, BugSummonRecipe } from './types';
 
 export const MAP_WIDTH = 400;
 export const MAP_HEIGHT = 400;
@@ -2097,6 +2097,396 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     attributes: troopAttr(210, 180, 100, 220, 120, 230)
   },
 
+  bug_null_pointer_scout: {
+    id: 'bug_null_pointer_scout',
+    name: '空指针侦察者',
+    tier: TroopTier.TIER_1,
+    basePower: 8,
+    cost: 20,
+    upgradeCost: 45,
+    maxXp: 140,
+    upgradeTargetId: 'bug_seg_fault_guard',
+    description: '走位像指针一样飘忽，命中时总让你感觉“指向了不存在的目标”。【技能：空域掠影】提升闪避与突袭概率。',
+    equipment: ['断链匕首', '游标披风'],
+    attributes: troopAttr(22, 16, 34, 22, 5, 38)
+  },
+  bug_seg_fault_guard: {
+    id: 'bug_seg_fault_guard',
+    name: '段错误守卫',
+    tier: TroopTier.TIER_2,
+    basePower: 19,
+    cost: 65,
+    upgradeCost: 110,
+    maxXp: 320,
+    upgradeTargetId: 'bug_memory_leak_reaver',
+    description: '它的护甲像内存段，越界一步就会触发致命反击。【技能：段保护】提升格挡与反击率。',
+    equipment: ['分段战斧', '地址护盾'],
+    attributes: troopAttr(42, 40, 36, 50, 5, 55)
+  },
+  bug_memory_leak_reaver: {
+    id: 'bug_memory_leak_reaver',
+    name: '内存泄漏劫掠者',
+    tier: TroopTier.TIER_3,
+    basePower: 38,
+    cost: 160,
+    upgradeCost: 200,
+    maxXp: 820,
+    upgradeTargetId: 'bug_heap_corruptor',
+    description: '作战会持续消耗敌方资源，像漏掉的内存永远回不来。【技能：资源腐蚀】长期作战优势越滚越大。',
+    equipment: ['泄漏长刃', '资源抽取囊'],
+    attributes: troopAttr(70, 58, 52, 80, 20, 70)
+  },
+  bug_heap_corruptor: {
+    id: 'bug_heap_corruptor',
+    name: '堆破坏者',
+    tier: TroopTier.TIER_4,
+    basePower: 88,
+    cost: 520,
+    upgradeCost: 720,
+    maxXp: 1600,
+    upgradeTargetId: 'bug_kernel_panic_titan',
+    description: '它能搅乱敌阵后勤，让补给像堆一样崩塌。【技能：堆崩塌】压制敌方恢复与士气。',
+    equipment: ['堆裂大锤', '崩坏护胄'],
+    attributes: troopAttr(120, 120, 70, 140, 20, 95)
+  },
+  bug_kernel_panic_titan: {
+    id: 'bug_kernel_panic_titan',
+    name: '内核恐慌泰坦',
+    tier: TroopTier.TIER_5,
+    basePower: 190,
+    cost: 1500,
+    upgradeCost: 0,
+    maxXp: 2600,
+    description: '它的咆哮会让敌军“系统失稳”，短暂失去指挥。【技能：内核恐慌】范围压制与控制。',
+    equipment: ['黑核巨斧', '恐慌装甲'],
+    attributes: troopAttr(200, 190, 80, 210, 25, 140)
+  },
+
+  bug_off_by_one_runner: {
+    id: 'bug_off_by_one_runner',
+    name: '偏一疾行者',
+    tier: TroopTier.TIER_1,
+    basePower: 9,
+    cost: 22,
+    upgradeCost: 45,
+    maxXp: 140,
+    upgradeTargetId: 'bug_boundary_skirmisher',
+    description: '总能多走一步，躲过你的判定范围。【技能：越界一步】提升机动与先手。',
+    equipment: ['校准短枪', '偏位护腿'],
+    attributes: troopAttr(20, 14, 40, 20, 5, 40)
+  },
+  bug_boundary_skirmisher: {
+    id: 'bug_boundary_skirmisher',
+    name: '边界游击兵',
+    tier: TroopTier.TIER_2,
+    basePower: 20,
+    cost: 70,
+    upgradeCost: 115,
+    maxXp: 320,
+    upgradeTargetId: 'bug_index_outlaw',
+    description: '它不断试探边界，寻找最薄弱的那条线。【技能：边界切割】对侧翼更具威胁。',
+    equipment: ['界限双刃', '折线护臂'],
+    attributes: troopAttr(46, 34, 50, 48, 10, 55)
+  },
+  bug_index_outlaw: {
+    id: 'bug_index_outlaw',
+    name: '索引亡命徒',
+    tier: TroopTier.TIER_3,
+    basePower: 40,
+    cost: 170,
+    upgradeCost: 210,
+    maxXp: 840,
+    upgradeTargetId: 'bug_array_overrun_ravager',
+    description: '它会切掉敌军阵线的“索引”，让敌军队形错位。【技能：索引错乱】削弱阵型协调。',
+    equipment: ['索引链枪', '错位胸甲'],
+    attributes: troopAttr(78, 55, 66, 90, 25, 70)
+  },
+  bug_array_overrun_ravager: {
+    id: 'bug_array_overrun_ravager',
+    name: '数组溢出掠夺者',
+    tier: TroopTier.TIER_4,
+    basePower: 92,
+    cost: 540,
+    upgradeCost: 740,
+    maxXp: 1650,
+    upgradeTargetId: 'bug_buffer_overrun_colossus',
+    description: '冲锋时会把敌阵挤出原本的格子。【技能：溢出冲撞】擅长打乱队列。',
+    equipment: ['溢出冲锤', '边界冲撞甲'],
+    attributes: troopAttr(130, 110, 85, 150, 10, 100)
+  },
+  bug_buffer_overrun_colossus: {
+    id: 'bug_buffer_overrun_colossus',
+    name: '缓冲溢出巨像',
+    tier: TroopTier.TIER_5,
+    basePower: 200,
+    cost: 1600,
+    upgradeCost: 0,
+    maxXp: 2600,
+    description: '它的冲击会把防线直接推入混乱。【技能：缓冲坍塌】对守军造成巨大破坏。',
+    equipment: ['溢出攻城槌', '巨像壳甲'],
+    attributes: troopAttr(210, 200, 70, 230, 10, 150)
+  },
+
+  bug_race_condition_scout: {
+    id: 'bug_race_condition_scout',
+    name: '竞态斥候',
+    tier: TroopTier.TIER_1,
+    basePower: 9,
+    cost: 22,
+    upgradeCost: 45,
+    maxXp: 140,
+    upgradeTargetId: 'bug_deadlock_enforcer',
+    description: '先手永远先到一步，让敌军节奏混乱。【技能：竞速突袭】提升先攻与扰乱。',
+    equipment: ['竞速短刃', '时序腰带'],
+    attributes: troopAttr(21, 15, 42, 22, 5, 38)
+  },
+  bug_deadlock_enforcer: {
+    id: 'bug_deadlock_enforcer',
+    name: '死锁执法者',
+    tier: TroopTier.TIER_2,
+    basePower: 21,
+    cost: 72,
+    upgradeCost: 120,
+    maxXp: 330,
+    upgradeTargetId: 'bug_livelock_duelist',
+    description: '缠住敌军后就像锁住一样无法脱身。【技能：死锁缠斗】降低敌军机动。',
+    equipment: ['锁链钩刃', '封锁护甲'],
+    attributes: troopAttr(45, 42, 35, 55, 5, 58)
+  },
+  bug_livelock_duelist: {
+    id: 'bug_livelock_duelist',
+    name: '活锁决斗者',
+    tier: TroopTier.TIER_3,
+    basePower: 41,
+    cost: 175,
+    upgradeCost: 215,
+    maxXp: 850,
+    upgradeTargetId: 'bug_threadstorm_savant',
+    description: '看似在躲闪，实则逼迫对手在原地耗尽精力。【技能：活锁缠身】持续消耗敌方士气。',
+    equipment: ['循环双刺', '并发护腕'],
+    attributes: troopAttr(76, 60, 68, 92, 5, 75)
+  },
+  bug_threadstorm_savant: {
+    id: 'bug_threadstorm_savant',
+    name: '线程风暴贤者',
+    tier: TroopTier.TIER_4,
+    basePower: 96,
+    cost: 560,
+    upgradeCost: 760,
+    maxXp: 1700,
+    upgradeTargetId: 'bug_concurrency_overlord',
+    description: '同时操控多条战线，像风暴一样席卷。【技能：线程风暴】大范围扰乱。',
+    equipment: ['多线程长刃', '风暴裹袍'],
+    attributes: troopAttr(130, 115, 95, 150, 35, 105)
+  },
+  bug_concurrency_overlord: {
+    id: 'bug_concurrency_overlord',
+    name: '并发霸主',
+    tier: TroopTier.TIER_5,
+    basePower: 205,
+    cost: 1650,
+    upgradeCost: 0,
+    maxXp: 2700,
+    description: '它像调度器一样操纵战场节奏。【技能：并发统治】压制敌军指挥效率。',
+    equipment: ['并发长戟', '调度王座'],
+    attributes: troopAttr(215, 195, 90, 230, 40, 150)
+  },
+
+  bug_float_drift_apprentice: {
+    id: 'bug_float_drift_apprentice',
+    name: '浮点漂移学徒',
+    tier: TroopTier.TIER_1,
+    basePower: 8,
+    cost: 20,
+    upgradeCost: 45,
+    maxXp: 140,
+    upgradeTargetId: 'bug_precision_sniper',
+    description: '它的箭像小数点一样难以捕捉。【技能：漂移射击】提升远程闪避。',
+    equipment: ['漂移轻弓', '浮点指环'],
+    attributes: troopAttr(18, 12, 38, 20, 55, 36)
+  },
+  bug_precision_sniper: {
+    id: 'bug_precision_sniper',
+    name: '精度狙击手',
+    tier: TroopTier.TIER_2,
+    basePower: 20,
+    cost: 70,
+    upgradeCost: 115,
+    maxXp: 330,
+    upgradeTargetId: 'bug_nan_oracle',
+    description: '它知道哪一位小数会决定生死。【技能：精度狙击】提升命中与爆伤。',
+    equipment: ['精度长弓', '校准护具'],
+    attributes: troopAttr(40, 28, 50, 45, 85, 55)
+  },
+  bug_nan_oracle: {
+    id: 'bug_nan_oracle',
+    name: 'NaN 先知',
+    tier: TroopTier.TIER_3,
+    basePower: 42,
+    cost: 180,
+    upgradeCost: 220,
+    maxXp: 860,
+    upgradeTargetId: 'bug_underflow_prophet',
+    description: '它的法术会让敌军判断失效。【技能：不可判定】削弱敌方命中。',
+    equipment: ['NaN 法杖', '未定义披肩'],
+    attributes: troopAttr(60, 55, 60, 85, 90, 80)
+  },
+  bug_underflow_prophet: {
+    id: 'bug_underflow_prophet',
+    name: '下溢预言者',
+    tier: TroopTier.TIER_4,
+    basePower: 94,
+    cost: 550,
+    upgradeCost: 740,
+    maxXp: 1680,
+    upgradeTargetId: 'bug_overflow_cataclysm',
+    description: '它让敌军力量逐渐衰减到“看不见”。【技能：下溢枯竭】压制输出。',
+    equipment: ['下溢权杖', '衰减法袍'],
+    attributes: troopAttr(100, 120, 75, 150, 100, 120)
+  },
+  bug_overflow_cataclysm: {
+    id: 'bug_overflow_cataclysm',
+    name: '上溢灾变者',
+    tier: TroopTier.TIER_5,
+    basePower: 210,
+    cost: 1700,
+    upgradeCost: 0,
+    maxXp: 2700,
+    description: '它的能量溢出如天灾。【技能：溢出震荡】造成范围重击。',
+    equipment: ['溢出法杖', '灾变法袍'],
+    attributes: troopAttr(190, 210, 70, 240, 110, 160)
+  },
+
+  bug_syntax_error_mender: {
+    id: 'bug_syntax_error_mender',
+    name: '语法错修匠',
+    tier: TroopTier.TIER_1,
+    basePower: 8,
+    cost: 20,
+    upgradeCost: 45,
+    maxXp: 140,
+    upgradeTargetId: 'bug_parser_cutlass',
+    description: '错误的语法让它挥砍时总带着奇怪的节奏。【技能：错位打击】增加穿插命中。',
+    equipment: ['断句短剑', '纠错皮甲'],
+    attributes: troopAttr(20, 16, 34, 24, 10, 38)
+  },
+  bug_parser_cutlass: {
+    id: 'bug_parser_cutlass',
+    name: '解析弯刀客',
+    tier: TroopTier.TIER_2,
+    basePower: 19,
+    cost: 65,
+    upgradeCost: 110,
+    maxXp: 320,
+    upgradeTargetId: 'bug_compiler_hexer',
+    description: '它能在一眼里分解敌阵结构。【技能：语法拆解】提升破甲与命中。',
+    equipment: ['解析弯刀', '语法护臂'],
+    attributes: troopAttr(44, 34, 42, 50, 15, 58)
+  },
+  bug_compiler_hexer: {
+    id: 'bug_compiler_hexer',
+    name: '编译诅咒师',
+    tier: TroopTier.TIER_3,
+    basePower: 41,
+    cost: 175,
+    upgradeCost: 215,
+    maxXp: 850,
+    upgradeTargetId: 'bug_build_breaker',
+    description: '它的咒文让敌军阵型“无法通过”。【技能：编译失败】降低敌军输出稳定性。',
+    equipment: ['编译符杖', '构建残卷'],
+    attributes: troopAttr(65, 62, 60, 90, 70, 85)
+  },
+  bug_build_breaker: {
+    id: 'bug_build_breaker',
+    name: '构建破坏者',
+    tier: TroopTier.TIER_4,
+    basePower: 92,
+    cost: 540,
+    upgradeCost: 740,
+    maxXp: 1650,
+    upgradeTargetId: 'bug_ci_apocalypse',
+    description: '它能让补给线像构建管线一样崩断。【技能：流水线崩塌】削弱敌军士气。',
+    equipment: ['构建巨斧', '断链护甲'],
+    attributes: troopAttr(115, 130, 70, 150, 20, 120)
+  },
+  bug_ci_apocalypse: {
+    id: 'bug_ci_apocalypse',
+    name: 'CI 末日使',
+    tier: TroopTier.TIER_5,
+    basePower: 195,
+    cost: 1550,
+    upgradeCost: 0,
+    maxXp: 2600,
+    description: '它能让一切更新停滞在失败的警报里。【技能：持续失败】持续压制敌军。',
+    equipment: ['末日刻印锤', '警报护衣'],
+    attributes: troopAttr(210, 190, 75, 220, 35, 150)
+  },
+
+  bug_infinite_loop_monk: {
+    id: 'bug_infinite_loop_monk',
+    name: '循环苦行僧',
+    tier: TroopTier.TIER_1,
+    basePower: 9,
+    cost: 22,
+    upgradeCost: 45,
+    maxXp: 140,
+    upgradeTargetId: 'bug_stack_repeater',
+    description: '它能不断重复一招，像永不停止的函数调用。【技能：循环打击】提升连击率。',
+    equipment: ['循环拳套', '递归布衣'],
+    attributes: troopAttr(22, 18, 36, 24, 5, 40)
+  },
+  bug_stack_repeater: {
+    id: 'bug_stack_repeater',
+    name: '栈重复者',
+    tier: TroopTier.TIER_2,
+    basePower: 20,
+    cost: 70,
+    upgradeCost: 115,
+    maxXp: 330,
+    upgradeTargetId: 'bug_recursion_herald',
+    description: '它像不断叠加的调用栈，让敌人喘不过气。【技能：层层压迫】提升压制力。',
+    equipment: ['栈裂拳刃', '叠层护甲'],
+    attributes: troopAttr(46, 40, 38, 60, 5, 60)
+  },
+  bug_recursion_herald: {
+    id: 'bug_recursion_herald',
+    name: '递归宣告者',
+    tier: TroopTier.TIER_3,
+    basePower: 42,
+    cost: 180,
+    upgradeCost: 220,
+    maxXp: 860,
+    upgradeTargetId: 'bug_stack_overflow_beast',
+    description: '它的战吼像递归调用，无止境回响。【技能：递归回响】提升群体伤害。',
+    equipment: ['递归战斧', '回声护肩'],
+    attributes: troopAttr(80, 70, 55, 100, 10, 85)
+  },
+  bug_stack_overflow_beast: {
+    id: 'bug_stack_overflow_beast',
+    name: '栈溢出巨兽',
+    tier: TroopTier.TIER_4,
+    basePower: 98,
+    cost: 580,
+    upgradeCost: 780,
+    maxXp: 1750,
+    upgradeTargetId: 'bug_system_reset_leviathan',
+    description: '它的力量会突破极限，像溢出的栈再也收不回。【技能：溢出猛击】高额重击。',
+    equipment: ['溢出巨锤', '崩栈甲胄'],
+    attributes: troopAttr(150, 120, 70, 170, 10, 110)
+  },
+  bug_system_reset_leviathan: {
+    id: 'bug_system_reset_leviathan',
+    name: '系统重置利维坦',
+    tier: TroopTier.TIER_5,
+    basePower: 210,
+    cost: 1700,
+    upgradeCost: 0,
+    maxXp: 2700,
+    description: '它能重置整片战场的节奏。【技能：系统重启】大范围冲击。',
+    equipment: ['重启巨刃', '重置装甲'],
+    attributes: troopAttr(220, 200, 75, 240, 20, 160)
+  },
+
   // --- ROACH NEST (TIER 1-3) ---
   roach_brawler: {
     id: 'roach_brawler',
@@ -2431,6 +2821,44 @@ export const TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = Obje
   ])
 ) as Record<string, Omit<Troop, 'count' | 'xp'>>;
 
+export const BUG_SUMMON_RECIPES: BugSummonRecipe[] = [
+  { id: 'bug_null_pointer_scout', name: '空指针侦察者', components: ['空指针'], troopId: 'bug_null_pointer_scout', tier: TroopTier.TIER_1, description: '轻量级的空指针涌动。' },
+  { id: 'bug_seg_fault_guard', name: '段错误守卫', components: ['空指针', '段错误'], troopId: 'bug_seg_fault_guard', tier: TroopTier.TIER_2, description: '越界一步就会触发反击。' },
+  { id: 'bug_memory_leak_reaver', name: '内存泄漏劫掠者', components: ['空指针', '内存泄漏'], troopId: 'bug_memory_leak_reaver', tier: TroopTier.TIER_3, description: '敌军资源不断流失。' },
+  { id: 'bug_heap_corruptor', name: '堆破坏者', components: ['内存泄漏', '堆破坏'], troopId: 'bug_heap_corruptor', tier: TroopTier.TIER_4, description: '后勤被拖入崩塌。' },
+  { id: 'bug_kernel_panic_titan', name: '内核恐慌泰坦', components: ['堆破坏', '内核恐慌'], troopId: 'bug_kernel_panic_titan', tier: TroopTier.TIER_5, description: '让敌军系统失稳。' },
+
+  { id: 'bug_off_by_one_runner', name: '偏一疾行者', components: ['偏一错误'], troopId: 'bug_off_by_one_runner', tier: TroopTier.TIER_1, description: '总能多走一步。' },
+  { id: 'bug_boundary_skirmisher', name: '边界游击兵', components: ['偏一错误', '边界越界'], troopId: 'bug_boundary_skirmisher', tier: TroopTier.TIER_2, description: '割裂阵线边界。' },
+  { id: 'bug_index_outlaw', name: '索引亡命徒', components: ['索引失配'], troopId: 'bug_index_outlaw', tier: TroopTier.TIER_3, description: '错位打击敌阵。' },
+  { id: 'bug_array_overrun_ravager', name: '数组溢出掠夺者', components: ['边界越界', '数组溢出'], troopId: 'bug_array_overrun_ravager', tier: TroopTier.TIER_4, description: '阵型被挤出格子。' },
+  { id: 'bug_buffer_overrun_colossus', name: '缓冲溢出巨像', components: ['数组溢出', '缓冲溢出'], troopId: 'bug_buffer_overrun_colossus', tier: TroopTier.TIER_5, description: '冲击碾压防线。' },
+
+  { id: 'bug_race_condition_scout', name: '竞态斥候', components: ['竞态条件'], troopId: 'bug_race_condition_scout', tier: TroopTier.TIER_1, description: '先手干扰敌军节奏。' },
+  { id: 'bug_deadlock_enforcer', name: '死锁执法者', components: ['竞态条件', '死锁'], troopId: 'bug_deadlock_enforcer', tier: TroopTier.TIER_2, description: '封锁敌军机动。' },
+  { id: 'bug_livelock_duelist', name: '活锁决斗者', components: ['死锁', '活锁'], troopId: 'bug_livelock_duelist', tier: TroopTier.TIER_3, description: '耗尽敌军士气。' },
+  { id: 'bug_threadstorm_savant', name: '线程风暴贤者', components: ['活锁', '线程风暴'], troopId: 'bug_threadstorm_savant', tier: TroopTier.TIER_4, description: '大范围扰乱敌阵。' },
+  { id: 'bug_concurrency_overlord', name: '并发霸主', components: ['线程风暴', '并发失序'], troopId: 'bug_concurrency_overlord', tier: TroopTier.TIER_5, description: '压制敌军指挥效率。' },
+
+  { id: 'bug_float_drift_apprentice', name: '浮点漂移学徒', components: ['浮点漂移'], troopId: 'bug_float_drift_apprentice', tier: TroopTier.TIER_1, description: '箭矢难以捕捉。' },
+  { id: 'bug_precision_sniper', name: '精度狙击手', components: ['浮点漂移', '精度损失'], troopId: 'bug_precision_sniper', tier: TroopTier.TIER_2, description: '致命的一位小数。' },
+  { id: 'bug_nan_oracle', name: 'NaN 先知', components: ['精度损失', 'NaN'], troopId: 'bug_nan_oracle', tier: TroopTier.TIER_3, description: '让判定失效。' },
+  { id: 'bug_underflow_prophet', name: '下溢预言者', components: ['NaN', '下溢'], troopId: 'bug_underflow_prophet', tier: TroopTier.TIER_4, description: '力量逐渐枯竭。' },
+  { id: 'bug_overflow_cataclysm', name: '上溢灾变者', components: ['下溢', '上溢'], troopId: 'bug_overflow_cataclysm', tier: TroopTier.TIER_5, description: '能量溢出成灾。' },
+
+  { id: 'bug_syntax_error_mender', name: '语法错修匠', components: ['语法错误'], troopId: 'bug_syntax_error_mender', tier: TroopTier.TIER_1, description: '错位斩击。' },
+  { id: 'bug_parser_cutlass', name: '解析弯刀客', components: ['语法错误', '解析失败'], troopId: 'bug_parser_cutlass', tier: TroopTier.TIER_2, description: '拆解敌阵结构。' },
+  { id: 'bug_compiler_hexer', name: '编译诅咒师', components: ['解析失败', '编译报错'], troopId: 'bug_compiler_hexer', tier: TroopTier.TIER_3, description: '让敌军无法通过。' },
+  { id: 'bug_build_breaker', name: '构建破坏者', components: ['编译报错', '构建失败'], troopId: 'bug_build_breaker', tier: TroopTier.TIER_4, description: '补给线崩断。' },
+  { id: 'bug_ci_apocalypse', name: 'CI 末日使', components: ['构建失败', 'CI 崩溃'], troopId: 'bug_ci_apocalypse', tier: TroopTier.TIER_5, description: '持续失败警报。' },
+
+  { id: 'bug_infinite_loop_monk', name: '循环苦行僧', components: ['无限循环'], troopId: 'bug_infinite_loop_monk', tier: TroopTier.TIER_1, description: '连击循环不止。' },
+  { id: 'bug_stack_repeater', name: '栈重复者', components: ['无限循环', '调用栈膨胀'], troopId: 'bug_stack_repeater', tier: TroopTier.TIER_2, description: '压迫敌军节奏。' },
+  { id: 'bug_recursion_herald', name: '递归宣告者', components: ['调用栈膨胀', '递归回响'], troopId: 'bug_recursion_herald', tier: TroopTier.TIER_3, description: '群体回声打击。' },
+  { id: 'bug_stack_overflow_beast', name: '栈溢出巨兽', components: ['递归回响', '栈溢出'], troopId: 'bug_stack_overflow_beast', tier: TroopTier.TIER_4, description: '突破极限重击。' },
+  { id: 'bug_system_reset_leviathan', name: '系统重置利维坦', components: ['栈溢出', '系统重置'], troopId: 'bug_system_reset_leviathan', tier: TroopTier.TIER_5, description: '重置战场节奏。' }
+];
+
 export const PARROT_VARIANTS: ParrotVariant[] = [
   { name: '玄风鹦鹉', type: 'XUANFENG', color: 'text-slate-300', price: 40, personality: 'MANIC', description: '最便宜的吵闹鸟，基本只会乱叫。' },
   { name: '虎皮鹦鹉', type: 'BUDGERIGAR', color: 'text-lime-400', price: 60, personality: 'MANIC', description: '活泼又聒噪，学不会战术，只会学你骂人。' },
@@ -2533,6 +2961,7 @@ export const getTroopRace = (
   const doctrineLabel = troop.doctrine?.trim();
   if (normalizedId.startsWith('shaped_')) return 'UNKNOWN';
   if (normalizedId.startsWith('altar_') || troop.evangelist || !!doctrineLabel) return 'HUMAN';
+  if (normalizedId.startsWith('bug_')) return 'UNKNOWN';
   if (imposterTroopIds.has(normalizedId)) return 'IMPOSTER';
   if (normalizedId.startsWith('roach_')) return 'ROACH';
   if (normalizedId.startsWith('undead_') || normalizedId.startsWith('skeleton') || normalizedId.startsWith('zombie') || normalizedId.startsWith('specter')) return 'UNDEAD';
@@ -2954,6 +3383,17 @@ export const LOCATIONS: Location[] = [
     type: 'ALTAR',
     description: '风声像祷词一样在石缝里回旋，没有驻军，只有一句未被解释的誓言。',
     coordinates: { x: 192, y: 214 },
+    terrain: 'PLAINS',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'magician_library',
+    name: '魔法师图书馆',
+    type: 'MAGICIAN_LIBRARY',
+    description: '收藏着编程 bug 的古老配方，据说能用法阵召唤异质兵种。',
+    coordinates: { x: 206, y: 214 },
     terrain: 'PLAINS',
     lastRefreshDay: 0,
     volunteers: [],

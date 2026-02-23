@@ -231,6 +231,15 @@ export type RaceId = 'HUMAN' | 'ROACH' | 'UNDEAD' | 'IMPOSTER' | 'BANDIT' | 'AUT
 
 export type TroopRace = RaceId | 'UNKNOWN';
 
+export type BugSummonRecipe = {
+  id: string;
+  name: string;
+  components: string[];
+  troopId: string;
+  tier: TroopTier;
+  description: string;
+};
+
 export type RelationEvent = {
   id: string;
   day: number;
@@ -328,7 +337,7 @@ export interface StayParty {
 export interface Location {
   id: string;
   name: string;
-  type: 'VILLAGE' | 'CASTLE' | 'CITY' | 'RUINS' | 'TRAINING_GROUNDS' | 'ASYLUM' | 'GRAVEYARD' | 'MARKET' | 'HOTPOT_RESTAURANT' | 'BANDIT_CAMP' | 'MYSTERIOUS_CAVE' | 'COFFEE' | 'IMPOSTER_PORTAL' | 'WORLD_BOARD' | 'VOID_BUFFER_MINE' | 'MEMORY_OVERFLOW_MINE' | 'LOGIC_PARADOX_MINE' | 'BLACKSMITH' | 'ROACH_NEST' | 'HEAVY_TRIAL_GROUNDS' | 'ALTAR';
+  type: 'VILLAGE' | 'CASTLE' | 'CITY' | 'RUINS' | 'TRAINING_GROUNDS' | 'ASYLUM' | 'GRAVEYARD' | 'MARKET' | 'HOTPOT_RESTAURANT' | 'BANDIT_CAMP' | 'MYSTERIOUS_CAVE' | 'COFFEE' | 'IMPOSTER_PORTAL' | 'WORLD_BOARD' | 'VOID_BUFFER_MINE' | 'MEMORY_OVERFLOW_MINE' | 'LOGIC_PARADOX_MINE' | 'BLACKSMITH' | 'ROACH_NEST' | 'HEAVY_TRIAL_GROUNDS' | 'ALTAR' | 'MAGICIAN_LIBRARY';
   description: string;
   coordinates: { x: number; y: number };
   terrain: TerrainType;
@@ -357,6 +366,11 @@ export interface Location {
   imposterRaidTargetId?: string;
   imposterRaidEtaDay?: number;
   imposterAlertUntilDay?: number;
+  factionRaidTargetId?: string;
+  factionRaidEtaDay?: number;
+  factionRaidTroops?: Troop[];
+  factionRaidAttackerName?: string;
+  factionRaidFactionId?: FactionId;
   sackedUntilDay?: number;
   stayParties?: StayParty[];
   stationedArmies?: EnemyForce[];
