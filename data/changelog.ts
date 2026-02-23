@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.15',
+    date: '2026-02-23',
+    items: [
+      '攻城器械按类型上限 3 个，包含准备队列与日结入列',
+      '新增非人类英雄，并在排外城主下可能被驱逐转城',
+      '英雄档案补充种族字段用于城市流动判定'
+    ]
+  },
+  {
     version: '0.3.14',
     date: '2026-02-22',
     items: [

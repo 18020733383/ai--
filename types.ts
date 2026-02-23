@@ -148,6 +148,7 @@ export type HeroProfile = {
 export interface Hero {
   id: string;
   name: string;
+  race?: RaceId;
   role: HeroRole;
   title: string;
   background: string;

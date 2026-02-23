@@ -1001,6 +1001,12 @@ export const TownView = ({
       addLog("资金不足，无法购买攻城器械。");
       return;
     }
+    const readyCount = (currentLocation.siegeEngines ?? []).filter(t => t === engine.type).length;
+    const queuedCount = (currentLocation.siegeEngineQueue ?? []).filter(q => q.type === engine.type).length;
+    if (readyCount + queuedCount >= 3) {
+      addLog(`该攻城器械已达上限（3 个）。`);
+      return;
+    }
 
     if (engine.days === 0) {
       const updated = {

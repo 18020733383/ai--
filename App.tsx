@@ -2543,6 +2543,33 @@ export default function App() {
         const pool = candidates.length > 0 ? candidates : cityIds;
         return pool[Math.floor(Math.random() * pool.length)];
       };
+      const getXenoAcceptanceScore = (temperament: string, traits: string[]) => {
+        const temperamentScores: Record<string, number> = {
+          强硬: -18,
+          稳重: 6,
+          多疑: -26,
+          豪爽: 18,
+          谨慎: 0,
+          冷峻: -22,
+          宽厚: 24,
+          冷静: 4
+        };
+        const traitScores: Record<string, number> = {
+          好战: -16,
+          务实: -2,
+          忠诚: 0,
+          谨慎: -6,
+          野心: -10,
+          仁慈: 18,
+          狡黠: -6,
+          守旧: -20,
+          热情: 12,
+          冷静: 0
+        };
+        const base = temperamentScores[temperament] ?? 0;
+        const traitSum = (traits || []).reduce((sum, trait) => sum + (traitScores[trait] ?? 0), 0);
+        return Math.max(-40, Math.min(30, base + traitSum));
+      };
 
       nextHeroes = nextHeroes.map(hero => {
         if (hero.recruited) {
@@ -2563,6 +2590,24 @@ export default function App() {
         }
 
         if (currentCityId) {
+          const currentCity = newLocations.find(loc => loc.id === currentCityId);
+          const heroRace = hero.race ?? 'HUMAN';
+          if (currentCity?.lord && heroRace !== 'HUMAN') {
+            const acceptance = getXenoAcceptanceScore(currentCity.lord.temperament, currentCity.lord.traits || []);
+            if (acceptance <= -10 && Math.random() < 0.35) {
+              const nextCityId = pickCityId(currentCityId);
+              if (!nextCityId) {
+                logsToAdd.push(`【英雄流动】${hero.name} 在 ${currentCity.name} 被排外驱逐。`);
+                addLocalLog(currentCity.id, `异族英雄${hero.name}被城主驱逐。`);
+                return { ...hero, locationId: undefined, stayDays: undefined };
+              }
+              const nextCityName = newLocations.find(loc => loc.id === nextCityId)?.name ?? '其他城市';
+              const nextStay = randomInt(2, 5);
+              logsToAdd.push(`【英雄流动】${hero.name} 在 ${currentCity.name} 被排外驱逐，前往 ${nextCityName}。`);
+              addLocalLog(currentCity.id, `异族英雄${hero.name}被城主驱逐。`);
+              return { ...hero, locationId: nextCityId, stayDays: nextStay };
+            }
+          }
           const remaining = (hero.stayDays ?? randomInt(2, 5)) - 1;
           if (remaining > 0) {
             return { ...hero, stayDays: remaining };
@@ -2703,9 +2748,34 @@ export default function App() {
         const finishedEngines = siegeEngineQueue.filter(q => q.daysLeft <= 0);
         const remainingEngines = siegeEngineQueue.filter(q => q.daysLeft > 0);
         if (finishedEngines.length > 0) {
-          const ready = finishedEngines.map(q => q.type);
-          updated.siegeEngines = [...(updated.siegeEngines ?? []), ...ready];
-          finishedEngines.forEach(engine => logsToAdd.push(`${updated.name} 的 ${getSiegeEngineName(engine.type)} 已准备完毕。`));
+          const existing = updated.siegeEngines ?? [];
+          const counts = existing.reduce((acc, type) => {
+            acc[type] = (acc[type] ?? 0) + 1;
+            return acc;
+          }, {} as Record<SiegeEngineType, number>);
+          const ready: SiegeEngineType[] = [];
+          const overflow: SiegeEngineType[] = [];
+          finishedEngines.forEach(engine => {
+            if ((counts[engine.type] ?? 0) < 3) {
+              ready.push(engine.type);
+              counts[engine.type] = (counts[engine.type] ?? 0) + 1;
+              return;
+            }
+            overflow.push(engine.type);
+          });
+          if (ready.length > 0) {
+            updated.siegeEngines = [...existing, ...ready];
+            ready.forEach(type => logsToAdd.push(`${updated.name} 的 ${getSiegeEngineName(type)} 已准备完毕。`));
+          }
+          if (overflow.length > 0) {
+            const overflowSummary = Object.entries(overflow.reduce((acc, type) => {
+              acc[type] = (acc[type] ?? 0) + 1;
+              return acc;
+            }, {} as Record<SiegeEngineType, number>))
+              .map(([type, count]) => `${getSiegeEngineName(type as SiegeEngineType)}x${count}`)
+              .join('、');
+            logsToAdd.push(`${updated.name} 的攻城器械已达上限，额外器械无法入列：${overflowSummary}`);
+          }
         }
         updated.siegeEngineQueue = remainingEngines;
 
@@ -2889,11 +2959,19 @@ export default function App() {
          // Siege continues
          // AI Siege Engine Building Logic
          const currentEngines = siege.siegeEngines ?? [];
-         if (currentEngines.length < 3 && Math.random() < 0.3) {
-             const newEngine: SiegeEngineType = Math.random() < 0.6 ? 'RAM' : 'TOWER';
-             siege.siegeEngines = [...currentEngines, newEngine];
-             logsToAdd.push(`【围攻情报】围攻 ${loc.name} 的伪人制造了 ${getSiegeEngineName(newEngine)}。`);
-         }
+        if (Math.random() < 0.3) {
+            const counts = currentEngines.reduce((acc, type) => {
+                acc[type] = (acc[type] ?? 0) + 1;
+                return acc;
+            }, {} as Record<SiegeEngineType, number>);
+            const candidates: SiegeEngineType[] = ['RAM', 'TOWER'];
+            const available = candidates.filter(type => (counts[type] ?? 0) < 3);
+            if (available.length > 0) {
+                const newEngine = available[Math.floor(Math.random() * available.length)];
+                siege.siegeEngines = [...currentEngines, newEngine];
+                logsToAdd.push(`【围攻情报】围攻 ${loc.name} 的伪人制造了 ${getSiegeEngineName(newEngine)}。`);
+            }
+        }
 
          return {
              ...loc,
@@ -5945,10 +6023,17 @@ export default function App() {
       if (!!(hero as any)?.recruited) return '陌生' as any;
       return undefined;
     })();
+    const mergedRace = (() => {
+      const allowed = ['HUMAN', 'ROACH', 'UNDEAD', 'IMPOSTER', 'BANDIT', 'AUTOMATON', 'VOID', 'MADNESS'] as const;
+      const raw = String((hero as any)?.race ?? (base as any)?.race ?? '').trim();
+      if (raw && allowed.includes(raw as any)) return raw as any;
+      return 'HUMAN';
+    })();
 
     return {
       ...base,
       ...hero,
+      race: mergedRace,
       personality: personalityRaw.trim() ? personalityRaw : (base.personality || '沉稳可靠'),
       profile: mergedProfile,
       joinedDay: mergedJoinedDay,
