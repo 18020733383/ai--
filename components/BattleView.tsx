@@ -1,6 +1,6 @@
 import React from 'react';
-import { AlertTriangle, Flag, Hammer, Info, Lock, Shield, ShieldAlert, Skull, Swords, User } from 'lucide-react';
-import { BattleResult, EnemyForce, Hero, Location, PlayerState, SiegeEngineType, Troop } from '../types';
+import { AlertTriangle, Flag, Hammer, Info, Lock, MessageCircle, Shield, ShieldAlert, Skull, Swords, User } from 'lucide-react';
+import { BattleResult, EnemyForce, Hero, Location, NegotiationResult, PlayerState, SiegeEngineType, Troop } from '../types';
 import { Button } from './Button';
 
 type BattlePlan = {
@@ -23,6 +23,11 @@ type BattleViewProps = {
   pendingBattleMeta: BattleMeta | null;
   pendingBattleIsTraining: boolean;
   locations: Location[];
+  negotiationState: {
+    status: 'idle' | 'loading' | 'result';
+    result: NegotiationResult | null;
+    locked: boolean;
+  };
   battlePlan: BattlePlan;
   draggingTroopId: string | null;
   hoveredTroop: Troop | null;
@@ -38,6 +43,9 @@ type BattleViewProps = {
   startBattle: (isTraining: boolean, meta?: BattleMeta) => void;
   attemptFlee: () => void;
   sacrificeRetreat: () => void;
+  onStartNegotiation: () => void;
+  onAcceptNegotiation: () => void;
+  onRejectNegotiation: () => void;
   copyPendingBattlePrompt: () => void;
   getLocationDefenseDetails: (location: Location) => DefenseDetails;
   getSiegeEngineName: (type: SiegeEngineType) => string;
@@ -51,6 +59,7 @@ export const BattleView = ({
   pendingBattleMeta,
   pendingBattleIsTraining,
   locations,
+  negotiationState,
   battlePlan,
   draggingTroopId,
   hoveredTroop,
@@ -66,6 +75,9 @@ export const BattleView = ({
   startBattle,
   attemptFlee,
   sacrificeRetreat,
+  onStartNegotiation,
+  onAcceptNegotiation,
+  onRejectNegotiation,
   copyPendingBattlePrompt,
   getLocationDefenseDetails,
   getSiegeEngineName,
@@ -87,6 +99,9 @@ export const BattleView = ({
   const winChance = myPower / (myPower + enemyPower);
   const fleeChance = calculateFleeChance(battleTroops, activeEnemy.troops, player.attributes.escape ?? 0);
   const rearGuardPlan = calculateRearGuardPlan(battleTroops, activeEnemy.troops, player.attributes.escape ?? 0);
+  const negotiationOffer = negotiationState.result?.decision === 'CONDITIONAL';
+  const negotiationPercent = negotiationState.result?.goldPercent ?? 0;
+  const negotiationDisabled = pendingBattleIsTraining || negotiationState.locked || negotiationState.status === 'loading';
 
   let prediction = "胜负难料";
   if (winChance > 0.7) prediction = "胜券在握";
@@ -383,7 +398,35 @@ export const BattleView = ({
             <Button onClick={() => startBattle(pendingBattleIsTraining, pendingBattleMeta ?? undefined)} size="lg" variant="danger" className="w-full">
               <Swords className="inline mr-2" /> 开始战斗
             </Button>
+            <Button
+              onClick={onStartNegotiation}
+              size="lg"
+              variant="secondary"
+              className="w-full"
+              disabled={negotiationDisabled}
+            >
+              <MessageCircle className="inline mr-2" /> 谈判
+            </Button>
             <div className="text-stone-500 text-xs text-center">点击后生成完整战报</div>
+            {negotiationState.status === 'loading' && (
+              <div className="text-xs text-amber-400">谈判中…</div>
+            )}
+            {negotiationState.locked && negotiationState.result?.decision === 'REFUSE' && (
+              <div className="text-xs text-red-400">对方拒绝谈判</div>
+            )}
+            {negotiationOffer && !negotiationState.locked && (
+              <div className="w-full bg-black/40 border border-amber-700/40 rounded p-3 text-xs text-stone-300 space-y-2">
+                <div>对方要求上交 {negotiationPercent}% 钱财后撤军。</div>
+                <div className="flex gap-2">
+                  <Button onClick={onAcceptNegotiation} size="sm" variant="primary" className="flex-1">
+                    接受
+                  </Button>
+                  <Button onClick={onRejectNegotiation} size="sm" variant="secondary" className="flex-1">
+                    拒绝
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
           <div className="bg-black/30 p-4 rounded border border-stone-800 text-right space-y-3">
             <div className="flex items-center justify-between">

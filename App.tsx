@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord } from './types';
-import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX, RACE_LABELS } from './constants';
-import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, ShaperDecision } from './services/geminiService';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult } from './types';
+import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './constants';
+import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { Button } from './components/Button';
 import { BigMapView } from './components/BigMapView';
 import { BattleView } from './components/BattleView';
@@ -58,6 +58,11 @@ const DEFAULT_BATTLE_LAYERS = [
 ];
 
 const HERO_EMOTIONS: Hero['currentExpression'][] = ['ANGRY', 'IDLE', 'SILENT', 'AWKWARD', 'HAPPY', 'SAD', 'AFRAID', 'SURPRISED', 'DEAD'];
+type NegotiationState = {
+  status: 'idle' | 'loading' | 'result';
+  result: NegotiationResult | null;
+  locked: boolean;
+};
 
 const MINERAL_PURITY_LABELS: Record<MineralPurity, string> = {
   1: '裂纹',
@@ -507,6 +512,11 @@ export default function App() {
   const [view, setView] = useState<GameView>('MAP');
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [activeEnemy, setActiveEnemy] = useState<EnemyForce | null>(null);
+  const [negotiationState, setNegotiationState] = useState<NegotiationState>({
+    status: 'idle',
+    result: null,
+    locked: false
+  });
   const [battleResult, setBattleResult] = useState<BattleResult | null>(null);
   const [currentRoundIndex, setCurrentRoundIndex] = useState(0); 
   const [isBattling, setIsBattling] = useState(false);
@@ -681,6 +691,14 @@ export default function App() {
   const altarChatListRef = useRef<HTMLDivElement>(null);
   const heroChatListRef = useRef<HTMLDivElement>(null);
   const heroChatTimersRef = useRef<Record<string, number[]>>({});
+
+  useEffect(() => {
+    setNegotiationState({
+      status: 'idle',
+      result: null,
+      locked: false
+    });
+  }, [activeEnemy?.id, activeEnemy?.name, activeEnemy?.troops?.length]);
 
     // Work Loop
     useEffect(() => {
@@ -1751,6 +1769,93 @@ export default function App() {
     equipment: [getHeroRoleLabel(hero.role), hero.portrait],
     attributes: buildHeroAttributes(hero)
   });
+
+  const buildHeroAttributesFromTroop = (troop: Troop) => {
+    if (!troop.attributes) {
+      return { attack: 12, hp: 90, agility: 12 };
+    }
+    return {
+      attack: clampValue(Math.round(troop.attributes.attack / 5), 8, 30),
+      hp: clampValue(Math.round(troop.attributes.hp * 1.4), 60, 220),
+      agility: clampValue(Math.round(troop.attributes.agility / 5), 8, 30)
+    };
+  };
+
+  const buildEnemyLordHero = (lord: Lord, locationId: string): Hero => ({
+    id: `enemy_lord_${locationId}`,
+    name: lord.name,
+    title: lord.title,
+    role: 'SWORDSMAN',
+    background: `${lord.title}，${lord.temperament}`,
+    personality: lord.temperament,
+    portrait: `${lord.title}`,
+    level: 2,
+    xp: 0,
+    maxXp: 200,
+    attributePoints: 0,
+    attributes: { attack: 14, hp: 100, agility: 12 },
+    currentHp: 100,
+    maxHp: 100,
+    status: 'ACTIVE',
+    recruited: false,
+    traits: lord.traits ?? [],
+    quotes: [],
+    chatMemory: [],
+    permanentMemory: [],
+    chatRounds: 0,
+    currentExpression: 'IDLE'
+  });
+
+  const buildEnemyCommanderHero = (troop: Troop): Hero => {
+    const attributes = buildHeroAttributesFromTroop(troop);
+    return {
+      id: `enemy_commander_${troop.id}`,
+      name: troop.name,
+      title: '战力最高单位',
+      role: 'SWORDSMAN',
+      background: troop.description ?? '由战力最高的单位临时担任指挥。',
+      personality: '冷静',
+      portrait: troop.name,
+      level: 2,
+      xp: 0,
+      maxXp: 200,
+      attributePoints: 0,
+      attributes,
+      currentHp: attributes.hp,
+      maxHp: attributes.hp,
+      status: 'ACTIVE',
+      recruited: false,
+      traits: [],
+      quotes: [],
+      chatMemory: [],
+      permanentMemory: [],
+      chatRounds: 0,
+      currentExpression: 'IDLE'
+    };
+  };
+
+  const pickBestTroop = (troops: Troop[]) => {
+    let best: Troop | null = null;
+    let bestPower = -Infinity;
+    troops.forEach(troop => {
+      const unitPower = troop.basePower ?? troop.tier * 10;
+      if (unitPower > bestPower) {
+        best = troop;
+        bestPower = unitPower;
+      }
+    });
+    return best;
+  };
+
+  const ensureEnemyHeroTroops = (troops: Troop[], lord?: Lord | null, locationId?: string) => {
+    if (troops.some(t => t.id.startsWith('hero_'))) return troops;
+    if (lord) {
+      return [buildHeroTroop(buildEnemyLordHero(lord, locationId ?? lord.fiefId)), ...troops];
+    }
+    const bestTroop = pickBestTroop(troops);
+    if (!bestTroop) return troops;
+    return [buildHeroTroop(buildEnemyCommanderHero(bestTroop)), ...troops];
+  };
 
   const buildPlayerTroop = (current: PlayerState): Troop => ({
     id: 'player_main',
@@ -3353,6 +3458,7 @@ export default function App() {
          })).filter(t => t.count > 0);
 
          if (ambushTroops.length > 0) {
+            const enemyTroops = ensureEnemyHeroTroops(ambushTroops, finalLocation.lord, finalLocation.id);
             const isImposterAmbush = ambushTroops.every(t => IMPOSTER_TROOP_IDS.has(t.id));
             const ambushLabel = isImposterAmbush ? '伪人部队' : '伏兵';
             addLog(`刚踏入 ${finalLocation.name}，你就遭到了${ambushLabel}的伏击！`);
@@ -3360,11 +3466,11 @@ export default function App() {
                id: `ambush_${Date.now()}`,
                name: isImposterAmbush ? '伪人伏击队' : `${finalLocation.name}伏兵`,
                description: isImposterAmbush ? '埋伏在据点里的伪人。' : '埋伏在据点里的敌人。',
-               troops: ambushTroops,
+               troops: enemyTroops,
                difficulty: '一般',
                lootPotential: 1.0,
                terrain: finalLocation.terrain,
-               baseTroopId: ambushTroops[0]?.id ?? 'militia'
+               baseTroopId: enemyTroops[0]?.id ?? 'militia'
             };
             let supportTroops: Troop[] | null = null;
             let supportLabel = '';
@@ -4058,11 +4164,12 @@ export default function App() {
 
     const count = Math.floor(Math.random() * (enemyType.countRange[1] - enemyType.countRange[0] + 1)) + enemyType.countRange[0];
     const enemyTroops: Troop[] = [{ ...baseTroopTemplate, count: count, xp: 0 }];
+    const enemyTroopsWithHero = ensureEnemyHeroTroops(enemyTroops);
 
     const enemy: EnemyForce = {
       name: enemyType.name,
       description: `一伙游荡的 ${count} 人 ${enemyType.name}。`,
-      troops: enemyTroops,
+      troops: enemyTroopsWithHero,
       difficulty: enemyType.difficulty,
       lootPotential: 1.5,
       terrain: terrain,
@@ -4111,6 +4218,26 @@ export default function App() {
     return acc + t.count * t.tier * 10 * (1 + bonusRatio);
   }, 0);
 
+  const buildRaceComposition = (troops: Troop[]) => {
+    const counts: Partial<Record<TroopRace, number>> = {};
+    let total = 0;
+    troops.forEach(troop => {
+      const count = troop.count ?? 0;
+      total += count;
+      const race = getTroopRace(troop, IMPOSTER_TROOP_IDS);
+      counts[race] = (counts[race] ?? 0) + count;
+    });
+    if (total <= 0) return '无';
+    return Object.entries(counts)
+      .sort((a, b) => Number(b[1]) - Number(a[1]))
+      .map(([race, count]) => {
+        const ratio = Math.round((Number(count) / total) * 100);
+        const label = TROOP_RACE_LABELS[race as TroopRace] ?? race;
+        return `${label}${count}(${ratio}%)`;
+      })
+      .join('，');
+  };
+
   const calculateLocalBattleRewards = (enemy: EnemyForce, playerLevel: number, outcome: BattleResult['outcome']) => {
     if (outcome !== 'A') return { gold: 0, renown: 0, xp: 0 };
     const enemyCount = enemy.troops.reduce((sum, t) => sum + (t.count ?? 0), 0);
@@ -4148,6 +4275,128 @@ export default function App() {
     const escapeBonus = (escapeLevel ?? 0) * 0.015;
     const successChance = Math.min(0.9, Math.max(0.2, 0.55 + diffRatio + escapeBonus));
     return { ratio, lost, successChance };
+  };
+
+  const getEncounterPlayerTroops = (currentPlayer: PlayerState, currentHeroes: Hero[]) => {
+    const baseTroops = getBattleTroops(currentPlayer, currentHeroes);
+    if (pendingBattleMeta?.mode === 'DEFENSE_AID') {
+      const loc = pendingBattleMeta.targetLocationId
+        ? locations.find(l => l.id === pendingBattleMeta.targetLocationId)
+        : null;
+      const garrison = loc?.garrison ?? [];
+      return [...baseTroops, ...garrison, ...(pendingBattleMeta.supportTroops ?? [])];
+    }
+    return baseTroops;
+  };
+
+  const concludeNegotiationRetreat = (message: string, goldSpent: number = 0) => {
+    addLog(message);
+    if (goldSpent > 0) addLog(`交出了 ${goldSpent} 第纳尔。`);
+    if (pendingBattleMeta?.mode === 'SIEGE' && pendingBattleMeta.targetLocationId) {
+      const target = locations.find(l => l.id === pendingBattleMeta.targetLocationId);
+      if (target) {
+        const updated = {
+          ...target,
+          owner: 'PLAYER' as const,
+          isUnderSiege: false,
+          siegeProgress: 0,
+          siegeEngines: [],
+          siegeEngineQueue: [],
+          sackedUntilDay: undefined,
+          garrison: []
+        };
+        updateLocationState(updated);
+        addLocationLog(target.id, `谈判撤军，${target.name} 被玩家接管。`);
+        addLog(`守军撤离，${target.name} 落入你手。`);
+      }
+    }
+    setActiveEnemy(null);
+    setPendingBattleMeta(null);
+    setPendingBattleIsTraining(false);
+    setView('MAP');
+  };
+
+  const startNegotiation = async () => {
+    if (!activeEnemy) return;
+    if (negotiationState.locked || negotiationState.status === 'loading') return;
+    const openAI = buildAIConfig();
+    if (!openAI) {
+      addLog('未配置 AI 模型，无法谈判。');
+      return;
+    }
+    const currentPlayer = playerRef.current;
+    const playerTroops = getEncounterPlayerTroops(currentPlayer, heroesRef.current);
+    const playerPower = calculatePower(playerTroops);
+    const enemyPower = calculatePower(activeEnemy.troops);
+    const powerRatio = enemyPower > 0 ? Number((playerPower / enemyPower).toFixed(2)) : playerPower;
+    setNegotiationState({ status: 'loading', result: null, locked: false });
+    try {
+      const negotiationLevel = currentPlayer.attributes.negotiation ?? 0;
+      const result = await resolveNegotiation({
+        enemyName: activeEnemy.name,
+        enemyDescription: activeEnemy.description,
+        playerPower,
+        enemyPower,
+        powerRatio,
+        playerRaceSummary: buildRaceComposition(playerTroops),
+        enemyRaceSummary: buildRaceComposition(activeEnemy.troops),
+        negotiationLevel,
+        playerGold: currentPlayer.gold
+      }, openAI);
+      let adjusted = result;
+      if (adjusted.decision === 'CONDITIONAL') {
+        const basePercent = adjusted.goldPercent ?? 30;
+        const reduced = clampValue(basePercent - negotiationLevel * 2, 5, 80);
+        adjusted = { ...adjusted, goldPercent: reduced };
+        if (negotiationLevel >= 8 && powerRatio >= 1.1) {
+          adjusted = { decision: 'RETREAT', reply: '对方被你的气势压制，选择撤军。' };
+        }
+      }
+      if (adjusted.decision === 'REFUSE' && negotiationLevel >= 5) {
+        const forcedPercent = clampValue(60 - negotiationLevel * 3 - Math.round((powerRatio - 1) * 20), 15, 65);
+        adjusted = {
+          decision: 'CONDITIONAL',
+          reply: `在你的游说下，对方松口：交出${forcedPercent}%钱财就撤。`,
+          goldPercent: forcedPercent
+        };
+      }
+      if (adjusted.decision === 'RETREAT') {
+        setNegotiationState({ status: 'result', result: adjusted, locked: false });
+        concludeNegotiationRetreat(adjusted.reply);
+        return;
+      }
+      if (adjusted.decision === 'REFUSE') {
+        addLog(adjusted.reply);
+        setNegotiationState({ status: 'result', result: adjusted, locked: true });
+        return;
+      }
+      addLog(adjusted.reply);
+      setNegotiationState({ status: 'result', result: adjusted, locked: false });
+    } catch (e: any) {
+      addLog(`谈判失败：${e.message || '未知错误'}`);
+      setNegotiationState({ status: 'idle', result: null, locked: false });
+    }
+  };
+
+  const acceptNegotiationTerms = () => {
+    const result = negotiationState.result;
+    if (!result || result.decision !== 'CONDITIONAL') return;
+    const percent = clampValue(result.goldPercent ?? 0, 0, 95);
+    const goldSpent = Math.floor(playerRef.current.gold * (percent / 100));
+    if (goldSpent > playerRef.current.gold) {
+      addLog('金币不足，无法满足谈判条件。');
+      setNegotiationState(prev => ({ ...prev, locked: true }));
+      return;
+    }
+    if (goldSpent > 0) {
+      setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - goldSpent) }));
+    }
+    concludeNegotiationRetreat(result.reply, goldSpent);
+  };
+
+  const rejectNegotiationTerms = () => {
+    addLog('你拒绝了谈判条件，谈判破裂。');
+    setNegotiationState(prev => ({ ...prev, locked: true }));
   };
 
   const resolveBattleProgrammatic = (
@@ -5189,7 +5438,7 @@ export default function App() {
       addLog("没有准备好的攻城器械，无法发动攻城。");
       return;
     }
-    const defenderTroops = getDefenderTroops(location);
+    const defenderTroops = ensureEnemyHeroTroops(getDefenderTroops(location), location.lord, location.id);
     if (defenderTroops.length === 0) {
       addLog("守军空虚，轻松占领！");
       const updated = { ...location, owner: 'PLAYER' as const, isUnderSiege: false, siegeEngines: [], siegeEngineQueue: [] };
@@ -7002,6 +7251,7 @@ export default function App() {
       pendingBattleMeta={pendingBattleMeta}
       pendingBattleIsTraining={pendingBattleIsTraining}
       locations={locations}
+      negotiationState={negotiationState}
       battlePlan={battlePlan}
       draggingTroopId={draggingTroopId}
       hoveredTroop={hoveredTroop}
@@ -7017,6 +7267,9 @@ export default function App() {
       startBattle={startBattle}
       attemptFlee={attemptFlee}
       sacrificeRetreat={sacrificeRetreat}
+      onStartNegotiation={startNegotiation}
+      onAcceptNegotiation={acceptNegotiationTerms}
+      onRejectNegotiation={rejectNegotiationTerms}
       copyPendingBattlePrompt={copyPendingBattlePrompt}
       getLocationDefenseDetails={getLocationDefenseDetails}
       getSiegeEngineName={getSiegeEngineName}

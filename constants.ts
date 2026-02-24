@@ -3335,7 +3335,8 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
     medicine: 5,
     looting: 5,
     training: 0,
-    escape: 0
+    escape: 0,
+    negotiation: 0
   },
   currentHp: 100,
   maxHp: 100,

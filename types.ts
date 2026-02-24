@@ -121,6 +121,7 @@ export interface PlayerAttributes {
   looting: number;   // 增加战利品金币
   training: number;  // 每日少量训练士兵
   escape: number;    // 增加逃跑成功率
+  negotiation: number;
 }
 
 export interface FallenRecord {
@@ -282,6 +283,14 @@ export interface Lord {
 export type LocalLogEntry = {
   day: number;
   text: string;
+};
+
+export type NegotiationDecision = 'REFUSE' | 'RETREAT' | 'CONDITIONAL';
+
+export type NegotiationResult = {
+  decision: NegotiationDecision;
+  reply: string;
+  goldPercent?: number;
 };
 
 export interface BattleRound {

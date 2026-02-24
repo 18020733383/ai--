@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, Location, Lord, PartyDiaryEntry, PlayerState, TerrainType, Troop } from '../types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, Location, Lord, NegotiationResult, PartyDiaryEntry, PlayerState, TerrainType, Troop } from '../types';
 import { normalizeOpenAIBattle, parseCasualties, parseInjuries, parseOutcome } from './battleParsing';
 import { WORLD_BOOK } from '../constants';
 
@@ -541,6 +541,105 @@ export const resolveBattle = async (
     console.error("Battle resolution failed:", error);
     throw error; // Let App.tsx handle the error to show Retry UI
   }
+};
+
+export const resolveNegotiation = async (
+  context: {
+    enemyName: string;
+    enemyDescription: string;
+    playerPower: number;
+    enemyPower: number;
+    powerRatio: number;
+    playerRaceSummary: string;
+    enemyRaceSummary: string;
+    negotiationLevel: number;
+    playerGold: number;
+  },
+  openAI?: OpenAIConfig
+): Promise<NegotiationResult> => {
+  const prompt = `
+你是敌方指挥官，正在与玩家谈判。请根据形势决定是否撤军。
+必须输出 JSON：{ "decision": "REFUSE|RETREAT|CONDITIONAL", "reply": "...", "goldPercent": 30 }
+规则：
+1) decision=REFUSE 表示拒绝谈判，玩家不能再次谈判。
+2) decision=RETREAT 表示接受谈判并撤军。
+3) decision=CONDITIONAL 表示要求玩家上交 goldPercent% 钱财后撤军（5~80 之间）。
+4) 谈判等级越高越容易说服你撤军或降低要价。
+5) reply 只输出敌方回复，中文，1~3 行短句。
+6) 只输出 JSON，不要解释。
+
+【战力】
+- 玩家战力: ${context.playerPower}
+- 敌方战力: ${context.enemyPower}
+- 战力比(玩家/敌方): ${context.powerRatio}
+
+【种族构成】
+- 玩家: ${context.playerRaceSummary}
+- 敌方: ${context.enemyRaceSummary}
+
+【玩家谈判等级】${context.negotiationLevel}
+【玩家金币】${context.playerGold}
+  `.trim();
+
+  const openAIConfig = requireOpenAIConfig(openAI);
+  if (openAIConfig) {
+    const url = `${normalizeProviderBaseUrl(openAIConfig.provider, openAIConfig.baseUrl)}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openAIConfig.apiKey}`,
+      },
+      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+        model: openAIConfig.model,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: '只返回 JSON。' }
+        ],
+        temperature: 0.7,
+        jsonOnly: true
+      }))
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
+    }
+
+    const json = await res.json().catch(() => null) as any;
+    const text = json?.choices?.[0]?.message?.content;
+    if (!text) throw new Error('OpenAI 返回为空');
+    return parseNegotiationResult(text);
+  }
+
+  const model = "gemini-3-flash-preview";
+  const response = await getGeminiClient(openAI?.provider === 'GEMINI' ? openAI.apiKey : undefined).models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      temperature: 0.7,
+    },
+  });
+
+  const text = response.text;
+  if (!text) throw new Error("No response from AI");
+  return parseNegotiationResult(String(text));
+};
+
+const parseNegotiationResult = (raw: string): NegotiationResult => {
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw);
+  } catch (e) {
+    return { decision: 'REFUSE', reply: raw.trim() || '对方拒绝谈判。' };
+  }
+  const decision = String(parsed?.decision || '').toUpperCase();
+  const reply = String(parsed?.reply || '').trim() || '对方沉默不语。';
+  const goldPercentRaw = Number(parsed?.goldPercent ?? 0);
+  const goldPercent = Number.isFinite(goldPercentRaw) ? Math.min(80, Math.max(5, Math.round(goldPercentRaw))) : undefined;
+  if (decision === 'RETREAT') return { decision: 'RETREAT', reply };
+  if (decision === 'CONDITIONAL') return { decision: 'CONDITIONAL', reply, goldPercent: goldPercent ?? 30 };
+  return { decision: 'REFUSE', reply };
 };
 
 const shaperSchema: Schema = {
