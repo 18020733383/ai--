@@ -239,6 +239,8 @@ export type FactionInfo = {
 
 export type LordFocus = 'WAR' | 'TRADE' | 'DEFENSE' | 'DIPLOMACY';
 
+export type LordState = 'PATROLLING' | 'BESIEGING' | 'MARSHALLING' | 'FEASTING' | 'RESTING';
+
 export type RaceId = 'HUMAN' | 'ROACH' | 'UNDEAD' | 'IMPOSTER' | 'BANDIT' | 'AUTOMATON' | 'VOID' | 'MADNESS';
 
 export type TroopRace = RaceId | 'UNKNOWN';
@@ -276,6 +278,13 @@ export interface Lord {
   temperament: string;
   focus: LordFocus;
   relation: number;
+  currentLocationId: string;
+  state: LordState;
+  stateSinceDay: number;
+  targetLocationId?: string;
+  travelDaysLeft?: number;
+  partyTroops: Troop[];
+  partyMaxCount?: number;
   lastAction?: { day: number; text: string };
   memories?: { day: number; text: string }[];
 }

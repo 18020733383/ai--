@@ -452,10 +452,11 @@ const buildLordPartyTroops = (location: Location) => {
   }
   return [];
 };
-const buildLordStayParty = (location: Location, lord: Lord) => ({
-  id: `lord_party_${location.id}`,
+const getTroopCount = (troops: Troop[]) => troops.reduce((sum, t) => sum + t.count, 0);
+const buildLordStayParty = (locationId: string, lord: Lord) => ({
+  id: `lord_party_${lord.id}`,
   name: `${lord.name}的部队`,
-  troops: buildLordPartyTroops(location),
+  troops: lord.partyTroops,
   owner: 'NEUTRAL' as const,
   lordId: lord.id
 });
@@ -470,6 +471,8 @@ const buildLocationLord = (location: Location) => {
   const faction = FACTIONS.find(f => f.id === location.factionId);
   const roachName = roachLordNames[seed % roachLordNames.length];
   const undeadName = undeadLordNames[seed % undeadLordNames.length];
+  const partyTroops = buildLordPartyTroops(location);
+  const partyMaxCount = getTroopCount(partyTroops);
   return {
     id: `lord_${location.id}`,
     name: location.type === 'ROACH_NEST' ? roachName : location.type === 'GRAVEYARD' ? undeadName : `${pickLordValue(lordFamilyNames, seed)}${pickLordValue(lordGivenNames, seed, 3)}`,
@@ -479,7 +482,12 @@ const buildLocationLord = (location: Location) => {
     traits,
     temperament: pickLordValue(lordTemperaments, seed, 12),
     focus,
-    relation: 0
+    relation: 0,
+    currentLocationId: location.id,
+    state: 'RESTING',
+    stateSinceDay: 1,
+    partyTroops,
+    partyMaxCount
   };
 };
 const ensureLocationLords = (list: Location[]) => {
@@ -490,14 +498,29 @@ const ensureLocationLords = (list: Location[]) => {
     const lord = currentLord ?? buildLocationLord(loc);
     if (!lord) return loc;
     const baseLimit = loc.garrisonBaseLimit ?? getDefaultGarrisonBaseLimit(loc);
-    const stayParties = loc.stayParties ?? [];
-    const hasLordParty = stayParties.some(p => p.lordId === lord.id);
-    const nextParties = hasLordParty ? stayParties : [...stayParties, buildLordStayParty(loc, lord)];
-    return { ...loc, lord, garrisonBaseLimit: baseLimit, stayParties: nextParties };
+    return { ...loc, lord, garrisonBaseLimit: baseLimit };
   });
+};
+const syncLordPresence = (list: Location[], lords: Lord[]) => {
+  const lordsById = new Map(lords.map(lord => [lord.id, lord]));
+  return list.map(loc => {
+    const owner = loc.lord ? lordsById.get(loc.lord.id) ?? loc.lord : loc.lord;
+    const preservedParties = (loc.stayParties ?? []).filter(party => !party.lordId || !lordsById.has(party.lordId));
+    const visitingLords = lords.filter(lord => lord.currentLocationId === loc.id && !lord.travelDaysLeft);
+    const lordParties = visitingLords.map(lord => buildLordStayParty(loc.id, lord));
+    return { ...loc, lord: owner, stayParties: [...preservedParties, ...lordParties] };
+  });
+};
+const buildInitialWorld = () => {
+  const seeded = seedStayParties(LOCATIONS);
+  const withLords = ensureLocationLords(seeded);
+  const lords = withLords.flatMap(loc => (loc.lord ? [{ ...loc.lord }] : []));
+  const syncedLocations = syncLordPresence(withLords, lords);
+  return { locations: syncedLocations, lords };
 };
 
 export default function App() {
+  const initialWorld = React.useMemo(() => buildInitialWorld(), []);
   const [player, setPlayer] = useState<PlayerState>(INITIAL_PLAYER_STATE);
   const [heroes, setHeroes] = useState<Hero[]>(() => {
     const cityIds = LOCATIONS.filter(l => l.type === 'CITY').map(l => l.id);
@@ -508,7 +531,8 @@ export default function App() {
       return { ...hero, locationId: cityId, stayDays };
     });
   });
-  const [locations, setLocations] = useState<Location[]>(() => ensureLocationLords(seedStayParties(LOCATIONS))); // State for dynamic recruitment
+  const [locations, setLocations] = useState<Location[]>(() => initialWorld.locations);
+  const [lords, setLords] = useState<Lord[]>(() => initialWorld.lords);
   const [view, setView] = useState<GameView>('MAP');
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [activeEnemy, setActiveEnemy] = useState<EnemyForce | null>(null);
@@ -684,6 +708,7 @@ export default function App() {
   const processedTravelTokenRef = useRef<number | null>(null);
   const playerRef = useRef(player);
   const heroesRef = useRef(heroes);
+  const lordsRef = useRef(lords);
   const partyDiaryRef = useRef(partyDiary);
   const defenseAidMetaRef = useRef<{ locationId: string; delta: number; ratio: number } | null>(null);
   const undeadChatListRef = useRef<HTMLDivElement>(null);
@@ -945,6 +970,10 @@ export default function App() {
   useEffect(() => {
     heroesRef.current = heroes;
   }, [heroes]);
+
+  useEffect(() => {
+    lordsRef.current = lords;
+  }, [lords]);
 
   useEffect(() => {
     partyDiaryRef.current = partyDiary;
@@ -2527,6 +2556,7 @@ export default function App() {
     let newLocations = [...locations];
     let nextPlayer = { ...playerRef.current };
     let nextHeroes = heroesRef.current.map(h => ({ ...h }));
+    let nextLords = lordsRef.current.map(lord => ({ ...lord, partyTroops: lord.partyTroops.map(t => ({ ...t })) }));
     const logsToAdd: string[] = [];
     const isRoachId = (id: string) => id.startsWith('roach_');
     const rollBinomial = (n: number, p: number) => {
@@ -3353,54 +3383,166 @@ export default function App() {
             return loc;
           });
         });
-        const lordLocations = newLocations.filter(loc => (
-          loc.lord &&
-          (loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE')
+        const strongholds = newLocations.filter(loc => (
+          loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE'
         ));
-        lordLocations.forEach(loc => {
-          const lord = loc.lord;
-          if (!lord) return;
-          const roll = Math.random();
-          let decision: 'REINFORCE' | 'PATROL' | 'HOLD' = 'HOLD';
-          if (lord.focus === 'DEFENSE') {
-            decision = roll < 0.6 ? 'REINFORCE' : roll < 0.85 ? 'PATROL' : 'HOLD';
-          } else if (lord.focus === 'WAR') {
-            decision = roll < 0.6 ? 'PATROL' : roll < 0.85 ? 'REINFORCE' : 'HOLD';
-          } else if (lord.focus === 'TRADE') {
-            decision = roll < 0.65 ? 'HOLD' : roll < 0.85 ? 'REINFORCE' : 'PATROL';
+        const getLocationById = (id: string) => newLocations.find(loc => loc.id === id);
+        const estimateTravelDays = (from: Location, to: Location) => {
+          const dist = Math.hypot(from.coordinates.x - to.coordinates.x, from.coordinates.y - to.coordinates.y);
+          return Math.max(1, Math.ceil(dist / 120));
+        };
+        const findNearestLocation = (origin: Location, candidates: Location[]) => {
+          if (candidates.length === 0) return null;
+          const ranked = candidates
+            .map(loc => ({
+              loc,
+              dist: Math.hypot(loc.coordinates.x - origin.coordinates.x, loc.coordinates.y - origin.coordinates.y)
+            }))
+            .sort((a, b) => a.dist - b.dist);
+          return ranked[0]?.loc ?? null;
+        };
+        const recordLordAction = (lord: Lord, locationId: string, text: string) => {
+          const safe = String(text ?? '').trim();
+          if (!safe) return lord;
+          addLocalLog(locationId, safe);
+          const nextMemories = [{ day: nextDay, text: safe }, ...(lord.memories ?? [])].slice(0, 10);
+          return { ...lord, lastAction: { day: nextDay, text: safe }, memories: nextMemories };
+        };
+        const friendlyStrongholds = (factionId?: string) => strongholds.filter(loc => loc.factionId === factionId && loc.owner !== 'ENEMY');
+        const findNearbyBanditCamp = (origin: Location) => {
+          const camps = newLocations.filter(loc => loc.type === 'BANDIT_CAMP');
+          if (camps.length === 0) return null;
+          const ranked = camps
+            .map(loc => ({
+              loc,
+              dist: Math.hypot(loc.coordinates.x - origin.coordinates.x, loc.coordinates.y - origin.coordinates.y)
+            }))
+            .sort((a, b) => a.dist - b.dist);
+          const candidate = ranked[0]?.loc ?? null;
+          return candidate && ranked[0].dist <= 160 ? candidate : null;
+        };
+        nextLords = nextLords.map(lord => {
+          const fief = getLocationById(lord.fiefId);
+          const currentLoc = getLocationById(lord.currentLocationId) ?? fief;
+          if (!currentLoc) return lord;
+          let nextLord = { ...lord };
+          if (nextLord.travelDaysLeft && nextLord.targetLocationId) {
+            const remaining = nextLord.travelDaysLeft - 1;
+            if (remaining <= 0) {
+              nextLord = { ...nextLord, currentLocationId: nextLord.targetLocationId, travelDaysLeft: undefined, targetLocationId: undefined };
+              const arrivedLoc = getLocationById(nextLord.currentLocationId);
+              if (arrivedLoc) {
+                nextLord = recordLordAction(nextLord, arrivedLoc.id, `${nextLord.title}${nextLord.name} 抵达了 ${arrivedLoc.name}`);
+              }
+            } else {
+              return { ...nextLord, travelDaysLeft: remaining };
+            }
+          }
+          const partyCount = getTroopCount(nextLord.partyTroops);
+          const partyMax = nextLord.partyMaxCount ?? Math.max(1, partyCount);
+          const needsRest = partyCount < Math.max(20, Math.floor(partyMax * 0.6));
+          const raidSources = newLocations.filter(loc => (
+            loc.factionId === nextLord.factionId &&
+            loc.factionRaidTargetId &&
+            loc.factionRaidEtaDay &&
+            loc.factionRaidEtaDay >= nextDay
+          ));
+          const raidSource = raidSources.sort((a, b) => (a.factionRaidEtaDay ?? 0) - (b.factionRaidEtaDay ?? 0))[0];
+          let desiredState: LordState = nextLord.state;
+          if (needsRest) {
+            desiredState = 'RESTING';
+          } else if (raidSource) {
+            desiredState = nextLord.fiefId === raidSource.id || nextLord.focus !== 'WAR' ? 'MARSHALLING' : 'BESIEGING';
+          } else if (nextDay % 14 === 0) {
+            desiredState = 'FEASTING';
           } else {
-            decision = roll < 0.5 ? 'HOLD' : roll < 0.75 ? 'REINFORCE' : 'PATROL';
+            desiredState = 'PATROLLING';
           }
-          if (decision === 'REINFORCE') {
-            const baseTroops = getLocationTroops(loc);
-            const cap = getGarrisonCap(loc);
-            const currentCount = getGarrisonCount(baseTroops);
-            const recruitCount = loc.type === 'CITY' ? 26 : loc.type === 'CASTLE' ? 18 : 10;
-            const available = Math.max(0, Math.min(cap - currentCount, recruitCount));
-            const nextGarrison = applyRecruitment(baseTroops, loc, available);
-            newLocations = newLocations.map(l => l.id === loc.id ? updateLordAction({ ...l, garrison: nextGarrison }, `在${loc.name}扩充了驻军`) : l);
-            return;
+          if (desiredState !== nextLord.state) {
+            nextLord = { ...nextLord, state: desiredState, stateSinceDay: nextDay };
           }
-          if (decision === 'PATROL') {
-            const camps = newLocations.filter(l => l.type === 'BANDIT_CAMP');
-            if (camps.length > 0) {
-              const camp = camps[Math.floor(Math.random() * camps.length)];
-              newLocations = newLocations.filter(l => l.id !== camp.id);
-              newLocations = newLocations.map(l => l.id === loc.id ? updateLordAction(l, `率军清剿了 ${camp.name}`) : l);
+          const moveTo = (target: Location | null) => {
+            if (!target || nextLord.currentLocationId === target.id) return nextLord;
+            const from = getLocationById(nextLord.currentLocationId) ?? fief ?? target;
+            if (!from) return nextLord;
+            return { ...nextLord, targetLocationId: target.id, travelDaysLeft: estimateTravelDays(from, target) };
+          };
+          if (nextLord.state === 'RESTING') {
+            const restLoc = (currentLoc.factionId === nextLord.factionId && currentLoc.owner !== 'ENEMY')
+              ? currentLoc
+              : (fief && fief.factionId === nextLord.factionId ? fief : (friendlyStrongholds(nextLord.factionId)[0] ?? currentLoc));
+            if (restLoc.id !== nextLord.currentLocationId) {
+              return moveTo(restLoc);
             }
-            return;
+            const available = Math.max(0, Math.min(partyMax - partyCount, restLoc.type === 'CITY' ? 18 : restLoc.type === 'CASTLE' ? 12 : 8));
+            const recruited = applyRecruitment(nextLord.partyTroops, restLoc, available);
+            const trained = applyGarrisonTraining(recruited, 3);
+            nextLord = recordLordAction(nextLord, restLoc.id, `在${restLoc.name}休整补员`);
+            return { ...nextLord, partyTroops: trained };
           }
-          if (decision === 'HOLD') {
-            const lordParty = (loc.stayParties ?? []).find(p => p.lordId === lord.id);
-            if (lordParty && lordParty.troops.some(t => t.count > 0)) {
-              const trained = applyGarrisonTraining(lordParty.troops, 3);
-              newLocations = newLocations.map(l => l.id === loc.id ? updateLordAction(updateStayPartyTroops(l, lordParty.id, trained), '整备训练麾下部队') : l);
-              return;
+          if (nextLord.state === 'MARSHALLING') {
+            const gatherLoc = raidSource ? getLocationById(raidSource.id) ?? fief ?? currentLoc : fief ?? currentLoc;
+            if (gatherLoc.id !== nextLord.currentLocationId) {
+              return moveTo(gatherLoc);
             }
-            const baseTroops = getLocationTroops(loc);
-            const trained = applyGarrisonTraining(baseTroops, 3);
-            newLocations = newLocations.map(l => l.id === loc.id ? updateLordAction({ ...l, garrison: trained }, '整备训练驻军') : l);
+            const trained = applyGarrisonTraining(nextLord.partyTroops, 3);
+            nextLord = recordLordAction(nextLord, gatherLoc.id, `在${gatherLoc.name}集结待命`);
+            return { ...nextLord, partyTroops: trained };
           }
+          if (nextLord.state === 'BESIEGING') {
+            const targetLoc = raidSource ? getLocationById(raidSource.factionRaidTargetId ?? '') : null;
+            if (targetLoc && targetLoc.id !== nextLord.currentLocationId) {
+              return moveTo(targetLoc);
+            }
+            if (targetLoc && targetLoc.id === nextLord.currentLocationId) {
+              if (!targetLoc.activeSiege && targetLoc.owner !== 'PLAYER') {
+                const raidPower = calculatePower(nextLord.partyTroops);
+                const updatedTarget = {
+                  ...targetLoc,
+                  activeSiege: {
+                    attackerName: `${nextLord.title}${nextLord.name}`,
+                    troops: nextLord.partyTroops.map(t => ({ ...t })),
+                    startDay: nextDay,
+                    totalPower: raidPower,
+                    siegeEngines: ['SIMPLE_LADDER']
+                  },
+                  isUnderSiege: true
+                };
+                newLocations = newLocations.map(loc => loc.id === targetLoc.id ? updatedTarget : loc);
+                logsToAdd.push(`【围攻】${nextLord.title}${nextLord.name} 抵达 ${targetLoc.name}，开始围攻。`);
+                addLocalLog(targetLoc.id, `${nextLord.title}${nextLord.name} 率军围攻。`);
+              }
+              nextLord = recordLordAction(nextLord, targetLoc.id, `在${targetLoc.name}指挥围攻`);
+            }
+            return nextLord;
+          }
+          if (nextLord.state === 'FEASTING') {
+            const options = friendlyStrongholds(nextLord.factionId).filter(loc => loc.type === 'CITY' || loc.type === 'CASTLE');
+            const feastHost = options.length > 0
+              ? [...options].sort((a, b) => getGarrisonCount(getLocationTroops(b)) - getGarrisonCount(getLocationTroops(a)))[0]
+              : currentLoc;
+            if (feastHost.id !== nextLord.currentLocationId) {
+              return moveTo(feastHost);
+            }
+            nextLord = recordLordAction(nextLord, feastHost.id, `在${feastHost.name}参加宴会`);
+            return nextLord;
+          }
+          const patrolBase = currentLoc;
+          const nearbyCamp = findNearbyBanditCamp(patrolBase);
+          if (nearbyCamp) {
+            newLocations = newLocations.filter(loc => loc.id !== nearbyCamp.id);
+            logsToAdd.push(`【巡逻】${nextLord.title}${nextLord.name} 剿灭了 ${nearbyCamp.name}。`);
+            nextLord = recordLordAction(nextLord, patrolBase.id, `率军清剿了 ${nearbyCamp.name}`);
+          } else {
+            const patrolTargets = friendlyStrongholds(nextLord.factionId).filter(loc => loc.id !== nextLord.currentLocationId);
+            const patrolTarget = patrolTargets.length > 0 ? findNearestLocation(patrolBase, patrolTargets) : null;
+            if (patrolTarget) {
+              return moveTo(patrolTarget);
+            }
+            nextLord = recordLordAction(nextLord, patrolBase.id, `在${patrolBase.name}附近巡逻`);
+          }
+          const trained = applyGarrisonTraining(nextLord.partyTroops, 2);
+          return { ...nextLord, partyTroops: trained };
         });
       }
 
@@ -3417,12 +3559,14 @@ export default function App() {
       };
     }
 
-    setLocations(ensureLocationLords(newLocations));
+    const syncedLocations = syncLordPresence(ensureLocationLords(newLocations), nextLords);
+    setLocations(syncedLocations);
     setPlayer(nextPlayer);
     setHeroes(nextHeroes);
+    setLords(nextLords);
     logsToAdd.forEach(addLog);
 
-    const finalLocation = location ? newLocations.find(l => l.id === location.id) ?? location : undefined;
+    const finalLocation = location ? syncedLocations.find(l => l.id === location.id) ?? location : undefined;
     if (!suppressEncounter && finalLocation && finalLocation.type !== 'TRAINING_GROUNDS' && finalLocation.type !== 'ASYLUM' && finalLocation.type !== 'CITY' && finalLocation.type !== 'MARKET' && finalLocation.type !== 'HOTPOT_RESTAURANT' && finalLocation.type !== 'BANDIT_CAMP' && finalLocation.type !== 'MYSTERIOUS_CAVE' && finalLocation.type !== 'COFFEE' && finalLocation.type !== 'IMPOSTER_PORTAL' && finalLocation.type !== 'WORLD_BOARD' && finalLocation.type !== 'ROACH_NEST' && finalLocation.type !== 'MAGICIAN_LIBRARY') {
       const relationTarget = getLocationRelationTarget(finalLocation);
       const relationValue = relationTarget ? getRelationValue(playerRef.current, relationTarget.type, relationTarget.id) : 0;
@@ -3512,6 +3656,20 @@ export default function App() {
   const updateLocationState = (updatedLocation: Location) => {
     setLocations(prev => prev.map(l => l.id === updatedLocation.id ? updatedLocation : l));
     setCurrentLocation(updatedLocation);
+  };
+
+  const updateLord = (updatedLord: Lord) => {
+    setLords(prev => {
+      const exists = prev.some(lord => lord.id === updatedLord.id);
+      const next = exists ? prev.map(lord => lord.id === updatedLord.id ? updatedLord : lord) : [...prev, updatedLord];
+      setLocations(prevLocations => syncLordPresence(ensureLocationLords(prevLocations), next));
+      setCurrentLocation(prevLocation => {
+        if (!prevLocation) return prevLocation;
+        const synced = syncLordPresence([prevLocation], next)[0];
+        return synced ?? prevLocation;
+      });
+      return next;
+    });
   };
 
   const getLocationGarrison = (location: Location) => {
@@ -6041,6 +6199,7 @@ export default function App() {
     savedAt: Date.now(),
     player,
     heroes,
+    lords,
     locations,
     logs,
     recentBattleBriefs,
@@ -7382,6 +7541,7 @@ export default function App() {
           <TownView
             currentLocation={currentLocation}
             locations={locations}
+            lords={lords}
             player={player}
             heroes={heroes}
             heroDialogue={heroDialogue}
@@ -7457,6 +7617,7 @@ export default function App() {
             buildingOptions={buildingOptions}
             getBuildingName={getBuildingName}
             processDailyCycle={processDailyCycle}
+            updateLord={updateLord}
             aiProvider={aiProvider}
             doubaoApiKey={doubaoApiKey}
             geminiApiKey={geminiApiKey}

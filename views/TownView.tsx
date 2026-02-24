@@ -4,7 +4,7 @@ import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
 import { chatWithAltar, chatWithLord } from '../services/geminiService';
 import { ANOMALY_CATALOG, getTroopRace, TROOP_RACE_LABELS } from '../constants';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, EnemyForce, Enchantment, Hero, Location, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, StayParty, Troop, TroopTier } from '../types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, StayParty, Troop, TroopTier } from '../types';
 
 type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY';
 
@@ -44,6 +44,7 @@ type AltarRecruitState = {
 type TownViewProps = {
   currentLocation: Location | null;
   locations: Location[];
+  lords: Lord[];
   player: PlayerState;
   heroes: Hero[];
   heroDialogue: { heroId: string; text: string } | null;
@@ -119,6 +120,7 @@ type TownViewProps = {
   buildingOptions: { type: BuildingType; name: string; cost: number; days: number; description: string }[];
   getBuildingName: (type: BuildingType) => string;
   processDailyCycle: (location?: Location, rentCost?: number, days?: number, workIncomePerDay?: number, suppressEncounter?: boolean) => void;
+  updateLord: (lord: Lord) => void;
   aiProvider: AIProvider;
   doubaoApiKey: string;
   geminiApiKey: string;
@@ -131,6 +133,7 @@ type TownViewProps = {
 export const TownView = ({
   currentLocation,
   locations,
+  lords,
   player,
   heroes,
   heroDialogue,
@@ -206,6 +209,7 @@ export const TownView = ({
   buildingOptions,
   getBuildingName,
   processDailyCycle,
+  updateLord,
   aiProvider,
   doubaoApiKey,
   geminiApiKey,
@@ -276,14 +280,20 @@ export const TownView = ({
   const isAltarRecruiting = altarRecruitState?.isActive && altarRecruitState.locationId === currentLocation.id;
   const tavernHeroes = isCity ? heroes.filter(h => !h.recruited && h.locationId === currentLocation.id) : [];
   const activeHero = heroDialogue ? heroes.find(h => h.id === heroDialogue.heroId) ?? null : null;
-  const currentLord = currentLocation.lord ?? null;
+  const ownerLord = currentLocation.lord
+    ? lords.find(lord => lord.id === currentLocation.lord?.id) ?? currentLocation.lord
+    : null;
+  const lordsHere = lords.filter(lord => lord.currentLocationId === currentLocation.id);
+  const [selectedLordId, setSelectedLordId] = React.useState<string | null>(null);
+  const selectedLord = lordsHere.find(lord => lord.id === selectedLordId) ?? lordsHere[0] ?? null;
+  const currentLord = selectedLord;
 
   React.useEffect(() => {
     if (isAltar && activeTownTab === 'ALTAR_RECRUIT' && !altarHasTree) {
       setTownTab('ALTAR');
     }
   }, [isAltar, activeTownTab, altarHasTree, setTownTab]);
-  const hasLord = !!currentLord && !isOwnedByPlayer;
+  const hasLord = (!!ownerLord || lordsHere.length > 0) && !isOwnedByPlayer;
   const lordFocusLabels: Record<LordFocus, string> = {
     WAR: '扩张',
     TRADE: '贸易',
@@ -300,21 +310,38 @@ export const TownView = ({
   };
   const getStayPartyOwnerLabel = (party: StayParty) => {
     if (party.owner === 'PLAYER') return '玩家';
-    if (party.lordId && currentLocation.lord?.id === party.lordId) return currentLocation.lord?.name ?? '领主';
+    if (party.lordId) {
+      const partyLord = lords.find(lord => lord.id === party.lordId);
+      return partyLord?.name ?? '领主';
+    }
     if (party.owner === 'ENEMY') return '敌军';
     return '中立';
+  };
+  const getLocationNameById = (locationId?: string | null) => {
+    if (!locationId) return '未知';
+    return locations.find(loc => loc.id === locationId)?.name ?? '未知';
   };
   const [lordDialogue, setLordDialogue] = React.useState<{ role: 'PLAYER' | 'LORD'; text: string }[]>([]);
   const [lordChatInput, setLordChatInput] = React.useState('');
   const [isLordChatLoading, setIsLordChatLoading] = React.useState(false);
   const [altarChatInput, setAltarChatInput] = React.useState('');
   React.useEffect(() => {
-    if (!currentLord) {
+    if (lordsHere.length === 0) {
+      setSelectedLordId(null);
       setLordDialogue([]);
       return;
     }
-    setLordDialogue([{ role: 'LORD', text: `${currentLord.title}${currentLord.name} 正在 ${currentLocation.name} 接见来访者。` }]);
-  }, [currentLocation.id, currentLord?.id]);
+    if (!selectedLordId || !lordsHere.some(lord => lord.id === selectedLordId)) {
+      setSelectedLordId(lordsHere[0].id);
+    }
+  }, [currentLocation.id, lordsHere.length, selectedLordId]);
+  React.useEffect(() => {
+    if (!selectedLord) {
+      setLordDialogue([]);
+      return;
+    }
+    setLordDialogue([{ role: 'LORD', text: `${selectedLord.title}${selectedLord.name} 正在 ${currentLocation.name} 接见来访者。` }]);
+  }, [currentLocation.id, selectedLord?.id]);
 
   const talkToHero = (hero: Hero) => {
     const line = hero.quotes[Math.floor(Math.random() * hero.quotes.length)] ?? `${hero.name} 静静地看着你。`;
@@ -560,15 +587,15 @@ export const TownView = ({
       provider: aiProvider
     };
   };
-  const updateLordData = (updates: Partial<Location['lord']>) => {
+  const updateLordData = (updates: Partial<Lord>) => {
     if (!currentLord) return;
-    updateLocationState({ ...currentLocation, lord: { ...currentLord, ...updates } });
+    updateLord({ ...currentLord, ...updates });
   };
   const updateLordRelation = (delta: number) => {
     if (!currentLord) return;
     const nextRelation = Math.max(-100, Math.min(100, currentLord.relation + delta));
     if (nextRelation === currentLord.relation) return;
-    updateLocationState({ ...currentLocation, lord: { ...currentLord, relation: nextRelation } });
+    updateLord({ ...currentLord, relation: nextRelation });
   };
   const handleLordGreeting = () => {
     if (!currentLord) return;
@@ -614,6 +641,24 @@ export const TownView = ({
       return;
     }
     pushLordLine('LORD', '近日未有特别举措。');
+  };
+  const handleGuardInquiry = () => {
+    pushLordLine('PLAYER', '向守卫询问领主去向。');
+    if (!ownerLord) {
+      pushLordLine('LORD', '守卫摇头：此处并无领主坐镇。');
+      return;
+    }
+    if (ownerLord.currentLocationId === currentLocation.id && !ownerLord.travelDaysLeft) {
+      pushLordLine('LORD', `守卫低声道：${ownerLord.title}${ownerLord.name} 正在此地处理事务。`);
+      return;
+    }
+    if (ownerLord.travelDaysLeft && ownerLord.targetLocationId) {
+      const destination = getLocationNameById(ownerLord.targetLocationId);
+      pushLordLine('LORD', `守卫答复：领主正率部前往 ${destination}，预计还有 ${ownerLord.travelDaysLeft} 天抵达。`);
+      return;
+    }
+    const locationName = getLocationNameById(ownerLord.currentLocationId);
+    pushLordLine('LORD', `守卫答复：领主目前驻扎在 ${locationName}。`);
   };
   const sendToLord = async () => {
     if (!currentLord) return;
@@ -1260,6 +1305,9 @@ export const TownView = ({
                 <span className="text-sm bg-stone-800 text-stone-400 px-2 py-1 rounded border border-stone-600 uppercase">{currentLocation.type}</span>
               </h2>
               <p className="text-stone-300 mt-2">{currentLocation.description}</p>
+              {ownerLord && (
+                <div className="text-sm text-stone-400 mt-2">归属领主：{ownerLord.title}{ownerLord.name}</div>
+              )}
               <div className="flex flex-wrap gap-2 mt-3 text-xs text-stone-400">
                 <span className="px-2 py-0.5 rounded border border-stone-700 bg-stone-900/40">留存部队 {totalGarrisonCount}</span>
                 <span className="px-2 py-0.5 rounded border border-stone-700 bg-stone-900/40">驻军战力 {totalGarrisonPower}</span>
@@ -2483,22 +2531,58 @@ export const TownView = ({
             </div>
           </div>
         )}
-        {activeTownTab === 'LORD' && hasLord && currentLord && (
+        {activeTownTab === 'LORD' && hasLord && (
           <div className="space-y-6 animate-fade-in">
-            <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
-              <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
-                <div>
-                  <div className="text-amber-400 font-bold">{currentLord.title} · {currentLord.name}</div>
-                  <div className="text-xs text-stone-500 mt-1">封地：{currentLocation.name}</div>
+            <div className="bg-stone-900/40 p-4 rounded border border-stone-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-stone-300 font-bold">当前据点内的领主</div>
+                {ownerLord && (
+                  <div className="text-xs text-stone-500">统治者：{ownerLord.title}{ownerLord.name}</div>
+                )}
+              </div>
+              {lordsHere.length === 0 ? (
+                <div className="text-sm text-stone-500">暂无领主驻留。</div>
+              ) : (
+                <div className="flex flex-wrap gap-2">
+                  {lordsHere.map(lord => {
+                    const isSelected = lord.id === currentLord?.id;
+                    const isRuler = ownerLord?.id === lord.id;
+                    return (
+                      <button
+                        key={lord.id}
+                        onClick={() => setSelectedLordId(lord.id)}
+                        className={`px-3 py-1 rounded border text-sm ${isSelected ? 'bg-amber-900/40 border-amber-700 text-amber-200' : 'bg-stone-900/60 border-stone-700 text-stone-400 hover:border-stone-500'}`}
+                      >
+                        {lord.title}{lord.name}
+                        {isRuler ? ' · 统治者' : ' · 客人'}
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="text-xs text-stone-500">关系：{getLordRelationLabel(currentLord.relation)}（{currentLord.relation}）</div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-stone-400 mt-3">
-                <div>性格：{currentLord.temperament}</div>
-                <div>方针：{lordFocusLabels[currentLord.focus]}</div>
-                <div className="md:col-span-2">特质：{currentLord.traits.join('、')}</div>
-              </div>
+              )}
             </div>
+
+            {currentLord ? (
+              <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
+                <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
+                  <div>
+                    <div className="text-amber-400 font-bold">{currentLord.title} · {currentLord.name}</div>
+                    <div className="text-xs text-stone-500 mt-1">封地：{getLocationNameById(currentLord.fiefId)}</div>
+                    <div className="text-xs text-stone-500 mt-1">{ownerLord?.id === currentLord.id ? '这是据点的统治者' : '这是一名过路的客人'}</div>
+                  </div>
+                  <div className="text-xs text-stone-500">关系：{getLordRelationLabel(currentLord.relation)}（{currentLord.relation}）</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm text-stone-400 mt-3">
+                  <div>性格：{currentLord.temperament}</div>
+                  <div>方针：{lordFocusLabels[currentLord.focus]}</div>
+                  <div className="md:col-span-2">特质：{currentLord.traits.join('、')}</div>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-stone-900/40 p-4 rounded border border-stone-800 text-sm text-stone-500">
+                此处没有可交谈的领主，可向守卫询问统治者去向。
+              </div>
+            )}
 
             <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
               <div className="flex items-center justify-between">
@@ -2537,37 +2621,44 @@ export const TownView = ({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Button onClick={handleLordGreeting} variant="secondary">致意</Button>
-              <Button onClick={handleLordGift} variant="gold">赠礼 50 第纳尔</Button>
-              <Button onClick={handleLordPolicy} variant="secondary">询问方略</Button>
-              <Button onClick={handleLordRecent} variant="secondary">询问近况</Button>
+              {currentLord && (
+                <>
+                  <Button onClick={handleLordGreeting} variant="secondary">致意</Button>
+                  <Button onClick={handleLordGift} variant="gold">赠礼 50 第纳尔</Button>
+                  <Button onClick={handleLordPolicy} variant="secondary">询问方略</Button>
+                  <Button onClick={handleLordRecent} variant="secondary">询问近况</Button>
+                </>
+              )}
+              <Button onClick={handleGuardInquiry} variant="secondary">询问守卫</Button>
             </div>
 
-            <div className="bg-stone-900/40 p-3 rounded border border-stone-800">
-              <div className="flex flex-col md:flex-row gap-2">
-                <input
-                  value={lordChatInput}
-                  onChange={(e) => setLordChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter') return;
-                    const composing = (e.nativeEvent as any)?.isComposing;
-                    if (composing) return;
-                    e.preventDefault();
-                    sendToLord();
-                  }}
-                  className="flex-1 bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded placeholder:text-stone-600"
-                  placeholder="向领主发问..."
-                  disabled={isLordChatLoading}
-                />
-                <Button
-                  onClick={sendToLord}
-                  variant="secondary"
-                  disabled={isLordChatLoading || !lordChatInput.trim()}
-                >
-                  {isLordChatLoading ? '…' : '发送'}
-                </Button>
+            {currentLord && (
+              <div className="bg-stone-900/40 p-3 rounded border border-stone-800">
+                <div className="flex flex-col md:flex-row gap-2">
+                  <input
+                    value={lordChatInput}
+                    onChange={(e) => setLordChatInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key !== 'Enter') return;
+                      const composing = (e.nativeEvent as any)?.isComposing;
+                      if (composing) return;
+                      e.preventDefault();
+                      sendToLord();
+                    }}
+                    className="flex-1 bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded placeholder:text-stone-600"
+                    placeholder="向领主发问..."
+                    disabled={isLordChatLoading}
+                  />
+                  <Button
+                    onClick={sendToLord}
+                    variant="secondary"
+                    disabled={isLordChatLoading || !lordChatInput.trim()}
+                  >
+                    {isLordChatLoading ? '…' : '发送'}
+                  </Button>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
