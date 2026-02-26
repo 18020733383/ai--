@@ -65,6 +65,7 @@ export const BigMapView = ({
 }: BigMapViewProps) => {
   const unitSize = 10 * zoom;
   const imposterPortal = locations.find(loc => loc.type === 'IMPOSTER_PORTAL');
+  const fieldCampCount = locations.filter(loc => loc.type === 'FIELD_CAMP').length;
   const factionColors = FACTIONS.reduce<Record<string, string>>((acc, faction) => {
     acc[faction.id] = faction.color;
     return acc;
@@ -394,11 +395,17 @@ export const BigMapView = ({
             }}
             onMouseEnter={() => setHoveredLocation(loc)}
             onMouseLeave={() => setHoveredLocation(null)}
-            className="absolute cursor-pointer group z-10 hover:z-50"
+            className={`absolute cursor-pointer group ${loc.type === 'FIELD_CAMP' ? 'z-30' : 'z-10'} hover:z-50`}
             style={{ left: `${loc.coordinates.x * unitSize}px`, top: `${loc.coordinates.y * unitSize}px` }}
           >
             <div className="absolute transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
-              <div className="relative p-1 rounded-full border-2 transition-transform hover:scale-110 shadow-lg bg-stone-800 border-amber-600" style={{ transform: `scale(${zoom})` }}>
+              <div
+                className="relative p-1 rounded-full border-2 transition-transform hover:scale-110 shadow-lg bg-stone-800 border-amber-600"
+                style={{
+                  transform: `scale(${zoom})`,
+                  borderColor: loc.type === 'FIELD_CAMP' ? (loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8') : undefined,
+                }}
+              >
                 {loc.type === 'CITY' ? <Home className="text-amber-500" size={24} /> :
                   loc.type === 'CASTLE' ? <ShieldAlert className="text-stone-400" size={20} /> :
                   loc.type === 'FIELD_CAMP' ? <Flag size={20} style={{ color: loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8' }} /> :
@@ -468,7 +475,7 @@ export const BigMapView = ({
         </div>
       </div>
       <div className="absolute top-4 left-4 bg-black/60 text-stone-300 p-2 rounded text-xs select-none pointer-events-none z-30">
-        WASD 或 拖拽移动视野 | 滚轮缩放 ({Math.round(zoom * 100)}%)
+        WASD 或 拖拽移动视野 | 滚轮缩放 ({Math.round(zoom * 100)}%) | 行军营地 {fieldCampCount}
       </div>
     </div>
   );

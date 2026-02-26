@@ -3319,12 +3319,20 @@ export default function App() {
         const attackerName = `${faction.name}远征军`;
         const leaderName = source.lord ? `${source.lord.title}${source.lord.name}` : `${faction.name}军官`;
         const campId = `field_camp_${source.id}_${target.id}_${nextDay}`;
+        const dx = target.coordinates.x - source.coordinates.x;
+        const dy = target.coordinates.y - source.coordinates.y;
+        const distance = Math.hypot(dx, dy);
+        const fraction = distance > 0 ? Math.min(0.18, 1 / Math.max(2, Math.round(marchDays * 1.2))) : 0;
+        const initialCoordinates = {
+          x: source.coordinates.x + dx * fraction,
+          y: source.coordinates.y + dy * fraction
+        };
         const camp: Location = {
           id: campId,
           name: `${attackerName}·行军营地`,
           type: 'FIELD_CAMP',
           description: `一支正在行军的远征军临时扎营。目标：${target.name}。`,
-          coordinates: { ...source.coordinates },
+          coordinates: initialCoordinates,
           terrain: source.terrain,
           factionId: faction.id,
           lastRefreshDay: 0,
@@ -3433,12 +3441,20 @@ export default function App() {
           const attackerName = `${faction.name}远征军`;
           const leaderName = source.lord ? `${source.lord.title}${source.lord.name}` : `${faction.name}军官`;
           const campId = `field_camp_${source.id}_${target.id}_${nextDay}`;
+          const dx = target.coordinates.x - source.coordinates.x;
+          const dy = target.coordinates.y - source.coordinates.y;
+          const distance = Math.hypot(dx, dy);
+          const fraction = distance > 0 ? Math.min(0.18, 1 / Math.max(2, Math.round(marchDays * 1.2))) : 0;
+          const initialCoordinates = {
+            x: source.coordinates.x + dx * fraction,
+            y: source.coordinates.y + dy * fraction
+          };
           const camp: Location = {
             id: campId,
             name: `${attackerName}·行军营地`,
             type: 'FIELD_CAMP',
             description: `一支正在行军的远征军临时扎营。目标：${target.name}。`,
-            coordinates: { ...source.coordinates },
+            coordinates: initialCoordinates,
             terrain: source.terrain,
             factionId: faction.id,
             lastRefreshDay: 0,
