@@ -363,10 +363,22 @@ export interface StayParty {
   lordId?: string;
 }
 
+export type FieldCampKind = 'FACTION_RAID' | 'IMPOSTER_RAID' | 'LORD_MARCH';
+
+export type FieldCampMeta = {
+  kind: FieldCampKind;
+  sourceLocationId: string;
+  targetLocationId: string;
+  totalDays: number;
+  daysLeft: number;
+  attackerName: string;
+  leaderName: string;
+};
+
 export interface Location {
   id: string;
   name: string;
-  type: 'VILLAGE' | 'CASTLE' | 'CITY' | 'RUINS' | 'TRAINING_GROUNDS' | 'ASYLUM' | 'GRAVEYARD' | 'MARKET' | 'HOTPOT_RESTAURANT' | 'BANDIT_CAMP' | 'MYSTERIOUS_CAVE' | 'COFFEE' | 'IMPOSTER_PORTAL' | 'WORLD_BOARD' | 'VOID_BUFFER_MINE' | 'MEMORY_OVERFLOW_MINE' | 'LOGIC_PARADOX_MINE' | 'BLACKSMITH' | 'ROACH_NEST' | 'HEAVY_TRIAL_GROUNDS' | 'ALTAR' | 'MAGICIAN_LIBRARY';
+  type: 'VILLAGE' | 'CASTLE' | 'CITY' | 'RUINS' | 'TRAINING_GROUNDS' | 'ASYLUM' | 'GRAVEYARD' | 'MARKET' | 'HOTPOT_RESTAURANT' | 'BANDIT_CAMP' | 'MYSTERIOUS_CAVE' | 'COFFEE' | 'IMPOSTER_PORTAL' | 'WORLD_BOARD' | 'VOID_BUFFER_MINE' | 'MEMORY_OVERFLOW_MINE' | 'LOGIC_PARADOX_MINE' | 'BLACKSMITH' | 'ROACH_NEST' | 'HEAVY_TRIAL_GROUNDS' | 'ALTAR' | 'MAGICIAN_LIBRARY' | 'FIELD_CAMP';
   description: string;
   coordinates: { x: number; y: number };
   terrain: TerrainType;
@@ -413,6 +425,7 @@ export interface Location {
     totalPower: number;
     siegeEngines?: SiegeEngineType[];
   };
+  camp?: FieldCampMeta;
 }
 
 export type WorldBattleReport = {

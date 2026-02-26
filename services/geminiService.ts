@@ -644,6 +644,91 @@ ${historyText || '（暂无）'}
   return parseNegotiationResult(String(text));
 };
 
+export const chatWithCampLeader = async (
+  dialogue: LordChatLine[],
+  leader: Lord,
+  player: PlayerState,
+  camp: Location,
+  target: Location | null,
+  playerPower: number,
+  campPower: number,
+  openAI?: OpenAIConfig
+): Promise<string> => {
+  const historyText = dialogue
+    .slice(-10)
+    .map(m => `${m.role === 'PLAYER' ? '玩家' : `${leader.title}${leader.name}`}: ${m.text}`)
+    .join('\n');
+  const campMeta = camp.camp;
+  const targetText = target ? `${target.name}（${target.type}）` : '未知';
+  const prompt = `
+你是行军营地的首领「${leader.title}${leader.name}」。你正在带队从 ${campMeta?.sourceLocationId ?? '未知'} 向 ${targetText} 行军。
+你必须用中文回复玩家，口吻像骑砍里的领队：直接、现实、带一点威严。
+回复要求：
+1) 2~4 行短句，每行一句。
+2) 结合营地现状与行军进度回答，不要编造不存在的具体事件。
+3) 可以模糊说明意图（围攻/集结/休整/巡逻），但必须说明“正在做什么、要去哪里、还要多久”。
+4) 不要输出 JSON，不要解释规则。
+
+【行军信息】
+- 行军类型: ${campMeta?.kind ?? '未知'}
+- 进度: 剩余 ${campMeta?.daysLeft ?? 0} / ${campMeta?.totalDays ?? 0} 天
+- 当前位置: (${camp.coordinates.x.toFixed(1)}, ${camp.coordinates.y.toFixed(1)})
+- 目标: ${targetText}
+
+【战力】
+- 玩家战力: ${playerPower}
+- 营地战力: ${campPower}
+
+【玩家谈判等级】${player.attributes.negotiation ?? 0}
+【与玩家关系】${leader.relation ?? 0}
+
+【最近对话】
+${historyText || '（暂无）'}
+  `.trim();
+
+  const openAIConfig = requireOpenAIConfig(openAI);
+  if (openAIConfig) {
+    const url = `${normalizeProviderBaseUrl(openAIConfig.provider, openAIConfig.baseUrl)}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openAIConfig.apiKey}`,
+      },
+      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+        model: openAIConfig.model,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: '继续对话并回复。' }
+        ],
+        temperature: 0.85
+      }))
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
+    }
+
+    const json = await res.json().catch(() => null) as any;
+    const text = json?.choices?.[0]?.message?.content;
+    if (!text) throw new Error('OpenAI 返回为空');
+    return String(text).trim();
+  }
+
+  const model = "gemini-3-flash-preview";
+  const response = await getGeminiClient(openAI?.provider === 'GEMINI' ? openAI.apiKey : undefined).models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      temperature: 0.85,
+    },
+  });
+  const text = response.text;
+  if (!text) throw new Error("No response from AI");
+  return String(text).trim();
+};
+
 const parseNegotiationResult = (raw: string): NegotiationResult => {
   let parsed: any;
   try {

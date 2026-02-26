@@ -2,7 +2,7 @@ import React from 'react';
 import { AlertTriangle, Beer, Coins, Ghost, Hammer, History, Home, MessageCircle, Mountain, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, Zap } from 'lucide-react';
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
-import { chatWithAltar, chatWithLord } from '../services/geminiService';
+import { chatWithAltar, chatWithCampLeader, chatWithLord } from '../services/geminiService';
 import { ANOMALY_CATALOG, getTroopRace, TROOP_RACE_LABELS } from '../constants';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, StayParty, Troop, TroopTier } from '../types';
 
@@ -222,8 +222,9 @@ export const TownView = ({
 
   const getBgImageStyle = () => {
     const type = currentLocation.type;
+    const bgType = type === 'FIELD_CAMP' ? 'BANDIT_CAMP' : type;
     return {
-      backgroundImage: `url("/image/${type}.webp"), url("/image/${type}.png"), url("/image/${type}.jpg"), url("/image/${type}.jpeg")`,
+      backgroundImage: `url("/image/${bgType}.webp"), url("/image/${bgType}.png"), url("/image/${bgType}.jpg"), url("/image/${bgType}.jpeg")`,
       backgroundSize: 'cover',
       backgroundPosition: 'center'
     };
@@ -245,6 +246,7 @@ export const TownView = ({
   const isMine = !!mineConfig;
   const isBlacksmith = currentLocation.type === 'BLACKSMITH';
   const isMagicianLibrary = currentLocation.type === 'MAGICIAN_LIBRARY';
+  const isFieldCamp = currentLocation.type === 'FIELD_CAMP';
   const isSpecialLocation = isMine || isBlacksmith || isAltar || isMagicianLibrary;
   const isOwnedByPlayer = currentLocation.owner === 'PLAYER';
   const isRestricted = (currentLocation.sackedUntilDay ?? 0) >= player.day || currentLocation.owner === 'ENEMY' || !!currentLocation.isUnderSiege;
@@ -253,6 +255,8 @@ export const TownView = ({
   const specialFallbackTab = isMine ? 'MINING' : isBlacksmith ? 'FORGE' : isAltar ? 'ALTAR' : isMagicianLibrary ? 'MAGICIAN_LIBRARY' : 'LOCAL_GARRISON';
   const activeTownTab = (isOwnedByPlayer && townTab === 'LORD')
     ? 'LOCAL_GARRISON'
+    : (isFieldCamp && townTab !== 'SIEGE' && townTab !== 'DEFENSE' && townTab !== 'LORD')
+      ? 'SIEGE'
     : (isSpecialLocation && specialHiddenTabs.includes(townTab))
       ? specialFallbackTab
       : (isRestricted && restrictedTabs.includes(townTab))
@@ -283,7 +287,7 @@ export const TownView = ({
   const ownerLord = currentLocation.lord
     ? lords.find(lord => lord.id === currentLocation.lord?.id) ?? currentLocation.lord
     : null;
-  const lordsHere = lords.filter(lord => lord.currentLocationId === currentLocation.id);
+  const lordsHere = isFieldCamp ? (ownerLord ? [ownerLord] : []) : lords.filter(lord => lord.currentLocationId === currentLocation.id);
   const [selectedLordId, setSelectedLordId] = React.useState<string | null>(null);
   const selectedLord = lordsHere.find(lord => lord.id === selectedLordId) ?? lordsHere[0] ?? null;
   const currentLord = selectedLord;
@@ -671,6 +675,16 @@ export const TownView = ({
     setIsLordChatLoading(true);
     try {
       const aiConfig = buildAIConfig();
+      if (isFieldCamp) {
+        const target = currentLocation.camp?.targetLocationId
+          ? locations.find(loc => loc.id === currentLocation.camp?.targetLocationId) ?? null
+          : null;
+        const playerPower = calculatePower(playerRef.current.troops);
+        const campPower = calculatePower(currentLocation.garrison ?? []);
+        const reply = await chatWithCampLeader(nextDialogue, currentLord, playerRef.current, currentLocation, target, playerPower, campPower, aiConfig);
+        setLordDialogue(prev => [...prev, { role: 'LORD' as const, text: reply }].slice(-16));
+        return;
+      }
       const raceContext = buildLordRaceContext();
       const response = await chatWithLord(
         nextDialogue,
@@ -1306,7 +1320,7 @@ export const TownView = ({
               </h2>
               <p className="text-stone-300 mt-2">{currentLocation.description}</p>
               {ownerLord && (
-                <div className="text-sm text-stone-400 mt-2">归属领主：{ownerLord.title}{ownerLord.name}</div>
+                <div className="text-sm text-stone-400 mt-2">{isFieldCamp ? '营地首领' : '归属领主'}：{ownerLord.title}{ownerLord.name}</div>
               )}
               <div className="flex flex-wrap gap-2 mt-3 text-xs text-stone-400">
                 <span className="px-2 py-0.5 rounded border border-stone-700 bg-stone-900/40">留存部队 {totalGarrisonCount}</span>
@@ -1392,6 +1406,30 @@ export const TownView = ({
       )}
 
       <div className="flex gap-1 mb-6 border-b border-stone-700 overflow-x-auto">
+        {isFieldCamp && (
+          <>
+            <button
+              onClick={() => setTownTab('SIEGE')}
+              className={`px-6 py-3 font-serif font-bold text-sm whitespace-nowrap ${activeTownTab === 'SIEGE' ? 'bg-stone-800 text-amber-500 border-t-2 border-amber-500' : 'text-stone-500 hover:text-stone-300'}`}
+            >
+              <Swords size={16} className="inline mr-2" /> 行军
+            </button>
+            <button
+              onClick={() => setTownTab('DEFENSE')}
+              className={`px-6 py-3 font-serif font-bold text-sm whitespace-nowrap ${activeTownTab === 'DEFENSE' ? 'bg-stone-800 text-amber-500 border-t-2 border-amber-500' : 'text-stone-500 hover:text-stone-300'}`}
+            >
+              <ShieldAlert size={16} className="inline mr-2" /> 防御设施
+            </button>
+            <button
+              onClick={() => setTownTab('LORD')}
+              className={`px-6 py-3 font-serif font-bold text-sm whitespace-nowrap ${activeTownTab === 'LORD' ? 'bg-stone-800 text-amber-500 border-t-2 border-amber-500' : 'text-stone-500 hover:text-stone-300'}`}
+            >
+              <MessageCircle size={16} className="inline mr-2" /> 首领
+            </button>
+          </>
+        )}
+        {!isFieldCamp && (
+          <>
         {!isImposterPortal && !isRestricted && !isSpecialLocation && !isRoachNest && (
           <button
             onClick={() => setTownTab('RECRUIT')}
@@ -1544,6 +1582,8 @@ export const TownView = ({
           >
             <Skull size={16} className="inline mr-2" /> 英灵殿
           </button>
+        )}
+          </>
         )}
       </div>
 
@@ -2212,6 +2252,36 @@ export const TownView = ({
           </div>
         )}
 
+        {isFieldCamp && activeTownTab === 'SIEGE' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
+              <p className="text-stone-400 text-sm">这是行军中的临时营地，不被视为固定据点。</p>
+            </div>
+            <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-3">
+              <div className="text-stone-200 font-bold">行军信息</div>
+              <div className="text-sm text-stone-400">
+                目标：{getLocationNameById(currentLocation.camp?.targetLocationId)}｜剩余：{currentLocation.camp?.daysLeft ?? 0} / {currentLocation.camp?.totalDays ?? 0} 天
+              </div>
+              <div className="text-sm text-stone-400">意图：{currentLocation.camp?.attackerName ?? '未知势力'} 正在向目标推进。</div>
+            </div>
+            <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-stone-200 font-bold">营地部队</div>
+                <div className="text-xs text-stone-500">总人数 {getGarrisonCount(currentLocation.garrison ?? [])}</div>
+              </div>
+              {(currentLocation.garrison ?? []).length === 0 ? (
+                <div className="text-sm text-stone-500">营地空无一人。</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(currentLocation.garrison ?? []).map((troop, idx) => (
+                    <TroopCard key={`${troop.id}-${idx}`} troop={troop} count={troop.count} countLabel="数量" disabled />
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
         {activeTownTab === 'SIEGE' && (isSiegeTarget || isImposterPortal) && !isOwnedByPlayer && (
           <div className="space-y-6 animate-fade-in">
             <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
@@ -2535,9 +2605,9 @@ export const TownView = ({
           <div className="space-y-6 animate-fade-in">
             <div className="bg-stone-900/40 p-4 rounded border border-stone-800 space-y-3">
               <div className="flex items-center justify-between">
-                <div className="text-stone-300 font-bold">当前据点内的领主</div>
+                <div className="text-stone-300 font-bold">{isFieldCamp ? '营地首领' : '当前据点内的领主'}</div>
                 {ownerLord && (
-                  <div className="text-xs text-stone-500">统治者：{ownerLord.title}{ownerLord.name}</div>
+                  <div className="text-xs text-stone-500">{isFieldCamp ? '首领' : '统治者'}：{ownerLord.title}{ownerLord.name}</div>
                 )}
               </div>
               {lordsHere.length === 0 ? (
@@ -2546,7 +2616,7 @@ export const TownView = ({
                 <div className="flex flex-wrap gap-2">
                   {lordsHere.map(lord => {
                     const isSelected = lord.id === currentLord?.id;
-                    const isRuler = ownerLord?.id === lord.id;
+                    const isRuler = isFieldCamp ? true : ownerLord?.id === lord.id;
                     return (
                       <button
                         key={lord.id}
@@ -2554,7 +2624,7 @@ export const TownView = ({
                         className={`px-3 py-1 rounded border text-sm ${isSelected ? 'bg-amber-900/40 border-amber-700 text-amber-200' : 'bg-stone-900/60 border-stone-700 text-stone-400 hover:border-stone-500'}`}
                       >
                         {lord.title}{lord.name}
-                        {isRuler ? ' · 统治者' : ' · 客人'}
+                        {isFieldCamp ? ' · 首领' : (isRuler ? ' · 统治者' : ' · 客人')}
                       </button>
                     );
                   })}
@@ -2567,8 +2637,8 @@ export const TownView = ({
                 <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-2">
                   <div>
                     <div className="text-amber-400 font-bold">{currentLord.title} · {currentLord.name}</div>
-                    <div className="text-xs text-stone-500 mt-1">封地：{getLocationNameById(currentLord.fiefId)}</div>
-                    <div className="text-xs text-stone-500 mt-1">{ownerLord?.id === currentLord.id ? '这是据点的统治者' : '这是一名过路的客人'}</div>
+                    <div className="text-xs text-stone-500 mt-1">{isFieldCamp ? `目标：${getLocationNameById(currentLocation.camp?.targetLocationId)}` : `封地：${getLocationNameById(currentLord.fiefId)}`}</div>
+                    <div className="text-xs text-stone-500 mt-1">{isFieldCamp ? '这是营地的首领' : (ownerLord?.id === currentLord.id ? '这是据点的统治者' : '这是一名过路的客人')}</div>
                   </div>
                   <div className="text-xs text-stone-500">关系：{getLordRelationLabel(currentLord.relation)}（{currentLord.relation}）</div>
                 </div>

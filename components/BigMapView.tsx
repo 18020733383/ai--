@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Brain, Coffee, Coins, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Utensils, Zap } from 'lucide-react';
+import { AlertTriangle, Brain, Coffee, Coins, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Utensils, Zap } from 'lucide-react';
 import { Location, MineralId, MineralPurity, PlayerState } from '../types';
 import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../constants';
 
@@ -401,6 +401,7 @@ export const BigMapView = ({
               <div className="relative p-1 rounded-full border-2 transition-transform hover:scale-110 shadow-lg bg-stone-800 border-amber-600" style={{ transform: `scale(${zoom})` }}>
                 {loc.type === 'CITY' ? <Home className="text-amber-500" size={24} /> :
                   loc.type === 'CASTLE' ? <ShieldAlert className="text-stone-400" size={20} /> :
+                  loc.type === 'FIELD_CAMP' ? <Flag size={20} style={{ color: loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8' }} /> :
                   loc.type === 'ROACH_NEST' ? <span className="text-[20px] leading-none">🪳</span> :
                   loc.type === 'RUINS' ? <Ghost className="text-purple-400" size={20} /> :
                   loc.type === 'GRAVEYARD' ? <Skull className="text-stone-300" size={20} /> :

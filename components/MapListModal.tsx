@@ -46,7 +46,8 @@ export const MapListModal = ({
     LOGIC_PARADOX_MINE: '逻辑悖论深渊',
     BLACKSMITH: '铁匠铺',
     ALTAR: '祭坛',
-    MAGICIAN_LIBRARY: '魔法师图书馆'
+    MAGICIAN_LIBRARY: '魔法师图书馆',
+    FIELD_CAMP: '行军营地'
   };
 
   const typeBadge: Record<Location['type'], string> = {
@@ -71,11 +72,12 @@ export const MapListModal = ({
     LOGIC_PARADOX_MINE: 'bg-violet-900/25 border-violet-900/50 text-violet-200',
     BLACKSMITH: 'bg-orange-900/25 border-orange-900/50 text-orange-200',
     ALTAR: 'bg-indigo-950/30 border-indigo-900/50 text-indigo-200',
-    MAGICIAN_LIBRARY: 'bg-sky-950/30 border-sky-900/50 text-sky-200'
+    MAGICIAN_LIBRARY: 'bg-sky-950/30 border-sky-900/50 text-sky-200',
+    FIELD_CAMP: 'bg-stone-900/40 border-stone-700 text-stone-200'
   };
 
   const mineTypes: Location['type'][] = ['VOID_BUFFER_MINE', 'MEMORY_OVERFLOW_MINE', 'LOGIC_PARADOX_MINE'];
-  const typeOptions = ['ALL', 'MINE', ...Object.keys(typeLabel).filter(type => !mineTypes.includes(type as Location['type']))] as Array<Location['type'] | 'ALL' | 'MINE'>;
+  const typeOptions = ['ALL', 'MINE', ...Object.keys(typeLabel).filter(type => !mineTypes.includes(type as Location['type']) && type !== 'FIELD_CAMP')] as Array<Location['type'] | 'ALL' | 'MINE'>;
   const query = mapListQuery.trim().toLowerCase();
   const activeType = mapListTypeFilter;
   const getLocationBgStyle = (loc: Location) => ({
@@ -84,7 +86,9 @@ export const MapListModal = ({
     backgroundPosition: 'center'
   });
 
-  const sorted = [...locations].sort((a, b) => {
+  const sorted = [...locations]
+    .filter(loc => loc.type !== 'FIELD_CAMP')
+    .sort((a, b) => {
     const at = typeLabel[a.type] ?? a.type;
     const bt = typeLabel[b.type] ?? b.type;
     const typeCmp = at.localeCompare(bt, 'zh-CN');

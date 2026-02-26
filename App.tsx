@@ -3227,54 +3227,67 @@ export default function App() {
         newLocations[portalIndex] = portal;
       }
 
-      const factionRaidSources = newLocations
-        .map((loc, index) => ({ loc, index }))
-        .filter(entry => (
-          entry.loc.factionRaidTargetId &&
-          entry.loc.factionRaidEtaDay &&
-          entry.loc.factionRaidEtaDay <= nextDay &&
-          (entry.loc.factionRaidTroops ?? []).length > 0
-        ));
-      factionRaidSources.forEach(({ loc, index }) => {
-        const targetIndex = newLocations.findIndex(targetLoc => targetLoc.id === loc.factionRaidTargetId);
-        const raidTroops = loc.factionRaidTroops ?? [];
-        const attackerFactionName = loc.factionRaidFactionId
-          ? FACTIONS.find(f => f.id === loc.factionRaidFactionId)?.name ?? loc.factionRaidAttackerName ?? '远征军'
-          : loc.factionRaidAttackerName ?? '远征军';
-        let shouldReturn = false;
-        if (targetIndex >= 0) {
-          const target = { ...newLocations[targetIndex] };
-          if (!target.activeSiege) {
-            const raidPower = calculatePower(raidTroops);
-            target.activeSiege = {
-              attackerName: loc.factionRaidAttackerName ?? attackerFactionName,
-              troops: raidTroops.map(t => ({ ...t })),
-              startDay: nextDay,
-              totalPower: raidPower,
-              siegeEngines: ['SIMPLE_LADDER']
+      const camps = newLocations.filter(loc => loc.type === 'FIELD_CAMP' && loc.camp);
+      camps.forEach(camp => {
+        const meta = camp.camp!;
+        const targetIndex = newLocations.findIndex(loc => loc.id === meta.targetLocationId);
+        const sourceIndex = newLocations.findIndex(loc => loc.id === meta.sourceLocationId);
+        if (targetIndex < 0) {
+          newLocations = newLocations.filter(loc => loc.id !== camp.id);
+          if (sourceIndex >= 0) {
+            newLocations[sourceIndex] = {
+              ...newLocations[sourceIndex],
+              factionRaidTargetId: undefined,
+              factionRaidEtaDay: undefined,
+              factionRaidAttackerName: undefined,
+              factionRaidFactionId: undefined
             };
-            target.isUnderSiege = true;
-            newLocations[targetIndex] = target;
-            logsToAdd.push(`【远征军】${attackerFactionName} 抵达 ${target.name}，开始围攻。`);
-            addLocalLog(target.id, `遭到 ${attackerFactionName} 围攻。`);
-          } else {
-            logsToAdd.push(`【远征军】${attackerFactionName} 抵达 ${target.name} 时战场已被占据，部队撤回。`);
-            shouldReturn = true;
           }
-        } else {
-          logsToAdd.push(`【远征军】${attackerFactionName} 迷失方向，部队撤回。`);
-          shouldReturn = true;
+          return;
         }
-        const updatedSource = {
-          ...loc,
-          garrison: shouldReturn ? mergeTroops(loc.garrison ?? [], raidTroops) : loc.garrison,
-          factionRaidTargetId: undefined,
-          factionRaidEtaDay: undefined,
-          factionRaidTroops: undefined,
-          factionRaidAttackerName: undefined,
-          factionRaidFactionId: undefined
+        const target = { ...newLocations[targetIndex] };
+        const daysLeft = Math.max(1, Math.floor(meta.daysLeft));
+        const nextDaysLeft = Math.max(0, daysLeft - 1);
+        const stepX = (target.coordinates.x - camp.coordinates.x) / daysLeft;
+        const stepY = (target.coordinates.y - camp.coordinates.y) / daysLeft;
+        const nextCamp: Location = {
+          ...camp,
+          description: `一支正在行军的远征军临时扎营。目标：${target.name}。剩余 ${nextDaysLeft} 天。`,
+          coordinates: nextDaysLeft <= 0
+            ? { ...target.coordinates }
+            : { x: camp.coordinates.x + stepX, y: camp.coordinates.y + stepY },
+          camp: { ...meta, daysLeft: nextDaysLeft }
         };
-        newLocations[index] = updatedSource;
+        newLocations = newLocations.map(loc => loc.id === camp.id ? nextCamp : loc);
+        if (nextDaysLeft > 0) return;
+        newLocations = newLocations.filter(loc => loc.id !== camp.id);
+        if (sourceIndex >= 0) {
+          const sourceLoc = newLocations[sourceIndex];
+          newLocations[sourceIndex] = {
+            ...sourceLoc,
+            factionRaidTargetId: undefined,
+            factionRaidEtaDay: undefined,
+            factionRaidAttackerName: undefined,
+            factionRaidFactionId: undefined
+          };
+        }
+        if (target.activeSiege || target.isUnderSiege) {
+          logsToAdd.push(`【行军营地】${meta.attackerName} 抵达 ${target.name} 时战场已被占据，选择撤回。`);
+          return;
+        }
+        const raidTroops = (camp.garrison ?? []).map(t => ({ ...t }));
+        const raidPower = calculatePower(raidTroops);
+        target.activeSiege = {
+          attackerName: meta.attackerName,
+          troops: raidTroops,
+          startDay: nextDay,
+          totalPower: raidPower,
+          siegeEngines: ['SIMPLE_LADDER']
+        };
+        target.isUnderSiege = true;
+        newLocations[targetIndex] = target;
+        logsToAdd.push(`【行军营地】${meta.attackerName} 抵达 ${target.name}，开始围攻。`);
+        addLocalLog(target.id, `遭到 ${meta.attackerName} 围攻。`);
       });
 
       const hostileFactions = FACTIONS.filter(faction => getRelationValue(playerRef.current, 'FACTION', faction.id) <= -40);
@@ -3303,22 +3316,55 @@ export default function App() {
         const etaDay = nextDay + marchDays;
         logsToAdd.push(`【报复】${faction.name} 远征军从 ${source.name} 出发，目标 ${target.name}，预计 ${marchDays} 天后抵达。`);
         addLocalLog(target.id, `侦查到 ${faction.name} 远征军正向此地逼近。`);
-        newLocations = newLocations.map(loc => {
-          if (loc.id === source.id) {
-            const nextLoc = useLordParty && sourceLordParty
-              ? updateStayPartyTroops(loc, sourceLordParty.id, remaining)
-              : { ...loc, garrison: remaining };
-            return updateLordAction({
-              ...nextLoc,
-              factionRaidTargetId: target.id,
-              factionRaidEtaDay: etaDay,
-              factionRaidTroops: attackers,
-              factionRaidAttackerName: `${faction.name}远征军`,
-              factionRaidFactionId: faction.id
-            }, `奉命讨伐玩家据点 ${target.name}`);
-          }
-          return loc;
-        });
+        const attackerName = `${faction.name}远征军`;
+        const leaderName = source.lord ? `${source.lord.title}${source.lord.name}` : `${faction.name}军官`;
+        const campId = `field_camp_${source.id}_${target.id}_${nextDay}`;
+        const camp: Location = {
+          id: campId,
+          name: `${attackerName}·行军营地`,
+          type: 'FIELD_CAMP',
+          description: `一支正在行军的远征军临时扎营。目标：${target.name}。`,
+          coordinates: { ...source.coordinates },
+          terrain: source.terrain,
+          factionId: faction.id,
+          lastRefreshDay: 0,
+          volunteers: [],
+          mercenaries: [],
+          owner: 'ENEMY',
+          isUnderSiege: false,
+          siegeProgress: 0,
+          siegeEngines: [],
+          garrison: attackers.map(t => ({ ...t })),
+          buildings: ['DEFENSE'],
+          constructionQueue: [],
+          siegeEngineQueue: [],
+          lastIncomeDay: 0,
+          camp: {
+            kind: 'FACTION_RAID',
+            sourceLocationId: source.id,
+            targetLocationId: target.id,
+            totalDays: marchDays,
+            daysLeft: marchDays,
+            attackerName,
+            leaderName
+          },
+          lord: source.lord ? { ...source.lord } : undefined
+        };
+        const sourceIndex = newLocations.findIndex(loc => loc.id === source.id);
+        if (sourceIndex >= 0) {
+          const sourceLoc = newLocations[sourceIndex];
+          const nextLoc = useLordParty && sourceLordParty
+            ? updateStayPartyTroops(sourceLoc, sourceLordParty.id, remaining)
+            : { ...sourceLoc, garrison: remaining };
+          newLocations[sourceIndex] = updateLordAction({
+            ...nextLoc,
+            factionRaidTargetId: target.id,
+            factionRaidEtaDay: etaDay,
+            factionRaidAttackerName: attackerName,
+            factionRaidFactionId: faction.id
+          }, `奉命讨伐玩家据点 ${target.name}`);
+        }
+        newLocations.push(camp);
       });
 
       if (nextDay % 7 === 0) {
@@ -3384,22 +3430,55 @@ export default function App() {
           const etaDay = nextDay + marchDays;
           logsToAdd.push(`【远征军】${faction.name} 远征军从 ${source.name} 出发，目标 ${target.name}，预计 ${marchDays} 天后抵达。`);
           addLocalLog(target.id, `侦查到 ${faction.name} 远征军正向此地逼近。`);
-          newLocations = newLocations.map(loc => {
-            if (loc.id === source.id) {
-              const nextLoc = useLordParty && sourceLordParty
-                ? updateStayPartyTroops(loc, sourceLordParty.id, remaining)
-                : { ...loc, garrison: remaining };
-              return updateLordAction({
-                ...nextLoc,
-                factionRaidTargetId: target.id,
-                factionRaidEtaDay: etaDay,
-                factionRaidTroops: attackers,
-                factionRaidAttackerName: `${faction.name}远征军`,
-                factionRaidFactionId: faction.id
-              }, `奉命出兵，攻打了 ${target.name}`);
-            }
-            return loc;
-          });
+          const attackerName = `${faction.name}远征军`;
+          const leaderName = source.lord ? `${source.lord.title}${source.lord.name}` : `${faction.name}军官`;
+          const campId = `field_camp_${source.id}_${target.id}_${nextDay}`;
+          const camp: Location = {
+            id: campId,
+            name: `${attackerName}·行军营地`,
+            type: 'FIELD_CAMP',
+            description: `一支正在行军的远征军临时扎营。目标：${target.name}。`,
+            coordinates: { ...source.coordinates },
+            terrain: source.terrain,
+            factionId: faction.id,
+            lastRefreshDay: 0,
+            volunteers: [],
+            mercenaries: [],
+            owner: 'ENEMY',
+            isUnderSiege: false,
+            siegeProgress: 0,
+            siegeEngines: [],
+            garrison: attackers.map(t => ({ ...t })),
+            buildings: ['DEFENSE'],
+            constructionQueue: [],
+            siegeEngineQueue: [],
+            lastIncomeDay: 0,
+            camp: {
+              kind: 'FACTION_RAID',
+              sourceLocationId: source.id,
+              targetLocationId: target.id,
+              totalDays: marchDays,
+              daysLeft: marchDays,
+              attackerName,
+              leaderName
+            },
+            lord: source.lord ? { ...source.lord } : undefined
+          };
+          const sourceIndex = newLocations.findIndex(loc => loc.id === source.id);
+          if (sourceIndex >= 0) {
+            const sourceLoc = newLocations[sourceIndex];
+            const nextLoc = useLordParty && sourceLordParty
+              ? updateStayPartyTroops(sourceLoc, sourceLordParty.id, remaining)
+              : { ...sourceLoc, garrison: remaining };
+            newLocations[sourceIndex] = updateLordAction({
+              ...nextLoc,
+              factionRaidTargetId: target.id,
+              factionRaidEtaDay: etaDay,
+              factionRaidAttackerName: attackerName,
+              factionRaidFactionId: faction.id
+            }, `奉命出兵，攻打了 ${target.name}`);
+          }
+          newLocations.push(camp);
         });
         const strongholds = newLocations.filter(loc => (
           loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE'
@@ -3996,6 +4075,15 @@ export default function App() {
           { name: "警铃", description: "挂满空罐头的绳子，一碰就响。" }
         ];
         details.flavorText = "一群乌合之众的窝点。";
+    } else if (location.type === 'FIELD_CAMP') {
+        details.wallLevel = 1;
+        details.wallName = "木栅与拒马";
+        details.wallDesc = "临时搭建的木栅与拒马，能提供有限的掩护。";
+        details.mechanisms = [
+          { name: "简易壕沟", description: "浅沟与土堆，能拖慢冲锋并提供掩体。" },
+          { name: "岗哨旗台", description: "升起旗帜、传递信号，便于组织防御。" }
+        ];
+        details.flavorText = "行军中的部队在此扎营，警戒森严。";
     } else if (location.type === 'ASYLUM') {
         details.wallLevel = 4;
         details.wallName = "高压电网";
@@ -4120,6 +4208,36 @@ export default function App() {
   };
 
   const enterLocation = (location: Location) => {
+     if (location.type === 'FIELD_CAMP') {
+       if (location.owner === 'ENEMY') {
+         const troops = (location.garrison ?? []).map(t => ({ ...t }));
+         const militiaTemplate = getTroopTemplate('militia');
+         const defenseAddon = militiaTemplate ? [{ ...militiaTemplate, count: 8, xp: 0 }] : [];
+         const withDefense = (location.buildings ?? []).includes('DEFENSE')
+           ? mergeTroops(troops, defenseAddon)
+           : troops;
+         const enemy: EnemyForce = {
+           id: `field_camp_${Date.now()}`,
+           name: location.camp?.attackerName ?? location.name,
+           description: `${location.description}${(location.buildings ?? []).includes('DEFENSE') ? '营地四周有简易木栅与拒马。' : ''}`,
+           troops: withDefense,
+           difficulty: '一般',
+           lootPotential: 1.0,
+           terrain: location.terrain,
+           baseTroopId: withDefense[0]?.id ?? 'militia'
+         };
+         addLog(`你接近了 ${location.name}，敌军立即出营迎战！`);
+         setActiveEnemy(enemy);
+         setPendingBattleMeta({ mode: 'FIELD', targetLocationId: location.id, siegeContext: '临时营地：有简易木栅、拒马与壕沟，适合防守反击。' });
+         setPendingBattleIsTraining(false);
+         setView('BATTLE');
+         return;
+       }
+       setCurrentLocation(location);
+       setView('TOWN');
+       addLog(`进入了 ${location.name}。`);
+       return;
+     }
      if (location.type === 'BANDIT_CAMP') {
         setCurrentLocation(location);
         setView('BANDIT_ENCOUNTER');
@@ -4182,7 +4300,7 @@ export default function App() {
      let locUpdated = false;
 
      const isHeavyTrialGrounds = location.type === 'HEAVY_TRIAL_GROUNDS';
-    const isRecruitRefreshExcluded = location.type === 'MYSTERIOUS_CAVE' || location.type === 'IMPOSTER_PORTAL' || location.type === 'ALTAR';
+    const isRecruitRefreshExcluded = location.type === 'MYSTERIOUS_CAVE' || location.type === 'IMPOSTER_PORTAL' || location.type === 'ALTAR' || location.type === 'FIELD_CAMP';
      const shouldRefreshRecruit =
        !isRecruitRefreshExcluded &&
        (player.day - location.lastRefreshDay >= REFRESH_INTERVAL || (isHeavyTrialGrounds && location.mercenaries.length === 0));
@@ -5704,6 +5822,46 @@ export default function App() {
           updateLocationState(updated);
           addLog(`攻城失败，${target.name} 的守军击退了你。攻城器械全部损毁。`);
           addLocationLog(target.id, `围攻被击退，${target.name} 守住城池。`);
+        }
+      }
+      setBattleResult(null);
+      setActiveEnemy(null);
+      setIsBattling(false);
+      setIsBattleStreaming(false);
+      setIsBattleResultFinal(true);
+      setBattleMeta(null);
+      setBattleSnapshot(null);
+      setPendingBattleMeta(null);
+      setPendingBattleIsTraining(false);
+      setView('MAP');
+      return;
+    }
+
+    if (battleMeta?.mode === 'FIELD' && battleMeta.targetLocationId) {
+      const camp = locations.find(l => l.id === battleMeta.targetLocationId && l.type === 'FIELD_CAMP');
+      if (camp && battleResult) {
+        if (battleResult.outcome === 'A') {
+          const meta = camp.camp;
+          setLocations(prev => {
+            let next = prev.filter(l => l.id !== camp.id);
+            if (meta) {
+              next = next.map(l => {
+                if (l.id !== meta.sourceLocationId) return l;
+                return {
+                  ...l,
+                  factionRaidTargetId: undefined,
+                  factionRaidEtaDay: undefined,
+                  factionRaidAttackerName: undefined,
+                  factionRaidFactionId: undefined
+                };
+              });
+            }
+            return next;
+          });
+          addLog(`你摧毁了 ${camp.name}。`);
+          if (meta?.targetLocationId) addLocalLog(meta.targetLocationId, `${meta.attackerName} 的行军营地被击溃。`);
+        } else {
+          addLog(`你未能击溃 ${camp.name}。`);
         }
       }
       setBattleResult(null);
