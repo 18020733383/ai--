@@ -7,6 +7,16 @@ type WorldBoardViewProps = {
   currentLocation: Location | null;
   logs: string[];
   worldBattleReports: WorldBattleReport[];
+  activeBattles: Array<{
+    id: string;
+    locationName: string;
+    attackerName: string;
+    defenderName: string;
+    startDay: number;
+    attackerTroops: Array<{ id: string; name?: string; count: number }>;
+    defenderTroops: Array<{ id: string; name?: string; count: number }>;
+  }>;
+  battleTimeline: Array<{ day: number; count: number }>;
   troopTypeCount: number;
   siegeEngineArchive: Array<{
     type: SiegeEngineType;
@@ -56,6 +66,8 @@ export const WorldBoardView = ({
   currentLocation,
   logs,
   worldBattleReports,
+  activeBattles,
+  battleTimeline,
   troopTypeCount,
   siegeEngineArchive,
   defenseArchive,
@@ -80,6 +92,25 @@ export const WorldBoardView = ({
     RANGED: '远程',
     CAVALRY: '骑兵'
   };
+  const [expandedBattleId, setExpandedBattleId] = React.useState<string | null>(null);
+  const formatTroops = (troops: Array<{ id: string; name?: string; count: number }>) => {
+    if (!troops || troops.length === 0) return '无';
+    return troops.filter(t => t.count > 0).map(t => `${t.name ?? t.id}x${t.count}`).join('，') || '无';
+  };
+  const timeline = battleTimeline.slice(-30);
+  const maxBattleCount = Math.max(1, ...timeline.map(item => item.count));
+  const chartWidth = 320;
+  const chartHeight = 120;
+  const chartPadding = 20;
+  const buildLinePath = () => {
+    if (timeline.length === 0) return '';
+    const stepX = timeline.length > 1 ? (chartWidth - chartPadding * 2) / (timeline.length - 1) : 0;
+    return timeline.map((point, index) => {
+      const x = chartPadding + stepX * index;
+      const y = chartHeight - chartPadding - (point.count / maxBattleCount) * (chartHeight - chartPadding * 2);
+      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+    }).join(' ');
+  };
 
   return (
     <div className="min-h-[80vh] p-4 pt-6">
@@ -103,6 +134,73 @@ export const WorldBoardView = ({
             </Button>
             <Button variant="secondary" onClick={onBackToMap}>返回地图</Button>
             <Button onClick={onExportMarkdown}>导出 Markdown</Button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
+          <div className="bg-stone-900/70 border border-stone-700 rounded p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-stone-200 font-semibold">进行中的战斗</div>
+              <div className="text-xs text-stone-500">{activeBattles.length} 场</div>
+            </div>
+            {activeBattles.length === 0 ? (
+              <div className="text-sm text-stone-500">当前没有战斗发生。</div>
+            ) : (
+              <div className="space-y-3">
+                {activeBattles.map(battle => {
+                  const expanded = expandedBattleId === battle.id;
+                  return (
+                    <div key={battle.id} className="bg-stone-950/60 border border-stone-800 rounded p-3 space-y-2">
+                      <div className="flex items-center justify-between text-sm text-stone-200">
+                        <div>{battle.locationName} · 第 {battle.startDay} 天开战</div>
+                        <button
+                          onClick={() => setExpandedBattleId(expanded ? null : battle.id)}
+                          className="text-xs text-amber-300 hover:text-amber-200"
+                        >
+                          {expanded ? '收起' : '展开'}
+                        </button>
+                      </div>
+                      <div className="text-xs text-stone-400">攻方：{battle.attackerName}</div>
+                      <div className="text-xs text-stone-400">守方：{battle.defenderName}</div>
+                      {expanded && (
+                        <div className="text-xs text-stone-300 space-y-2">
+                          <div>攻方构成：{formatTroops(battle.attackerTroops)}</div>
+                          <div>守方构成：{formatTroops(battle.defenderTroops)}</div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-stone-900/70 border border-stone-700 rounded p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-stone-200 font-semibold">战斗数量趋势</div>
+              <div className="text-xs text-stone-500">近 {timeline.length} 天</div>
+            </div>
+            {timeline.length === 0 ? (
+              <div className="text-sm text-stone-500">暂无统计数据。</div>
+            ) : (
+              <div className="flex items-center justify-center">
+                <svg width={chartWidth} height={chartHeight} viewBox={`0 0 ${chartWidth} ${chartHeight}`}>
+                  <rect x={0} y={0} width={chartWidth} height={chartHeight} fill="none" stroke="rgba(120,113,108,0.25)" />
+                  <path d={buildLinePath()} fill="none" stroke="rgba(245,158,11,0.9)" strokeWidth={2} />
+                  {timeline.map((point, index) => {
+                    if (timeline.length === 1 || index === timeline.length - 1) {
+                      const stepX = timeline.length > 1 ? (chartWidth - chartPadding * 2) / (timeline.length - 1) : 0;
+                      const x = chartPadding + stepX * index;
+                      const y = chartHeight - chartPadding - (point.count / maxBattleCount) * (chartHeight - chartPadding * 2);
+                      return (
+                        <circle key={`${point.day}-${point.count}`} cx={x} cy={y} r={3} fill="rgba(245,158,11,0.9)" />
+                      );
+                    }
+                    return null;
+                  })}
+                </svg>
+              </div>
+            )}
           </div>
         </div>
 

@@ -547,6 +547,9 @@ export default function App() {
   const [battleSnapshot, setBattleSnapshot] = useState<{ playerTroops: Troop[]; enemyTroops: Troop[] } | null>(null);
   const [recentBattleBriefs, setRecentBattleBriefs] = useState<BattleBrief[]>([]);
   const [worldBattleReports, setWorldBattleReports] = useState<WorldBattleReport[]>([]);
+  const [battleTimeline, setBattleTimeline] = useState<{ day: number; count: number }[]>(() => ([
+    { day: INITIAL_PLAYER_STATE.day, count: initialWorld.locations.filter(loc => loc.activeSiege).length }
+  ]));
   const [battlePlan, setBattlePlan] = useState<{
     stance: 'ATTACK' | 'DEFEND' | 'PROTECT';
     layers: { id: string; name: string; hint: string }[];
@@ -709,6 +712,7 @@ export default function App() {
   const playerRef = useRef(player);
   const heroesRef = useRef(heroes);
   const lordsRef = useRef(lords);
+  const battleTimelineRef = useRef(battleTimeline);
   const partyDiaryRef = useRef(partyDiary);
   const defenseAidMetaRef = useRef<{ locationId: string; delta: number; ratio: number } | null>(null);
   const undeadChatListRef = useRef<HTMLDivElement>(null);
@@ -974,6 +978,10 @@ export default function App() {
   useEffect(() => {
     lordsRef.current = lords;
   }, [lords]);
+
+  useEffect(() => {
+    battleTimelineRef.current = battleTimeline;
+  }, [battleTimeline]);
 
   useEffect(() => {
     partyDiaryRef.current = partyDiary;
@@ -2557,6 +2565,7 @@ export default function App() {
     let nextPlayer = { ...playerRef.current };
     let nextHeroes = heroesRef.current.map(h => ({ ...h }));
     let nextLords = lordsRef.current.map(lord => ({ ...lord, partyTroops: lord.partyTroops.map(t => ({ ...t })) }));
+    let nextBattleTimeline = [...battleTimelineRef.current];
     const logsToAdd: string[] = [];
     const isRoachId = (id: string) => id.startsWith('roach_');
     const rollBinomial = (n: number, p: number) => {
@@ -3546,6 +3555,13 @@ export default function App() {
         });
       }
 
+      const activeBattleCount = newLocations.filter(loc => loc.activeSiege).length;
+      if (nextBattleTimeline.length === 0 || nextBattleTimeline[nextBattleTimeline.length - 1].day !== nextDay) {
+        nextBattleTimeline.push({ day: nextDay, count: activeBattleCount });
+      } else {
+        nextBattleTimeline[nextBattleTimeline.length - 1] = { day: nextDay, count: activeBattleCount };
+      }
+
       if (rentCost > 0) logsToAdd.push(`在城内休息一天（-${rentCost} 第纳尔）。`);
       if (workIncomePerDay > 0) logsToAdd.push(`打工收入 +${workIncomePerDay} 第纳尔。`);
 
@@ -3564,6 +3580,7 @@ export default function App() {
     setPlayer(nextPlayer);
     setHeroes(nextHeroes);
     setLords(nextLords);
+    setBattleTimeline(nextBattleTimeline.slice(-60));
     logsToAdd.forEach(addLog);
 
     const finalLocation = location ? syncedLocations.find(l => l.id === location.id) ?? location : undefined;
@@ -4487,12 +4504,26 @@ export default function App() {
     const playerPower = calculatePower(playerTroops);
     const enemyPower = calculatePower(activeEnemy.troops);
     const powerRatio = enemyPower > 0 ? Number((playerPower / enemyPower).toFixed(2)) : playerPower;
+    const findNegotiationLeader = () => {
+      if (pendingBattleMeta?.mode === 'SIEGE' && pendingBattleMeta.targetLocationId) {
+        const target = locations.find(loc => loc.id === pendingBattleMeta.targetLocationId);
+        if (target?.lord) return target.lord;
+      }
+      const named = lordsRef.current.find(lord => activeEnemy.name.includes(lord.name) || activeEnemy.name.includes(`${lord.title}${lord.name}`));
+      return named ?? null;
+    };
+    const leader = findNegotiationLeader();
+    const leaderName = leader ? `${leader.title}${leader.name}` : activeEnemy.name;
+    const leaderType = leader ? 'LORD' : 'COMMANDER';
     setNegotiationState({ status: 'loading', result: null, locked: false });
     try {
       const negotiationLevel = currentPlayer.attributes.negotiation ?? 0;
       const result = await resolveNegotiation({
         enemyName: activeEnemy.name,
         enemyDescription: activeEnemy.description,
+        leaderName,
+        leaderType,
+        leaderRelation: leader?.relation ?? null,
         playerPower,
         enemyPower,
         powerRatio,
@@ -4501,35 +4532,18 @@ export default function App() {
         negotiationLevel,
         playerGold: currentPlayer.gold
       }, openAI);
-      let adjusted = result;
-      if (adjusted.decision === 'CONDITIONAL') {
-        const basePercent = adjusted.goldPercent ?? 30;
-        const reduced = clampValue(basePercent - negotiationLevel * 2, 5, 80);
-        adjusted = { ...adjusted, goldPercent: reduced };
-        if (negotiationLevel >= 8 && powerRatio >= 1.1) {
-          adjusted = { decision: 'RETREAT', reply: '对方被你的气势压制，选择撤军。' };
-        }
-      }
-      if (adjusted.decision === 'REFUSE' && negotiationLevel >= 5) {
-        const forcedPercent = clampValue(60 - negotiationLevel * 3 - Math.round((powerRatio - 1) * 20), 15, 65);
-        adjusted = {
-          decision: 'CONDITIONAL',
-          reply: `在你的游说下，对方松口：交出${forcedPercent}%钱财就撤。`,
-          goldPercent: forcedPercent
-        };
-      }
-      if (adjusted.decision === 'RETREAT') {
-        setNegotiationState({ status: 'result', result: adjusted, locked: false });
-        concludeNegotiationRetreat(adjusted.reply);
+      if (result.decision === 'RETREAT') {
+        setNegotiationState({ status: 'result', result, locked: false });
+        concludeNegotiationRetreat(result.reply);
         return;
       }
-      if (adjusted.decision === 'REFUSE') {
-        addLog(adjusted.reply);
-        setNegotiationState({ status: 'result', result: adjusted, locked: true });
+      if (result.decision === 'REFUSE') {
+        addLog(result.reply);
+        setNegotiationState({ status: 'result', result, locked: true });
         return;
       }
-      addLog(adjusted.reply);
-      setNegotiationState({ status: 'result', result: adjusted, locked: false });
+      addLog(result.reply);
+      setNegotiationState({ status: 'result', result, locked: false });
     } catch (e: any) {
       addLog(`谈判失败：${e.message || '未知错误'}`);
       setNegotiationState({ status: 'idle', result: null, locked: false });
@@ -6973,6 +6987,20 @@ export default function App() {
 
   const renderWorldBoard = () => {
     const troopTypeCount = Object.keys({ ...TROOP_TEMPLATES, ...customTroopTemplates }).length;
+    const activeBattles = locations
+      .filter(loc => loc.activeSiege)
+      .map(loc => {
+        const siege = loc.activeSiege!;
+        return {
+          id: loc.id,
+          locationName: loc.name,
+          attackerName: siege.attackerName,
+          defenderName: loc.lord ? `${loc.lord.title}${loc.lord.name}` : `${loc.name}守军`,
+          startDay: siege.startDay,
+          attackerTroops: siege.troops,
+          defenderTroops: getDefenderTroops(loc)
+        };
+      });
     const factionSnapshots = FACTIONS.map(faction => {
       const factionLocations = locations.filter(loc => loc.factionId === faction.id);
       const cities = factionLocations.filter(loc => loc.type === 'CITY').length;
@@ -7028,6 +7056,8 @@ export default function App() {
         currentLocation={currentLocation}
         logs={logs}
         worldBattleReports={worldBattleReports}
+        activeBattles={activeBattles}
+        battleTimeline={battleTimeline}
         troopTypeCount={troopTypeCount}
         factionSnapshots={factionSnapshots}
         siegeEngineArchive={siegeEngineArchive}

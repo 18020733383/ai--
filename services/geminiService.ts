@@ -547,6 +547,9 @@ export const resolveNegotiation = async (
   context: {
     enemyName: string;
     enemyDescription: string;
+    leaderName: string;
+    leaderType: 'LORD' | 'COMMANDER';
+    leaderRelation?: number | null;
     playerPower: number;
     enemyPower: number;
     powerRatio: number;
@@ -558,15 +561,21 @@ export const resolveNegotiation = async (
   openAI?: OpenAIConfig
 ): Promise<NegotiationResult> => {
   const prompt = `
-你是敌方指挥官，正在与玩家谈判。请根据形势决定是否撤军。
+你是敌方指挥官，正在与玩家谈判。请根据形势、谈判能力、关系与战力决定是否撤军。
 必须输出 JSON：{ "decision": "REFUSE|RETREAT|CONDITIONAL", "reply": "...", "goldPercent": 30 }
 规则：
 1) decision=REFUSE 表示拒绝谈判，玩家不能再次谈判。
 2) decision=RETREAT 表示接受谈判并撤军。
 3) decision=CONDITIONAL 表示要求玩家上交 goldPercent% 钱财后撤军（5~80 之间）。
 4) 谈判等级越高越容易说服你撤军或降低要价。
-5) reply 只输出敌方回复，中文，1~3 行短句。
-6) 只输出 JSON，不要解释。
+5) 若你是领主且与玩家关系很差（<=-30），更倾向拒绝或要高价；关系较好（>=30）更倾向退让。
+6) reply 只输出敌方回复，中文，1~3 行短句。
+7) 只输出 JSON，不要解释。
+
+【指挥官】
+- 身份: ${context.leaderType === 'LORD' ? '领主' : '军官'}
+- 名称: ${context.leaderName}
+- 与玩家关系: ${context.leaderType === 'LORD' ? (context.leaderRelation ?? 0) : '无'}
 
 【战力】
 - 玩家战力: ${context.playerPower}
