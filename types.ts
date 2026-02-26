@@ -420,6 +420,7 @@ export interface Location {
   localLogs?: LocalLogEntry[];
   activeSiege?: {
     attackerName: string;
+    attackerFactionId?: FactionId;
     troops: Troop[];
     startDay: number;
     totalPower: number;

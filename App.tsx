@@ -2420,7 +2420,12 @@ export default function App() {
        return Math.sqrt(dx*dx + dy*dy) < 2;
     });
 
-    // Daily Cycle triggers on arrival for simplicity
+    if (hitLocation?.type === 'FIELD_CAMP') {
+      setPlayer(prev => ({ ...prev, position: arrivalPos }));
+      enterLocation(hitLocation);
+      return;
+    }
+
     processDailyCycle(hitLocation);
   };
 
@@ -3018,6 +3023,7 @@ export default function App() {
          if (!loc.activeSiege) return loc;
          
          const siege = { ...loc.activeSiege };
+         const siegeFactionName = siege.attackerFactionId ? (FACTIONS.find(f => f.id === siege.attackerFactionId)?.name ?? siege.attackerName) : siege.attackerName;
          let garrison = loc.garrison && loc.garrison.length > 0 ? [...loc.garrison] : buildGarrisonTroops(loc);
          const stayParties = (loc.stayParties ?? []).map(party => ({
            ...party,
@@ -3078,28 +3084,29 @@ export default function App() {
         }
          
          if (garrisonCount <= 0) {
-             // Defenders wiped - Sacked!
-             logsToAdd.push(`【据点陷落】${loc.name} 的守军全军覆没，据点被伪人占领！`);
-            addLocalLog(loc.id, `${loc.name} 守军覆灭，城池陷落。`);
+             logsToAdd.push(`【据点陷落】${loc.name} 的守军全军覆没，据点被 ${siegeFactionName} 占领！`);
+             addLocalLog(loc.id, `${loc.name} 守军覆灭，城池陷落。`);
              return {
                  ...loc,
                  owner: 'ENEMY',
+                 factionId: siege.attackerFactionId ?? undefined,
                  garrison: siege.troops, // Attackers move in
                  stayParties: [],
                  stationedArmies: [],
                  activeSiege: undefined,
-                 sackedUntilDay: nextDay + 36500,
+                 sackedUntilDay: undefined,
                  lastRefreshDay: nextDay,
                  volunteers: [],
                  mercenaries: [],
+                 lord: undefined,
                  isUnderSiege: false
              };
          }
          
         if (attackerCount <= 0) {
              // Attackers wiped - Siege Broken
-             logsToAdd.push(`【围攻解除】${loc.name} 的守军击溃了伪人进攻部队！`);
-            addLocalLog(loc.id, `伪人围攻被击溃，守军守住城池。`);
+             logsToAdd.push(`【围攻解除】${loc.name} 的守军击溃了 ${siegeFactionName} 的进攻部队！`);
+             addLocalLog(loc.id, `围攻被击溃，守军守住城池。`);
              return {
                  ...loc,
                  garrison: garrison,
@@ -3123,7 +3130,7 @@ export default function App() {
             if (available.length > 0) {
                 const newEngine = available[Math.floor(Math.random() * available.length)];
                 siege.siegeEngines = [...currentEngines, newEngine];
-                logsToAdd.push(`【围攻情报】围攻 ${loc.name} 的伪人制造了 ${getSiegeEngineName(newEngine)}。`);
+                logsToAdd.push(`【围攻情报】围攻 ${loc.name} 的 ${siegeFactionName} 制造了 ${getSiegeEngineName(newEngine)}。`);
             }
         }
 
@@ -3179,50 +3186,60 @@ export default function App() {
           if (hasRaidingArmy && !isRaiding) {
              const target = pickImposterTarget(portal, newLocations);
              if (target) {
+               const marchDays = randomInt(2, 4);
+               const etaDay = nextDay + marchDays;
+               const raidingArmy = updatedStationed[0];
+               portal.stationedArmies = updatedStationed.slice(1);
                portal.imposterRaidTargetId = target.id;
-               portal.imposterRaidEtaDay = nextDay + randomInt(2, 4);
+               portal.imposterRaidEtaDay = etaDay;
+               const campId = `field_camp_${portal.id}_${target.id}_${nextDay}`;
+               const dx = target.coordinates.x - portal.coordinates.x;
+               const dy = target.coordinates.y - portal.coordinates.y;
+               const distance = Math.hypot(dx, dy);
+               const fraction = distance > 0 ? Math.min(0.18, 1 / Math.max(2, Math.round(marchDays * 1.2))) : 0;
+               const initialCoordinates = {
+                 x: portal.coordinates.x + dx * fraction,
+                 y: portal.coordinates.y + dy * fraction
+               };
+               const camp: Location = {
+                 id: campId,
+                 name: `${raidingArmy.name}·行军营地`,
+                 type: 'FIELD_CAMP',
+                 description: `裂隙军团正在行军。目标：${target.name}。`,
+                 coordinates: initialCoordinates,
+                 terrain: portal.terrain,
+                 factionId: undefined,
+                 lastRefreshDay: 0,
+                 volunteers: [],
+                 mercenaries: [],
+                 owner: 'ENEMY',
+                 isUnderSiege: false,
+                 siegeProgress: 0,
+                 siegeEngines: [],
+                 garrison: raidingArmy.troops.map(t => ({ ...t })),
+                 buildings: ['DEFENSE'],
+                 constructionQueue: [],
+                 siegeEngineQueue: [],
+                 lastIncomeDay: 0,
+                 camp: {
+                   kind: 'IMPOSTER_RAID',
+                   sourceLocationId: portal.id,
+                   targetLocationId: target.id,
+                   totalDays: marchDays,
+                   daysLeft: marchDays,
+                   attackerName: raidingArmy.name,
+                   leaderName: '裂隙军官'
+                 },
+                 lord: undefined
+               };
                newLocations = newLocations.map(loc => loc.id === target.id ? {
                  ...loc,
-                 imposterAlertUntilDay: portal.imposterRaidEtaDay
+                 imposterAlertUntilDay: etaDay
                } : loc);
                logsToAdd.push(`【伪人入侵】传送门的部队正向 ${target.name} 逼近。`);
+               newLocations.push(camp);
              }
           }
-
-        // 4. Arrival Logic
-        if (portal.imposterRaidTargetId && portal.imposterRaidEtaDay && nextDay >= portal.imposterRaidEtaDay) {
-           const targetIndex = newLocations.findIndex(loc => loc.id === portal.imposterRaidTargetId);
-           if (targetIndex >= 0) {
-             const target = { ...newLocations[targetIndex] };
-             const armies = portal.stationedArmies ?? [];
-             if (armies.length > 0) {
-                 const raidingArmy = armies[0];
-                 const raidPower = calculatePower(raidingArmy.troops);
-                 
-                 target.activeSiege = {
-                    attackerName: raidingArmy.name,
-                    troops: raidingArmy.troops.map(t => ({...t})),
-                    startDay: nextDay,
-                    totalPower: raidPower,
-                    siegeEngines: ['SIMPLE_LADDER']
-                 };
-                 
-                 portal.stationedArmies = armies.slice(1);
-                 
-                 logsToAdd.push(`【伪人入侵】${raidingArmy.name} 抵达 ${target.name}，开始围攻！`);
-                 addLocalLog(target.id, `遭到 ${raidingArmy.name} 围攻。`);
-             }
-             
-             target.imposterAlertUntilDay = undefined;
-             newLocations[targetIndex] = target;
-             
-             portal.imposterRaidTargetId = undefined;
-             portal.imposterRaidEtaDay = undefined;
-           } else {
-             portal.imposterRaidTargetId = undefined;
-             portal.imposterRaidEtaDay = undefined;
-           }
-        }
 
         newLocations[portalIndex] = portal;
       }
@@ -3235,13 +3252,16 @@ export default function App() {
         if (targetIndex < 0) {
           newLocations = newLocations.filter(loc => loc.id !== camp.id);
           if (sourceIndex >= 0) {
-            newLocations[sourceIndex] = {
-              ...newLocations[sourceIndex],
-              factionRaidTargetId: undefined,
-              factionRaidEtaDay: undefined,
-              factionRaidAttackerName: undefined,
-              factionRaidFactionId: undefined
-            };
+            const source = newLocations[sourceIndex];
+            newLocations[sourceIndex] = meta.kind === 'IMPOSTER_RAID'
+              ? { ...source, imposterRaidTargetId: undefined, imposterRaidEtaDay: undefined }
+              : {
+                  ...source,
+                  factionRaidTargetId: undefined,
+                  factionRaidEtaDay: undefined,
+                  factionRaidAttackerName: undefined,
+                  factionRaidFactionId: undefined
+                };
           }
           return;
         }
@@ -3263,13 +3283,15 @@ export default function App() {
         newLocations = newLocations.filter(loc => loc.id !== camp.id);
         if (sourceIndex >= 0) {
           const sourceLoc = newLocations[sourceIndex];
-          newLocations[sourceIndex] = {
-            ...sourceLoc,
-            factionRaidTargetId: undefined,
-            factionRaidEtaDay: undefined,
-            factionRaidAttackerName: undefined,
-            factionRaidFactionId: undefined
-          };
+          newLocations[sourceIndex] = meta.kind === 'IMPOSTER_RAID'
+            ? { ...sourceLoc, imposterRaidTargetId: undefined, imposterRaidEtaDay: undefined }
+            : {
+                ...sourceLoc,
+                factionRaidTargetId: undefined,
+                factionRaidEtaDay: undefined,
+                factionRaidAttackerName: undefined,
+                factionRaidFactionId: undefined
+              };
         }
         if (target.activeSiege || target.isUnderSiege) {
           logsToAdd.push(`【行军营地】${meta.attackerName} 抵达 ${target.name} 时战场已被占据，选择撤回。`);
@@ -3279,12 +3301,16 @@ export default function App() {
         const raidPower = calculatePower(raidTroops);
         target.activeSiege = {
           attackerName: meta.attackerName,
+          attackerFactionId: camp.factionId,
           troops: raidTroops,
           startDay: nextDay,
           totalPower: raidPower,
           siegeEngines: ['SIMPLE_LADDER']
         };
         target.isUnderSiege = true;
+        if (meta.kind === 'IMPOSTER_RAID') {
+          target.imposterAlertUntilDay = undefined;
+        }
         newLocations[targetIndex] = target;
         logsToAdd.push(`【行军营地】${meta.attackerName} 抵达 ${target.name}，开始围攻。`);
         addLocalLog(target.id, `遭到 ${meta.attackerName} 围攻。`);
@@ -5863,14 +5889,19 @@ export default function App() {
             if (meta) {
               next = next.map(l => {
                 if (l.id !== meta.sourceLocationId) return l;
-                return {
-                  ...l,
-                  factionRaidTargetId: undefined,
-                  factionRaidEtaDay: undefined,
-                  factionRaidAttackerName: undefined,
-                  factionRaidFactionId: undefined
-                };
+                return meta.kind === 'IMPOSTER_RAID'
+                  ? { ...l, imposterRaidTargetId: undefined, imposterRaidEtaDay: undefined }
+                  : {
+                      ...l,
+                      factionRaidTargetId: undefined,
+                      factionRaidEtaDay: undefined,
+                      factionRaidAttackerName: undefined,
+                      factionRaidFactionId: undefined
+                    };
               });
+              if (meta.kind === 'IMPOSTER_RAID') {
+                next = next.map(l => l.id === meta.targetLocationId ? { ...l, imposterAlertUntilDay: undefined } : l);
+              }
             }
             return next;
           });
