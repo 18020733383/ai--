@@ -63,6 +63,7 @@ type NegotiationState = {
   result: NegotiationResult | null;
   locked: boolean;
 };
+type NegotiationLine = { role: 'PLAYER' | 'ENEMY'; text: string };
 
 const MINERAL_PURITY_LABELS: Record<MineralPurity, string> = {
   1: '裂纹',
@@ -541,6 +542,10 @@ export default function App() {
     result: null,
     locked: false
   });
+  const [negotiationDialogue, setNegotiationDialogue] = useState<NegotiationLine[]>([]);
+  const [negotiationInput, setNegotiationInput] = useState('');
+  const [negotiationOpen, setNegotiationOpen] = useState(false);
+  const [negotiationError, setNegotiationError] = useState<string | null>(null);
   const [battleResult, setBattleResult] = useState<BattleResult | null>(null);
   const [currentRoundIndex, setCurrentRoundIndex] = useState(0); 
   const [isBattling, setIsBattling] = useState(false);
@@ -727,6 +732,10 @@ export default function App() {
       result: null,
       locked: false
     });
+    setNegotiationDialogue([]);
+    setNegotiationInput('');
+    setNegotiationOpen(false);
+    setNegotiationError(null);
   }, [activeEnemy?.id, activeEnemy?.name, activeEnemy?.troops?.length]);
 
     // Work Loop
@@ -4491,12 +4500,23 @@ export default function App() {
     setView('MAP');
   };
 
-  const startNegotiation = async () => {
+  const startNegotiation = () => {
+    if (!activeEnemy) return;
+    setNegotiationOpen(true);
+    setNegotiationError(null);
+    if (negotiationDialogue.length === 0) {
+      setNegotiationDialogue([{ role: 'ENEMY', text: `${activeEnemy.name} 正注视着你，等待你的条件。` }]);
+    }
+  };
+
+  const sendNegotiationMessage = async () => {
     if (!activeEnemy) return;
     if (negotiationState.locked || negotiationState.status === 'loading') return;
+    const text = negotiationInput.trim();
+    if (!text) return;
     const openAI = buildAIConfig();
     if (!openAI) {
-      addLog('未配置 AI 模型，无法谈判。');
+      setNegotiationError('未配置 AI 模型，无法谈判。');
       return;
     }
     const currentPlayer = playerRef.current;
@@ -4504,20 +4524,24 @@ export default function App() {
     const playerPower = calculatePower(playerTroops);
     const enemyPower = calculatePower(activeEnemy.troops);
     const powerRatio = enemyPower > 0 ? Number((playerPower / enemyPower).toFixed(2)) : playerPower;
-    const findNegotiationLeader = () => {
-      if (pendingBattleMeta?.mode === 'SIEGE' && pendingBattleMeta.targetLocationId) {
-        const target = locations.find(loc => loc.id === pendingBattleMeta.targetLocationId);
-        if (target?.lord) return target.lord;
-      }
-      const named = lordsRef.current.find(lord => activeEnemy.name.includes(lord.name) || activeEnemy.name.includes(`${lord.title}${lord.name}`));
-      return named ?? null;
-    };
-    const leader = findNegotiationLeader();
-    const leaderName = leader ? `${leader.title}${leader.name}` : activeEnemy.name;
-    const leaderType = leader ? 'LORD' : 'COMMANDER';
-    setNegotiationState({ status: 'loading', result: null, locked: false });
+    const nextDialogue = [...negotiationDialogue, { role: 'PLAYER' as const, text }];
+    setNegotiationDialogue(nextDialogue);
+    setNegotiationInput('');
+    setNegotiationError(null);
+    setNegotiationState({ status: 'loading', result: negotiationState.result, locked: negotiationState.locked });
     try {
       const negotiationLevel = currentPlayer.attributes.negotiation ?? 0;
+      const findNegotiationLeader = () => {
+        if (pendingBattleMeta?.mode === 'SIEGE' && pendingBattleMeta.targetLocationId) {
+          const target = locations.find(loc => loc.id === pendingBattleMeta.targetLocationId);
+          if (target?.lord) return target.lord;
+        }
+        const named = lordsRef.current.find(lord => activeEnemy.name.includes(lord.name) || activeEnemy.name.includes(`${lord.title}${lord.name}`));
+        return named ?? null;
+      };
+      const leader = findNegotiationLeader();
+      const leaderName = leader ? `${leader.title}${leader.name}` : activeEnemy.name;
+      const leaderType = leader ? 'LORD' : 'COMMANDER';
       const result = await resolveNegotiation({
         enemyName: activeEnemy.name,
         enemyDescription: activeEnemy.description,
@@ -4530,23 +4554,24 @@ export default function App() {
         playerRaceSummary: buildRaceComposition(playerTroops),
         enemyRaceSummary: buildRaceComposition(activeEnemy.troops),
         negotiationLevel,
-        playerGold: currentPlayer.gold
+        playerGold: currentPlayer.gold,
+        playerMessage: text,
+        history: nextDialogue
       }, openAI);
+      setNegotiationDialogue(prev => [...prev, { role: 'ENEMY', text: result.reply }]);
       if (result.decision === 'RETREAT') {
         setNegotiationState({ status: 'result', result, locked: false });
         concludeNegotiationRetreat(result.reply);
         return;
       }
       if (result.decision === 'REFUSE') {
-        addLog(result.reply);
         setNegotiationState({ status: 'result', result, locked: true });
         return;
       }
-      addLog(result.reply);
       setNegotiationState({ status: 'result', result, locked: false });
     } catch (e: any) {
-      addLog(`谈判失败：${e.message || '未知错误'}`);
-      setNegotiationState({ status: 'idle', result: null, locked: false });
+      setNegotiationError(`谈判失败：${e.message || '未知错误'}`);
+      setNegotiationState({ status: 'idle', result: negotiationState.result, locked: negotiationState.locked });
     }
   };
 
@@ -7441,6 +7466,13 @@ export default function App() {
       pendingBattleIsTraining={pendingBattleIsTraining}
       locations={locations}
       negotiationState={negotiationState}
+      negotiationOpen={negotiationOpen}
+      negotiationDialogue={negotiationDialogue}
+      negotiationInput={negotiationInput}
+      negotiationError={negotiationError}
+      setNegotiationInput={setNegotiationInput}
+      onSendNegotiation={sendNegotiationMessage}
+      onCloseNegotiation={() => setNegotiationOpen(false)}
       battlePlan={battlePlan}
       draggingTroopId={draggingTroopId}
       hoveredTroop={hoveredTroop}

@@ -557,9 +557,14 @@ export const resolveNegotiation = async (
     enemyRaceSummary: string;
     negotiationLevel: number;
     playerGold: number;
+    playerMessage: string;
+    history: Array<{ role: 'PLAYER' | 'ENEMY'; text: string }>;
   },
   openAI?: OpenAIConfig
 ): Promise<NegotiationResult> => {
+  const historyText = context.history
+    .map(line => `${line.role === 'PLAYER' ? '玩家' : '敌方'}: ${line.text}`)
+    .join('\n');
   const prompt = `
 你是敌方指挥官，正在与玩家谈判。请根据形势、谈判能力、关系与战力决定是否撤军。
 必须输出 JSON：{ "decision": "REFUSE|RETREAT|CONDITIONAL", "reply": "...", "goldPercent": 30 }
@@ -588,6 +593,10 @@ export const resolveNegotiation = async (
 
 【玩家谈判等级】${context.negotiationLevel}
 【玩家金币】${context.playerGold}
+
+【谈判内容】
+${historyText || '（暂无）'}
+玩家最新发言：${context.playerMessage}
   `.trim();
 
   const openAIConfig = requireOpenAIConfig(openAI);
