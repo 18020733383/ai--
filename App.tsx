@@ -1050,20 +1050,16 @@ export default function App() {
           setView('TOWN');
           setTownTab('HABITAT');
         }
-      }, 700);
+      }, 350);
       return () => clearTimeout(finishTimer);
     }
 
     const timer = setTimeout(() => {
       if (!currentLocation) return;
-      if (currentLocation.id !== habitatStayState.locationId) {
-        addLog('栖息被打断：你离开了栖息地。');
-        setHabitatStayState(null);
-        return;
-      }
+      if (currentLocation.id !== habitatStayState.locationId) return;
       processDailyCycle(currentLocation, 0, 1, 0, true);
       setHabitatStayState(prev => prev ? { ...prev, daysPassed: prev.daysPassed + 1 } : null);
-    }, 160);
+    }, 50);
 
     return () => clearTimeout(timer);
   }, [habitatStayState]);
@@ -2537,6 +2533,7 @@ export default function App() {
   const moveTo = (targetX: number, targetY: number, locationId?: string) => {
     if (isDragging) return;
     if (targetPosition) return; // Already moving
+    if (workState?.isActive || miningState?.isActive || roachLureState?.isActive || altarRecruitState?.isActive || habitatStayState?.isActive) return;
     
     // Find location object if ID provided
     const loc = locations.find(l => l.id === locationId);
@@ -8517,6 +8514,26 @@ export default function App() {
             miningState={miningState}
             roachLureState={roachLureState}
             habitatStayState={habitatStayState}
+            onAbortWork={() => {
+              if (!workState?.isActive) return;
+              addLog('你中止了打工。');
+              setWorkState(null);
+            }}
+            onAbortMining={() => {
+              if (!miningState?.isActive) return;
+              addLog('你中止了采矿。');
+              setMiningState(null);
+            }}
+            onAbortRoachLure={() => {
+              if (!roachLureState?.isActive) return;
+              addLog('你中止了吸引蟑螂。');
+              setRoachLureState(null);
+            }}
+            onAbortHabitat={() => {
+              if (!habitatStayState?.isActive) return;
+              addLog('你中止了栖息。');
+              setHabitatStayState(null);
+            }}
             hoveredLocation={hoveredLocation}
             mousePos={mousePos}
             mapRef={mapRef}

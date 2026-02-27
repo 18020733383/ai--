@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.22',
+    date: '2026-02-27',
+    items: [
+      '栖息地快进间隔缩短至 50ms',
+      '快进期间禁止误触移动，改为通过“中止”按钮退出',
+      '打工/采矿/吸引蟑螂/栖息的进度卡片新增中止按钮'
+    ]
+  },
+  {
     version: '0.3.21',
     date: '2026-02-27',
     items: [

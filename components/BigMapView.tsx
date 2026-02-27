@@ -2,6 +2,7 @@ import React from 'react';
 import { AlertTriangle, Brain, Coffee, Coins, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Utensils, Zap } from 'lucide-react';
 import { Location, MineralId, MineralPurity, PlayerState } from '../types';
 import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../constants';
+import { Button } from './Button';
 
 type WorkState = {
   isActive: boolean;
@@ -44,6 +45,10 @@ type BigMapViewProps = {
   miningState: MiningState | null;
   roachLureState: RoachLureState | null;
   habitatStayState: HabitatStayState | null;
+  onAbortWork: () => void;
+  onAbortMining: () => void;
+  onAbortRoachLure: () => void;
+  onAbortHabitat: () => void;
   hoveredLocation: Location | null;
   mousePos: { x: number; y: number };
   mapRef: React.RefObject<HTMLDivElement>;
@@ -63,6 +68,10 @@ export const BigMapView = ({
   miningState,
   roachLureState,
   habitatStayState,
+  onAbortWork,
+  onAbortMining,
+  onAbortRoachLure,
+  onAbortHabitat,
   hoveredLocation,
   mousePos,
   mapRef,
@@ -73,6 +82,7 @@ export const BigMapView = ({
   setHoveredLocation
 }: BigMapViewProps) => {
   const unitSize = 10 * zoom;
+  const isTimeSkipActive = !!(workState?.isActive || miningState?.isActive || roachLureState?.isActive || habitatStayState?.isActive);
   const imposterPortal = locations.find(loc => loc.type === 'IMPOSTER_PORTAL');
   const fieldCampCount = locations.filter(loc => loc.type === 'FIELD_CAMP').length;
   const factionColors = FACTIONS.reduce<Record<string, string>>((acc, faction) => {
@@ -170,7 +180,7 @@ export const BigMapView = ({
         }
       `}</style>
       {workState?.isActive && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-auto">
           <div className="bg-stone-900/90 border-2 border-amber-600 rounded-lg p-6 shadow-2xl flex flex-col items-center gap-4 min-w-[280px] animate-fade-in">
             <div className="flex items-center gap-2 text-amber-500 text-xl font-bold font-serif">
               <Coins className="animate-pulse" />
@@ -205,11 +215,14 @@ export const BigMapView = ({
             <div className="text-xs text-stone-400">
               进度：{workState.daysPassed} / {workState.totalDays} 天
             </div>
+            <Button variant="danger" size="sm" onClick={onAbortWork}>
+              中止
+            </Button>
           </div>
         </div>
       )}
       {miningState?.isActive && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-auto">
           <div className="bg-stone-900/90 border-2 border-emerald-600 rounded-lg p-6 shadow-2xl flex flex-col items-center gap-4 min-w-[300px] animate-fade-in">
             <div className="flex items-center gap-2 text-emerald-400 text-xl font-bold font-serif">
               <Mountain className="animate-pulse" />
@@ -244,11 +257,14 @@ export const BigMapView = ({
             <div className="text-xs text-stone-400">
               进度：{miningState.daysPassed} / {miningState.totalDays} 天
             </div>
+            <Button variant="danger" size="sm" onClick={onAbortMining}>
+              中止
+            </Button>
           </div>
         </div>
       )}
       {roachLureState?.isActive && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-auto">
           <div className="bg-stone-900/90 border-2 border-lime-600 rounded-lg p-6 shadow-2xl flex flex-col items-center gap-4 min-w-[300px] animate-fade-in">
             <div className="flex items-center gap-2 text-lime-300 text-xl font-bold font-serif">
               <span className="animate-pulse">🪳</span>
@@ -283,11 +299,14 @@ export const BigMapView = ({
             <div className="text-xs text-stone-400">
               进度：{roachLureState.daysPassed} / {roachLureState.totalDays} 天
             </div>
+            <Button variant="danger" size="sm" onClick={onAbortRoachLure}>
+              中止
+            </Button>
           </div>
         </div>
       )}
       {habitatStayState?.isActive && (
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-auto">
           <div className="bg-stone-900/90 border-2 border-emerald-600 rounded-lg p-6 shadow-2xl flex flex-col items-center gap-4 min-w-[300px] animate-fade-in">
             <div className="flex items-center gap-2 text-emerald-300 text-xl font-bold font-serif">
               <MapPin className="animate-pulse" />
@@ -314,6 +333,9 @@ export const BigMapView = ({
             <div className="text-xs text-stone-400">
               进度：{habitatStayState.daysPassed} / {habitatStayState.totalDays} 天
             </div>
+            <Button variant="danger" size="sm" onClick={onAbortHabitat}>
+              中止
+            </Button>
           </div>
         </div>
       )}
@@ -431,6 +453,7 @@ export const BigMapView = ({
             key={loc.id}
             onClick={(e) => {
               e.stopPropagation();
+              if (isTimeSkipActive) return;
               moveTo(loc.coordinates.x, loc.coordinates.y, loc.id);
             }}
             onMouseEnter={() => setHoveredLocation(loc)}
