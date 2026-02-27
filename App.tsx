@@ -6697,20 +6697,6 @@ export default function App() {
     const outcomeLabel = (outcome: BattleResult['outcome']) => outcome === 'A' ? '胜利' : '战败';
     const logLines = (logs ?? []).map(item => `- ${item}`).join('\n') || '（无）';
     const pct = (value: number) => `${Math.round(value * 100)}%`;
-    const factionPairs = FACTIONS.flatMap((a, idx) => {
-      return FACTIONS.slice(idx + 1).map(b => {
-        const value = Math.max(-100, Math.min(100, Math.round(Number((worldDiplomacy.factionRelations as any)?.[a.id]?.[b.id] ?? 0))));
-        return `- ${a.name} ↔ ${b.name}：${value}`;
-      });
-    }).join('\n') || '（无）';
-    const factionRaceLines = FACTIONS.map(faction => {
-      const row = (worldDiplomacy.factionRaceRelations as any)?.[faction.id] ?? {};
-      const imposter = Math.max(-100, Math.min(100, Math.round(Number(row.IMPOSTER ?? 0))));
-      const roach = Math.max(-100, Math.min(100, Math.round(Number(row.ROACH ?? 0))));
-      const undead = Math.max(-100, Math.min(100, Math.round(Number(row.UNDEAD ?? 0))));
-      return `- ${faction.name}：伪人${imposter}，蟑螂${roach}，亡灵${undead}`;
-    }).join('\n') || '（无）';
-    const diplomacyEvents = (worldDiplomacy.events ?? []).slice(0, 24).map(e => `- 第${e.day}天：${e.text}（${e.delta >= 0 ? `+${e.delta}` : e.delta}）`).join('\n') || '（无）';
     const reportBlocks = (worldBattleReports ?? []).map((report, index) => {
       const roundLines = (report.rounds ?? []).map(round => {
         const roundCasualtiesA = round.casualtiesA ?? (round as any).playerCasualties ?? [];
@@ -6772,17 +6758,6 @@ export default function App() {
       '',
       '## 事件日志',
       logLines,
-      '',
-      '## 外交与关系',
-      '',
-      '### 势力关系（两两）',
-      factionPairs,
-      '',
-      '### 势力对物种态度',
-      factionRaceLines,
-      '',
-      '### 近期外交事件',
-      diplomacyEvents,
       '',
       '## 战斗详情',
       reportBlocks,
@@ -7509,7 +7484,6 @@ export default function App() {
         currentLocation={currentLocation}
         logs={logs}
         worldBattleReports={worldBattleReports}
-        worldDiplomacy={worldDiplomacy}
         activeBattles={activeBattles}
         battleTimeline={battleTimeline}
         troopTypeCount={troopTypeCount}
@@ -7524,30 +7498,28 @@ export default function App() {
   };
 
   const renderRelations = () => {
-    const matrix = normalizeRelationMatrix(player.relationMatrix);
-    const factionItems = FACTIONS.map(faction => ({
+    const factionRows = FACTIONS.map(faction => ({
       id: faction.id,
       name: faction.name,
-      value: matrix.factions[faction.id] ?? 0
+      shortName: faction.shortName,
+      color: faction.color
     }));
-    type MatrixEntityId = 'PLAYER' | RaceId;
-    const matrixIds: MatrixEntityId[] = ['PLAYER', ...(Object.keys(RACE_LABELS) as RaceId[])];
-    const matrixLabels: Record<MatrixEntityId, string> = { PLAYER: player.name || '流浪领主', ...RACE_LABELS };
-    const getMatrixValue = (rowId: MatrixEntityId, colId: MatrixEntityId) => {
-      if (rowId === colId) return null;
-      if (rowId === 'PLAYER' && colId !== 'PLAYER') return matrix.races[colId] ?? 0;
-      if (colId === 'PLAYER' && rowId !== 'PLAYER') return matrix.races[rowId] ?? 0;
-      return 0;
-    };
+    const raceIds = Object.keys(RACE_LABELS) as RaceId[];
     const getCellStyle = (value: number) => {
       const intensity = Math.min(1, Math.abs(value) / 100);
-      if (value > 0) {
-        return { backgroundColor: `rgba(16,185,129, ${0.15 + intensity * 0.55})`, color: '#ecfdf5' };
-      }
-      if (value < 0) {
-        return { backgroundColor: `rgba(239,68,68, ${0.15 + intensity * 0.55})`, color: '#fee2e2' };
-      }
-      return { backgroundColor: 'rgba(120,113,108,0.2)', color: '#e7e5e4' };
+      if (value > 0) return { backgroundColor: `rgba(16,185,129, ${0.12 + intensity * 0.55})`, color: '#ecfdf5' };
+      if (value < 0) return { backgroundColor: `rgba(239,68,68, ${0.12 + intensity * 0.55})`, color: '#fee2e2' };
+      return { backgroundColor: 'rgba(120,113,108,0.22)', color: '#e7e5e4' };
+    };
+    const getTone = (value: number) => {
+      if (value >= 60) return '同盟';
+      if (value >= 30) return '友好';
+      if (value >= 10) return '缓和';
+      if (value <= -80) return '死敌';
+      if (value <= -60) return '战争';
+      if (value <= -30) return '敌对';
+      if (value <= -10) return '紧张';
+      return '中立';
     };
     const lordItems = Array.from(new Map(
       locations
@@ -7563,59 +7535,54 @@ export default function App() {
           }
         ])
     ).values()).sort((a, b) => b.value - a.value);
-    const events = (player.relationEvents ?? []).slice(0, 18);
+    const diplomacyEvents = (worldDiplomacy.events ?? []).slice(0, 18);
+    const personalEvents = (player.relationEvents ?? []).slice(0, 12);
 
     return (
-      <div className="max-w-5xl mx-auto px-4">
+      <div className="max-w-6xl mx-auto px-4">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-serif text-amber-400">关系网络</h2>
           <Button onClick={() => setView('MAP')} variant="secondary">返回地图</Button>
         </div>
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
           <div className="bg-stone-900 border border-stone-700 rounded-lg p-4">
-            <div className="text-stone-200 font-semibold mb-3">人类势力关系</div>
-            <div className="space-y-2">
-              {factionItems.map(item => {
-                const tone = getRelationTone(item.value);
-                return (
-                  <div key={item.id} className="flex items-center justify-between">
-                    <span className="text-stone-200">{item.name}</span>
-                    <div className="flex items-center gap-3">
-                      <span className={`text-xs ${tone.color}`}>{tone.label}</span>
-                      <span className="text-sm text-stone-300">{item.value}</span>
-                    </div>
-                  </div>
-                );
-              })}
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-stone-200 font-semibold">势力外交关系</div>
+              <div className="text-xs text-stone-500">{factionRows.length} 个势力</div>
             </div>
-          </div>
-          <div className="bg-stone-900 border border-stone-700 rounded-lg p-4 md:col-span-2">
-            <div className="text-stone-200 font-semibold mb-3">种族关系矩阵</div>
             <div className="overflow-x-auto">
-              <table className="min-w-[640px] w-full border-collapse text-xs">
+              <table className="min-w-[680px] w-full border-collapse text-xs">
                 <thead>
                   <tr>
-                    <th className="px-3 py-2 text-left text-stone-400 border border-stone-800">阵营</th>
-                    {matrixIds.map(colId => (
-                      <th key={colId} className="px-3 py-2 text-center text-stone-300 border border-stone-800 whitespace-nowrap">
-                        {matrixLabels[colId]}
+                    <th className="p-2 text-left text-stone-400 font-semibold">关系</th>
+                    {factionRows.map(f => (
+                      <th key={f.id} className="p-2 text-left text-stone-400 font-semibold">
+                        <span className="inline-flex items-center gap-2">
+                          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: f.color }} />
+                          {f.shortName}
+                        </span>
                       </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
-                  {matrixIds.map(rowId => (
-                    <tr key={rowId}>
-                      <th className="px-3 py-2 text-left text-stone-300 border border-stone-800 whitespace-nowrap">
-                        {matrixLabels[rowId]}
-                      </th>
-                      {matrixIds.map(colId => {
-                        const isSelf = rowId === colId;
-                        const value = getMatrixValue(rowId, colId);
-                        const style = isSelf ? { backgroundColor: 'rgba(30,41,59,0.4)', color: '#94a3b8' } : getCellStyle(value ?? 0);
+                  {factionRows.map(rowFaction => (
+                    <tr key={rowFaction.id} className="border-t border-stone-800">
+                      <td className="p-2 text-stone-300 font-semibold whitespace-nowrap">{rowFaction.name}</td>
+                      {factionRows.map(colFaction => {
+                        const same = rowFaction.id === colFaction.id;
+                        const raw = same ? 0 : clampRelation(Number((worldDiplomacy.factionRelations as any)?.[rowFaction.id]?.[colFaction.id] ?? 0));
+                        const style = getCellStyle(raw);
                         return (
-                          <td key={`${rowId}-${colId}`} className="px-2 py-2 text-center border border-stone-800 font-medium" style={style}>
-                            {isSelf ? '—' : value}
+                          <td key={`${rowFaction.id}_${colFaction.id}`} className="p-2 align-middle">
+                            {same ? (
+                              <div className="text-stone-600">—</div>
+                            ) : (
+                              <div className="rounded px-2 py-1 border border-black/30 inline-flex items-center gap-2" style={style}>
+                                <span className="font-mono">{raw}</span>
+                                <span className="opacity-90">{getTone(raw)}</span>
+                              </div>
+                            )}
                           </td>
                         );
                       })}
@@ -7624,8 +7591,115 @@ export default function App() {
                 </tbody>
               </table>
             </div>
+            <div className="text-xs text-stone-500 mt-3">战争：≤ -60（议会出兵优先选择敌对目标）。</div>
+          </div>
+
+          <div className="bg-stone-900 border border-stone-700 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-stone-200 font-semibold">势力对物种态度</div>
+              <div className="text-xs text-stone-500">{raceIds.length} 个物种</div>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="min-w-[680px] w-full border-collapse text-xs">
+                <thead>
+                  <tr>
+                    <th className="p-2 text-left text-stone-400 font-semibold">态度</th>
+                    {raceIds.map(raceId => (
+                      <th key={raceId} className="p-2 text-left text-stone-400 font-semibold">{RACE_LABELS[raceId]}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {factionRows.map(faction => (
+                    <tr key={`fr_${faction.id}`} className="border-t border-stone-800">
+                      <td className="p-2 text-stone-300 font-semibold whitespace-nowrap">{faction.name}</td>
+                      {raceIds.map(raceId => {
+                        const raw = clampRelation(Number((worldDiplomacy.factionRaceRelations as any)?.[faction.id]?.[raceId] ?? 0));
+                        const style = getCellStyle(raw);
+                        return (
+                          <td key={`${faction.id}_${raceId}`} className="p-2 align-middle">
+                            <div className="rounded px-2 py-1 border border-black/30 inline-flex items-center gap-2" style={style}>
+                              <span className="font-mono">{raw}</span>
+                              <span className="opacity-90">{getTone(raw)}</span>
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <div className="text-xs text-stone-500 mt-3">物种态度用于驱动“收复失地/反攻”倾向与长期敌视。</div>
           </div>
         </div>
+
+        <div className="bg-stone-900 border border-stone-700 rounded-lg p-4 mt-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-stone-200 font-semibold">物种外交关系</div>
+            <div className="text-xs text-stone-500">{raceIds.length} 个物种</div>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="min-w-[780px] w-full border-collapse text-xs">
+              <thead>
+                <tr>
+                  <th className="p-2 text-left text-stone-400 font-semibold">关系</th>
+                  {raceIds.map(raceId => (
+                    <th key={`rh_${raceId}`} className="p-2 text-left text-stone-400 font-semibold">{RACE_LABELS[raceId]}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {raceIds.map(rowId => (
+                  <tr key={`rr_${rowId}`} className="border-t border-stone-800">
+                    <td className="p-2 text-stone-300 font-semibold whitespace-nowrap">{RACE_LABELS[rowId]}</td>
+                    {raceIds.map(colId => {
+                      const same = rowId === colId;
+                      const raw = same ? 0 : clampRelation(Number((worldDiplomacy.raceRelations as any)?.[rowId]?.[colId] ?? 0));
+                      const style = getCellStyle(raw);
+                      return (
+                        <td key={`${rowId}_${colId}`} className="p-2 align-middle">
+                          {same ? (
+                            <div className="text-stone-600">—</div>
+                          ) : (
+                            <div className="rounded px-2 py-1 border border-black/30 inline-flex items-center gap-2" style={style}>
+                              <span className="font-mono">{raw}</span>
+                              <span className="opacity-90">{getTone(raw)}</span>
+                            </div>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <div className="text-xs text-stone-500 mt-3">基础值来自世界设定，可被“占领/屠杀/共同作战”等事件缓慢改写。</div>
+        </div>
+
+        <div className="bg-stone-900 border border-stone-700 rounded-lg p-4 mt-6">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-stone-200 font-semibold">近期外交事件</div>
+            <div className="text-xs text-stone-500">{diplomacyEvents.length} 条</div>
+          </div>
+          {diplomacyEvents.length === 0 ? (
+            <div className="text-sm text-stone-500">暂无外交记录。</div>
+          ) : (
+            <div className="space-y-2">
+              {diplomacyEvents.map(event => (
+                <div key={event.id} className="flex items-center justify-between text-sm">
+                  <span className="text-stone-400">第 {event.day} 天</span>
+                  <span className="text-stone-200 flex-1 px-3">{event.text}</span>
+                  <span className={event.delta >= 0 ? 'text-emerald-300' : 'text-red-300'}>
+                    {event.delta >= 0 ? `+${event.delta}` : event.delta}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
         <div className="bg-stone-900 border border-stone-700 rounded-lg p-4 mt-6">
           <div className="text-stone-200 font-semibold mb-3">领主关系</div>
           {lordItems.length > 0 ? (
@@ -7654,11 +7728,12 @@ export default function App() {
             <div className="text-sm text-stone-500">暂无领主关系。</div>
           )}
         </div>
+
         <div className="bg-stone-900 border border-stone-700 rounded-lg p-4 mt-6">
-          <div className="text-stone-200 font-semibold mb-3">近期关系事件</div>
-          {events.length > 0 ? (
+          <div className="text-stone-200 font-semibold mb-3">个人关系事件</div>
+          {personalEvents.length > 0 ? (
             <div className="space-y-2">
-              {events.map(event => (
+              {personalEvents.map(event => (
                 <div key={event.id} className="flex items-center justify-between text-sm">
                   <span className="text-stone-400">第 {event.day} 天</span>
                   <span className="text-stone-200 flex-1 px-3">{event.text}</span>
@@ -7669,7 +7744,7 @@ export default function App() {
               ))}
             </div>
           ) : (
-            <div className="text-sm text-stone-500">暂无关系变动记录。</div>
+            <div className="text-sm text-stone-500">暂无个人关系变动记录。</div>
           )}
         </div>
       </div>
