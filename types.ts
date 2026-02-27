@@ -122,6 +122,7 @@ export interface PlayerAttributes {
   medicine: number;  // 战斗结束后复活伤亡士兵的概率
   looting: number;   // 增加战利品金币
   training: number;  // 每日少量训练士兵
+  commerce: number;  // 增加打工收入
   escape: number;    // 增加逃跑成功率
   negotiation: number;
 }

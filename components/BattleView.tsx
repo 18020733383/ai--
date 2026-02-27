@@ -43,6 +43,7 @@ type BattleViewProps = {
   calculatePower: (troops: Troop[]) => number;
   calculateFleeChance: (playerTroops: Troop[], enemyTroops: Troop[], escape: number) => number;
   calculateRearGuardPlan: (playerTroops: Troop[], enemyTroops: Troop[], escape: number) => { lost: number; successChance: number };
+  estimateBattleRewards: (enemy: EnemyForce, player: PlayerState) => { gold: number; renown: number; xp: number };
   getTroopTemplate: (id: string) => Omit<Troop, 'count' | 'xp'> | undefined;
   setHoveredTroop: (troop: Troop | null) => void;
   setBattlePlan: React.Dispatch<React.SetStateAction<BattlePlan>>;
@@ -82,6 +83,7 @@ export const BattleView = ({
   calculatePower,
   calculateFleeChance,
   calculateRearGuardPlan,
+  estimateBattleRewards,
   getTroopTemplate,
   setHoveredTroop,
   setBattlePlan,
@@ -113,6 +115,7 @@ export const BattleView = ({
   const winChance = myPower / (myPower + enemyPower);
   const fleeChance = calculateFleeChance(battleTroops, activeEnemy.troops, player.attributes.escape ?? 0);
   const rearGuardPlan = calculateRearGuardPlan(battleTroops, activeEnemy.troops, player.attributes.escape ?? 0);
+  const estimatedVictoryRewards = estimateBattleRewards(activeEnemy, player);
   const negotiationOffer = negotiationState.result?.decision === 'CONDITIONAL';
   const negotiationPercent = negotiationState.result?.goldPercent ?? 0;
   const negotiationDisabled = pendingBattleIsTraining || negotiationState.locked || negotiationState.status === 'loading';
@@ -759,6 +762,11 @@ export const BattleView = ({
               {prediction}
             </span>
             <span className="text-xs text-stone-600">({Math.round(winChance * 100)}% 胜率)</span>
+            {!pendingBattleIsTraining && (
+              <span className="text-xs text-stone-600">
+                预计胜利经验 +{estimatedVictoryRewards.xp}（期望值约 +{Math.max(0, Math.round(estimatedVictoryRewards.xp * winChance))}）
+              </span>
+            )}
           </div>
         </div>
 

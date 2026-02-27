@@ -3484,6 +3484,7 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
     medicine: 5,
     looting: 5,
     training: 0,
+    commerce: 0,
     escape: 0,
     negotiation: 0
   },
@@ -3613,7 +3614,7 @@ export const LOCATIONS: Location[] = [
   },
   {
     id: 'source_recompiler',
-    name: '万神殿 · 源码重塑塔 (The Source Recompiler)',
+    name: '万神殿 · 源码重塑塔',
     type: 'SOURCE_RECOMPILER',
     description: '几何错乱的塔楼。只有在这里，你才能用金钱与英雄水晶重构士兵，使其获得独立意识。',
     coordinates: { x: 20, y: 200 },

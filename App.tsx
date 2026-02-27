@@ -4791,20 +4791,23 @@ export default function App() {
       .join('，');
   };
 
-  const calculateLocalBattleRewards = (enemy: EnemyForce, playerLevel: number, outcome: BattleResult['outcome']) => {
+  const calculateLocalBattleRewards = (enemy: EnemyForce, playerLevel: number, trainingLevel: number, outcome: BattleResult['outcome']) => {
     if (outcome !== 'A') return { gold: 0, renown: 0, xp: 0 };
     const enemyCount = enemy.troops.reduce((sum, t) => sum + (t.count ?? 0), 0);
     const weightedTier = enemy.troops.reduce((sum, t) => sum + (t.tier ?? 1) * (t.count ?? 0), 0);
     const avgTier = enemyCount > 0 ? weightedTier / enemyCount : 1;
     const sizeFactor = Math.max(1, Math.sqrt(Math.max(1, enemyCount)));
-    const levelFactor = 1 + Math.max(0, playerLevel) * 0.05;
-    const baseXp = sizeFactor * Math.max(1, avgTier) * 12;
+    const levelBracket = Math.min(5, 1 + Math.floor(Math.max(0, playerLevel - 1) / 6));
+    const tierDelta = Math.max(-4, Math.min(4, avgTier - levelBracket));
+    const diffFactor = Math.max(0.6, Math.min(2.0, 1 + tierDelta * 0.25));
+    const trainingFactor = 1 + Math.max(0, trainingLevel) * 0.05;
+    const baseXp = sizeFactor * Math.max(1, avgTier) * 14;
     const baseGold = sizeFactor * Math.max(1, avgTier) * 14 * Math.max(0.5, enemy.lootPotential ?? 1);
     const baseRenown = Math.max(1, Math.round(Math.max(1, avgTier) * Math.log2(enemyCount + 1)));
     return {
-      xp: Math.max(10, Math.round(baseXp * levelFactor)),
-      gold: Math.max(0, Math.round(baseGold * levelFactor)),
-      renown: Math.max(0, Math.round(baseRenown * (1 + Math.max(0, playerLevel) * 0.02)))
+      xp: Math.max(10, Math.round(baseXp * diffFactor * trainingFactor)),
+      gold: Math.max(0, Math.round(baseGold * diffFactor)),
+      renown: Math.max(0, Math.round(baseRenown * (1 + Math.max(0, tierDelta) * 0.08)))
     };
   };
 
@@ -5144,8 +5147,8 @@ export default function App() {
     let troopsA = battleTroops.map(normalizeTroop);
     let troopsB = enemyForce.troops.map(normalizeTroop);
     const totalCount = countTroops(troopsA) + countTroops(troopsB);
-    const battleWidth = Math.max(60, Math.min(220, Math.floor(Math.sqrt(Math.max(1, totalCount)) * 10 + 40)));
-    const engagementCap = Math.max(20, Math.floor(Math.min(totalCount, 40 + Math.sqrt(Math.max(1, totalCount)) * 12)));
+    const battleWidth = Math.max(4, Math.min(20, Math.floor(6 + Math.sqrt(Math.max(1, totalCount)) / 2.5)));
+    const engagementCap = Math.max(8, Math.floor(Math.min(totalCount, battleWidth * 2)));
     const terrainMods = getTerrainMods(terrain);
     const siegeTarget = battleInfo?.targetLocationId ? locations.find(l => l.id === battleInfo.targetLocationId) ?? null : null;
     const defenderSide: 'A' | 'B' | null = battleInfo?.mode === 'SIEGE' ? 'B' : battleInfo?.mode === 'DEFENSE_AID' ? 'A' : null;
@@ -5174,6 +5177,32 @@ export default function App() {
       const baseHit = phaseKey === 'ranged' ? terrainMods.rangedHit : terrainMods.meleeHit;
       let hit = baseHit;
       let damage = terrainMods.damage;
+      const stance = battlePlan.stance;
+      if (stance === 'ATTACK') {
+        if (side === 'A') {
+          hit += 0.03;
+          damage += 0.05;
+        } else {
+          hit += 0.02;
+          damage += 0.03;
+        }
+      } else if (stance === 'DEFEND') {
+        if (side === 'A') {
+          hit -= 0.01;
+          damage -= 0.02;
+        } else {
+          hit -= 0.03;
+          damage -= 0.05;
+        }
+      } else {
+        if (side === 'A') {
+          hit -= 0.01;
+          damage -= 0.03;
+        } else {
+          hit -= 0.04;
+          damage -= 0.07;
+        }
+      }
       const isDefender = defenseActive && defenderSide === side;
       const isAttacker = defenderSide !== null && defenderSide !== side;
       if (phaseKey === 'ranged') {
@@ -5225,7 +5254,7 @@ export default function App() {
         name: item.troop.name,
         side: item.side
       }));
-      const actionBudget = Math.max(10, Math.floor(engagementCap));
+      const actionBudget = Math.max(10, Math.floor(battleWidth * 2 + 6));
       for (let step = 0; step < actionBudget; step++) {
         if (countTroops(troopsA) <= 0 || countTroops(troopsB) <= 0) break;
         const actor = actionQueue.shift();
@@ -5236,8 +5265,8 @@ export default function App() {
         if (countTroops(defenders) <= 0) break;
         const actionPhase = getActionPhase(actor.troop);
         const mods = getPhaseMods(actor.side, actionPhase, defenseActive);
-        const actionStrength = Math.min(actor.troop.count, engagementCap);
-        const attackCount = Math.max(1, Math.floor(actionStrength * 0.25));
+        const actionStrength = Math.min(actor.troop.count, battleWidth);
+        const attackCount = Math.max(1, Math.floor(actionStrength));
         const loss = computeLoss([{ ...actor.troop, count: attackCount }], defenders, actionPhase, mods, attackCount);
         if (loss > 0) {
           if (defenderSide === 'A') roundCasualtiesA.push(...applyLosses(troopsA, loss, actionPhase, 'A'));
@@ -5259,7 +5288,8 @@ export default function App() {
         const extraLoss = Math.min(countTroops(troopsB), Math.max(1, Math.floor(roundStartB * (0.03 + Math.random() * 0.05))));
         roundCasualtiesB.push(...applyLosses(troopsB, extraLoss, 'morale', 'B'));
       }
-      if (roundCasualtiesA.length > 0 && Math.random() < 0.35 && keyUnitsA.length > 0) {
+      const injuryChanceA = battlePlan.stance === 'ATTACK' ? 0.42 : battlePlan.stance === 'DEFEND' ? 0.32 : 0.22;
+      if (roundCasualtiesA.length > 0 && Math.random() < injuryChanceA && keyUnitsA.length > 0) {
         const unit = keyUnitsA[Math.floor(Math.random() * keyUnitsA.length)];
         keyUnitDamageA.push({ name: unit.name, hpLoss: Math.floor(6 + Math.random() * 18), cause: getPhaseCause('melee') });
       }
@@ -5273,7 +5303,7 @@ export default function App() {
           siegeDamage > 0 ? `城防受损${siegeDamage}` : ''
         ].filter(Boolean).join('，')
         : '';
-      const phaseSummary = `战场宽度${battleWidth}，接战上限${engagementCap}。行动按敏捷轮转，远程单位优先出手。${siegeReport ? ` ${siegeReport}。` : ''}`;
+      const phaseSummary = `战场宽度${battleWidth}（每方同时接战人数），每回合行动步数${actionBudget}。行动按敏捷轮转，远程单位优先出手。${siegeReport ? ` ${siegeReport}。` : ''}`;
       rounds.push({
         roundNumber: rounds.length + 1,
         description: phaseSummary,
@@ -5629,7 +5659,9 @@ export default function App() {
             currentPlayer,
             battleInfo
           );
-      const localRewards = isTraining ? { gold: 0, renown: 0, xp: 0 } : calculateLocalBattleRewards(activeEnemy, currentPlayer.level, result.outcome);
+      const localRewards = isTraining
+        ? { gold: 0, renown: 0, xp: 0 }
+        : calculateLocalBattleRewards(activeEnemy, currentPlayer.level, currentPlayer.attributes.training ?? 0, result.outcome);
       const finalResult = {
         ...result,
         lootGold: localRewards.gold,
@@ -7019,6 +7051,10 @@ export default function App() {
       if (!Array.isArray(nextLocations)) throw new Error('存档缺少据点信息。');
     const normalizedPlayer = {
         ...nextPlayer,
+        attributes: {
+          ...INITIAL_PLAYER_STATE.attributes,
+          ...(nextPlayer.attributes ?? {})
+        },
         minerals: nextPlayer.minerals ?? INITIAL_PLAYER_STATE.minerals,
         relationMatrix: normalizeRelationMatrix((nextPlayer as any)?.relationMatrix),
         relationEvents: Array.isArray((nextPlayer as any)?.relationEvents) ? (nextPlayer as any).relationEvents : []
@@ -8070,6 +8106,7 @@ export default function App() {
       calculatePower={calculatePower}
       calculateFleeChance={calculateFleeChance}
       calculateRearGuardPlan={calculateRearGuardPlan}
+      estimateBattleRewards={(enemy, current) => calculateLocalBattleRewards(enemy, current.level, current.attributes.training ?? 0, 'A')}
       getTroopTemplate={getTroopTemplate}
       setHoveredTroop={setHoveredTroop}
       setBattlePlan={setBattlePlan}

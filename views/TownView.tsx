@@ -374,7 +374,7 @@ export const TownView = ({
     setHeroDialogue(null);
     addLog(`${hero.name} 加入了你的队伍。`);
   };
-  const workIncomePerDay = 20;
+  const workIncomePerDay = 20 + Math.max(0, player.attributes.commerce ?? 0) * 5;
   const mineralInventory = player.minerals ?? initialMinerals;
   const anomalyInventory = player.anomalies ?? {};
   const anomalyPools = (Object.keys(mineralMeta) as MineralId[]).reduce((acc, mineralId) => {
@@ -1807,7 +1807,7 @@ export const TownView = ({
                   className="w-20 bg-stone-800 border border-stone-700 text-stone-200 px-2 py-1 rounded"
                 />
               </div>
-              <div className="text-stone-400">预计收入：{workDays * workIncomePerDay} 第纳尔</div>
+              <div className="text-stone-400">预计收入：{workDays * workIncomePerDay} 第纳尔（{workIncomePerDay}/天）</div>
               <Button onClick={handleWork} variant="gold" className="flex items-center gap-2">
                 <Coins size={16} /> 开始打工
               </Button>

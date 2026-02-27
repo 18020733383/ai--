@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Sword, Shield, Heart, Flag, Activity, Anchor, Swords, EyeOff, Plus, MessageCircle } from 'lucide-react';
+import { User, Sword, Shield, Heart, Flag, Activity, Anchor, Swords, EyeOff, Plus, MessageCircle, ShoppingBag } from 'lucide-react';
 import { PlayerAttributes, PlayerState } from '../types';
 import { Button } from '../components/Button';
 
@@ -43,8 +43,9 @@ export const CharacterView = ({ player, spendAttributePoint, onBackToMap }: Char
             { key: 'hp', label: '血量上限', icon: <Heart size={16} />, desc: '提升生存能力' },
             { key: 'leadership', label: '统御', icon: <Flag size={16} />, desc: '增加带兵上限' },
             { key: 'medicine', label: '医术', icon: <Activity size={16} />, desc: '救回阵亡士兵' },
-            { key: 'looting', label: '掠夺', icon: <Anchor size={16} />, desc: '增加战利品' },
-            { key: 'training', label: '训练', icon: <Swords size={16} />, desc: '每日少量训练士兵' },
+            { key: 'looting', label: '掠夺', icon: <Anchor size={16} />, desc: '每级 +10% 战利品金币' },
+            { key: 'training', label: '训练', icon: <Swords size={16} />, desc: '每级 +5% 战斗经验，且每日训练士兵' },
+            { key: 'commerce', label: '商业', icon: <ShoppingBag size={16} />, desc: '每级 +5 打工日收入' },
             { key: 'escape', label: '跑路', icon: <EyeOff size={16} />, desc: '增加逃跑成功率' },
             { key: 'negotiation', label: '谈判', icon: <MessageCircle size={16} />, desc: '提高谈判成功率' }
           ] as const).map(attr => (

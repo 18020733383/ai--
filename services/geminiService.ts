@@ -123,9 +123,9 @@ export const buildBattlePrompt = (
   const playerCount = playerTroops.reduce((sum, t) => sum + t.count, 0);
   const enemyCount = enemyForce.troops.reduce((sum, t) => sum + t.count, 0);
   const totalCount = playerCount + enemyCount;
-  const battleWidth = Math.max(60, Math.min(220, Math.floor(Math.sqrt(Math.max(1, totalCount)) * 10 + 40)));
-  const engagementCap = Math.max(20, Math.floor(Math.min(totalCount, 40 + Math.sqrt(Math.max(1, totalCount)) * 12)));
-  const casualtyCap = Math.max(5, Math.floor(engagementCap * 0.2));
+  const battleWidth = Math.max(4, Math.min(20, Math.floor(6 + Math.sqrt(Math.max(1, totalCount)) / 2.5)));
+  const engagementCap = Math.max(8, Math.floor(Math.min(totalCount, battleWidth * 2)));
+  const casualtyCap = Math.max(3, Math.floor(Math.min(18, battleWidth * 0.9)));
   const playerHpRatioRaw = player.maxHp > 0 ? player.currentHp / player.maxHp : 0;
   const playerHpRatio = Math.max(0.2, Math.min(1, playerHpRatioRaw));
   const pickCommander = (troops: Troop[]) => {
@@ -238,9 +238,9 @@ ${attributeMeta.map(attr => {
     【环境信息】
     - 地形: ${terrain} (地形对兵种有显著影响)
     ${siegeContext ? `- 攻城情境: ${siegeContext} (注意：若 A 方为协助守城，A 方列表包含守军盟友，请一视同仁地作为 A 方战斗力计算。)` : ''}
-    - 战场宽度: ${battleWidth}
+    - 战场宽度: ${battleWidth}（每方同时接战人数）
     - 双方规模: A方 ${playerCount} / B方 ${enemyCount} / 总计 ${totalCount}
-    - 接战上限: 每回合最多 ${engagementCap} 人进入主接战
+    - 接战上限: 同时主接战总人数 ≤ ${engagementCap}（双方合计）
     - 伤亡上限: 每回合总伤亡 ≤ ${casualtyCap}
     - 最少回合数: ${minPhases}
     - A方指挥核心状态: ${player.status}（${player.currentHp}/${player.maxHp}）
