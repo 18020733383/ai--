@@ -47,6 +47,7 @@ export type HeavySupportRole = 'ARTILLERY' | 'TANK' | 'RADAR' | 'OTHER';
 export interface Troop {
   id: string;
   name: string;
+  race?: TroopRace;
   tier: TroopTier;
   count: number;
   xp: number; 
@@ -69,6 +70,7 @@ export interface Troop {
 }
 
 export type AltarDoctrine = {
+  religionName: string;
   domain: string;
   spread: string;
   blessing: string;
@@ -175,7 +177,7 @@ export interface Hero {
   attributes: HeroAttributes;
   currentHp: number;
   maxHp: number;
-  status: 'ACTIVE' | 'INJURED';
+  status: 'ACTIVE' | 'INJURED' | 'DEAD';
   recruited: boolean;
   joinedDay?: number;
   affinity?: HeroAffinityLabel;

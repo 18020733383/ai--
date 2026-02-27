@@ -74,7 +74,7 @@ export const TroopCard: React.FC<TroopCardProps> = ({
                )}
                {isEvangelist && (
                  <span className="bg-amber-900/40 text-amber-200 px-1 rounded border border-amber-700/60 inline-flex items-center gap-1">
-                   <Star className="w-3 h-3" /> {doctrineLabel ? `教义·${doctrineLabel}` : '传教'}
+                   <Star className="w-3 h-3" /> {doctrineLabel ? `信仰·${doctrineLabel}` : '传教'}
                  </span>
                )}
                {raceLabel && (

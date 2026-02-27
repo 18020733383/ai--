@@ -755,6 +755,7 @@ const shaperSchema: Schema = {
       type: Type.OBJECT,
       properties: {
         name: { type: Type.STRING },
+        race: { type: Type.STRING, enum: ["HUMAN", "ROACH", "UNDEAD", "IMPOSTER", "BANDIT", "AUTOMATON", "VOID", "MADNESS", "UNKNOWN"] },
         tier: { type: Type.INTEGER },
         basePower: { type: Type.INTEGER },
         maxXp: { type: Type.INTEGER },
@@ -762,8 +763,20 @@ const shaperSchema: Schema = {
         upgradeTargetId: { type: Type.STRING },
         description: { type: Type.STRING },
         equipment: { type: Type.ARRAY, items: { type: Type.STRING } },
+        attributes: {
+          type: Type.OBJECT,
+          properties: {
+            attack: { type: Type.INTEGER },
+            defense: { type: Type.INTEGER },
+            agility: { type: Type.INTEGER },
+            hp: { type: Type.INTEGER },
+            range: { type: Type.INTEGER },
+            morale: { type: Type.INTEGER }
+          },
+          required: ["attack", "defense", "agility", "hp", "range", "morale"]
+        }
       },
-      required: ["name", "tier", "basePower", "maxXp", "upgradeCost", "description", "equipment"],
+      required: ["name", "race", "tier", "basePower", "maxXp", "upgradeCost", "description", "equipment", "attributes"],
     }
   },
   required: ["decision", "npcReply", "price"],
@@ -775,7 +788,7 @@ export interface ShaperProposal {
   decision: ShaperDecision;
   npcReply: string;
   price: number;
-  troop?: Pick<Troop, 'name' | 'tier' | 'basePower' | 'maxXp' | 'upgradeCost' | 'upgradeTargetId' | 'description' | 'equipment'>;
+  troop?: Pick<Troop, 'name' | 'race' | 'tier' | 'basePower' | 'maxXp' | 'upgradeCost' | 'upgradeTargetId' | 'description' | 'equipment' | 'attributes'>;
 }
 
 export interface OpenAIConfig {
@@ -793,6 +806,7 @@ const altarSchema: Schema = {
   type: Type.OBJECT,
   properties: {
     npcReply: { type: Type.STRING },
+    religionName: { type: Type.STRING },
     doctrineSummary: { type: Type.STRING },
     troops: {
       type: Type.ARRAY,
@@ -824,11 +838,12 @@ const altarSchema: Schema = {
       }
     }
   },
-  required: ["npcReply", "doctrineSummary", "troops"]
+  required: ["npcReply", "religionName", "doctrineSummary", "troops"]
 };
 
 export type AltarTroopTreeResult = {
   npcReply: string;
+  religionName: string;
   doctrineSummary: string;
   troops: AltarTroopDraft[];
 };
@@ -907,6 +922,7 @@ const altarChatSchema: Schema = {
   type: Type.OBJECT,
   properties: {
     npcReply: { type: Type.STRING },
+    religionName: { type: Type.STRING },
     domain: { type: Type.STRING },
     spread: { type: Type.STRING },
     blessing: { type: Type.STRING },
@@ -941,7 +957,7 @@ const altarChatSchema: Schema = {
       }
     }
   },
-  required: ["npcReply", "domain", "spread", "blessing", "doctrineSummary", "troops"]
+  required: ["npcReply", "religionName", "domain", "spread", "blessing", "doctrineSummary", "troops"]
 };
 
 const parseAltarJson = (raw: string) => {
@@ -1033,7 +1049,7 @@ export const generateAltarTroopTree = async (
 ): Promise<AltarTroopTreeResult> => {
   const prompt = `
 你是祭坛里的神秘人。玩家在创建宗教与兵种树，你需要返回 JSON。
-请根据以下教义回答生成一套 T1~T5 兵种树：
+请根据以下宗教名字与教义回答生成一套 T1~T5 兵种树：
 1) 命名风格要有宗教味道，且 T1~T5 按「教徒、传教士、祭司/祭司长」升级；允许自定义前缀。
 2) 每个兵种必须带至少一个【技能：XXX】标签，并体现“擅长领域”与“禁忌祝福”。
 3) tier 从 1 到 5，按强度递增；basePower/maxXp/upgradeCost 合理增长。
@@ -1041,8 +1057,10 @@ export const generateAltarTroopTree = async (
 5) equipment 为 1~5 件中文装备名。
 6) 以基线为准，默认不超过基线 ±30%，如因兵种特色可在单项属性或战力上限放宽到 +50%。
 7) 输出字段仅限 schema，且仅输出 JSON，不要解释。
+8) religionName 字段必须返回（可沿用玩家给的名字）。
 
 【玩家等级】${player.level}
+【宗教名字】${doctrine.religionName}
 【教义权柄】${doctrine.domain}
 【散播方式】${doctrine.spread}
 【禁忌祝福】${doctrine.blessing}
@@ -1254,12 +1272,13 @@ export const chatWithAltar = async (
 你是祭坛里的神秘人，语气神秘克制，说中文。
 你需要做三件事：
 1) 回复玩家当前对话，1-3 句短句即可。
-2) 从玩家的话中提取或修正教义字段：权柄(domain)、散播方式(spread)、禁忌祝福(blessing)。
+2) 从玩家的话中提取或修正教义字段：宗教名字(religionName)、权柄(domain)、散播方式(spread)、禁忌祝福(blessing)。
 3) 基于当前教义与已有草案“更新”兵种草案，避免整体重写，只改动确实被玩家调整的部分。
 如果无法确认某字段，就沿用现有值。
+宗教名字如果无法确认：给出一个你认为合适的名字，并在 npcReply 里询问玩家是否接受。
 如果玩家输入中出现“权柄/散播方式/禁忌/祝福”等关键词，即使没有冒号，也要把关键词后的内容当作对应字段。
 以基线为准，默认不超过基线 ±30%，如因兵种特色可在单项属性或战力上限放宽到 +50%。
-只输出 JSON，字段为 npcReply, domain, spread, blessing, doctrineSummary, troops，不要多余字段。
+只输出 JSON，字段为 npcReply, religionName, domain, spread, blessing, doctrineSummary, troops，不要多余字段。
 草案允许同 tier 多个兵种，上限为：T1<=6，T2<=4，T3<=3，T4<=2，T5<=1。
 如果已有草案：troops 允许只返回被修改的兵种条目，必须带 slot 表示原列表索引（从 0 开始）。
 如果没有草案：troops 必须包含 5~16 个元素，至少覆盖 T1~T5 各 1 个，且遵守上限；tier 为 1~5 的数字，不要使用 "T1" 形式。
@@ -1291,6 +1310,7 @@ attributes 必须包含 attack, defense, agility, hp, range, morale，全部为�
 }
 
 【现有教义】
+宗教名字：${draft.religionName || '（未定）'}
 权柄：${draft.domain || '（未定）'}
 散播方式：${draft.spread || '（未定）'}
 禁忌祝福：${draft.blessing || '（未定）'}
@@ -1333,7 +1353,7 @@ ${historyText || '（暂无）'}
     const json = await res.json().catch(() => null) as any;
     const text = json?.choices?.[0]?.message?.content;
     if (!text) throw new Error('OpenAI 返回为空');
-    const parsed = parseAltarJson(text) as { npcReply?: string; domain?: string; spread?: string; blessing?: string; doctrineSummary?: string; troops?: AltarTroopDraft[] };
+    const parsed = parseAltarJson(text) as { npcReply?: string; religionName?: string; domain?: string; spread?: string; blessing?: string; doctrineSummary?: string; troops?: AltarTroopDraft[] };
     console.log('[altar] raw', text);
     console.log('[altar] parsed', parsed);
     const normalizedTroops = normalizeAltarTroops(Array.isArray(parsed?.troops) ? parsed.troops : [], previous?.troops);
@@ -1343,6 +1363,7 @@ ${historyText || '（暂无）'}
       doctrineSummary: String(parsed?.doctrineSummary || previous?.doctrineSummary || '').trim(),
       troops: mergedTroops,
       draft: {
+        religionName: String(parsed?.religionName || (draft as any).religionName || '').trim(),
         domain: String(parsed?.domain || draft.domain || '').trim(),
         spread: String(parsed?.spread || draft.spread || '').trim(),
         blessing: String(parsed?.blessing || draft.blessing || '').trim()
@@ -1363,7 +1384,7 @@ ${historyText || '（暂无）'}
 
   const text = response.text;
   if (!text) throw new Error("No response from AI");
-  const parsed = parseAltarJson(text) as { npcReply?: string; domain?: string; spread?: string; blessing?: string; doctrineSummary?: string; troops?: AltarTroopDraft[] };
+  const parsed = parseAltarJson(text) as { npcReply?: string; religionName?: string; domain?: string; spread?: string; blessing?: string; doctrineSummary?: string; troops?: AltarTroopDraft[] };
   console.log('[altar] raw', text);
   console.log('[altar] parsed', parsed);
   const normalizedTroops = normalizeAltarTroops(Array.isArray(parsed?.troops) ? parsed.troops : [], previous?.troops);
@@ -1373,6 +1394,7 @@ ${historyText || '（暂无）'}
     doctrineSummary: String(parsed?.doctrineSummary || previous?.doctrineSummary || '').trim(),
     troops: mergedTroops,
     draft: {
+      religionName: String(parsed?.religionName || (draft as any).religionName || '').trim(),
       domain: String(parsed?.domain || draft.domain || '').trim(),
       spread: String(parsed?.spread || draft.spread || '').trim(),
       blessing: String(parsed?.blessing || draft.blessing || '').trim()
@@ -1970,8 +1992,9 @@ ${logsText}
 【最近对话】
 ${historyText || '（暂无）'}
 
-只有出现明确且重要的信息时才新增 memory，内容简短具体；若已有类似记忆则无需重复。
-当 memory 为空且出现关键事实时，再记录为初始记忆。
+持久记忆要更积极：优先记录“稳定的、可复用的事实/偏好/关系变化/玩家习惯/队伍梗”，而不是流水账。
+当【持久记忆】为空时：本轮必须在 memoryEdits 里 ADD 1-2 条“初始记忆”（内容简短具体，面向未来可复用）。
+当【持久记忆】不为空时：只要出现新信息或偏好偏移，就在 memoryEdits 里 ADD/UPDATE 0-2 条（不要每轮都空数组）。
 队伍日记用于共享吐槽与团队大事，必要时请在 diaryEdits 里添加或整理，避免重复与无意义刷屏。
   `.trim();
   return prompt;
@@ -1997,7 +2020,9 @@ export const proposeShapedTroop = async (
       `- 上次裁决: ${last.decision}`,
       `- 上次报价: ${last.price}`,
       `- 上次兵种名: ${troop.name}`,
+      `- 上次种族: ${(troop as any).race ?? '（未知）'}`,
       `- 上次 Tier: ${troop.tier} | basePower: ${troop.basePower} | maxXp: ${troop.maxXp} | upgradeCost: ${troop.upgradeCost}`,
+      `- 上次属性: ${(troop as any).attributes ? `攻${(troop as any).attributes.attack} 防${(troop as any).attributes.defense} 敏${(troop as any).attributes.agility} 体${(troop as any).attributes.hp} 远${(troop as any).attributes.range} 士${(troop as any).attributes.morale}` : '（无）'}`,
       `- 上次装备: ${equip}`,
       `- 上次描述: ${troop.description}`
     ].join('\n');
@@ -2009,12 +2034,20 @@ export const proposeShapedTroop = async (
 2) 给出一个合理的制作报价（price，单位第纳尔）。玩家等级越高，你越要“宰客”（同样兵种价格随玩家等级上浮）。
 3) 如果要求过于离谱（例如：一刀秒全图、无限复活、完全无敌、0成本、或显著超越 Tier 5 传奇怪物的设定），你要选择 decision="REFUSE" 或 decision="OVERPRICE" 并狠狠嘲讽；REFUSE 时可以不提供 troop。
 4) 如果可以制作，返回 decision="OK" 且提供 troop 模板：
+   - race: 必须返回种族（HUMAN/ROACH/UNDEAD/IMPOSTER/BANDIT/AUTOMATON/VOID/MADNESS），并与描述一致
    - tier: 1-5 的整数
    - basePower/maxXp/upgradeCost: 合理范围的整数
    - name: 必须是一个具体、独特、能反映玩家描述的中文名字；禁止使用“无名造物/无名/Unknown”等占位名
    - description: 需要包含至少一个【技能：XXX】标签，允许黑色幽默
    - equipment: 1-5 个装备名
+   - attributes: 六维属性（attack/defense/agility/hp/range/morale），必须随 tier 提升而提高，且不应低于该 tier 的“基准属性”太多
    - upgradeTargetId 可为空字符串或省略
+4.1) Tier 基准属性（当前版本数值，捏人请以此为基准微调）：
+   - Tier 1：攻击30 防御20 敏捷25 体魄30 远程5 士气25
+   - Tier 2：攻击75 防御85 敏捷50 体魄80 远程5 士气75
+   - Tier 3：攻击110 防御115 敏捷70 体魄110 远程5 士气110
+   - Tier 4：攻击155 防御150 敏捷90 体魄145 远程5 士气140
+   - Tier 5：攻击220 防御185 敏捷115 体魄170 远程5 士气170
 5) 价格参考（地图招募基础价，作为参照）：
    - Tier 1: 10-30
    - Tier 2: 40-80
@@ -2109,13 +2142,23 @@ ${historyText || "（暂无）"}
       price,
       troop: {
         name: "歪嘴裁缝的试作品",
+        race: "HUMAN",
         tier: tier as any,
         basePower,
         maxXp: 80 + tier * 60,
         upgradeCost: 120 + tier * 150,
         upgradeTargetId: "",
         description: `用洞窟里潮湿的线缝出来的怪东西。【技能：粗线缝合】战斗开始时获得短暂士气提升。`,
-        equipment: ["骨针", "湿皮甲"]
+        equipment: ["骨针", "湿皮甲"],
+        attributes: tier >= 5
+          ? { attack: 220, defense: 185, agility: 115, hp: 170, range: 5, morale: 170 }
+          : tier === 4
+            ? { attack: 155, defense: 150, agility: 90, hp: 145, range: 5, morale: 140 }
+            : tier === 3
+              ? { attack: 110, defense: 115, agility: 70, hp: 110, range: 5, morale: 110 }
+              : tier === 2
+                ? { attack: 75, defense: 85, agility: 50, hp: 80, range: 5, morale: 75 }
+                : { attack: 30, defense: 20, agility: 25, hp: 30, range: 5, morale: 25 }
       }
     };
   }

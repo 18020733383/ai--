@@ -273,7 +273,7 @@ export const TownView = ({
   const cityRestCost = 5;
   const canRestInCity = player.gold >= cityRestCost;
   const altarDialogue = altarDialogues[currentLocation.id] ?? [];
-  const altarDraft = altarDrafts[currentLocation.id] ?? { domain: '', spread: '', blessing: '' };
+  const altarDraft = { religionName: '', domain: '', spread: '', blessing: '', ...(altarDrafts[currentLocation.id] ?? {}) };
   const altarProposal = altarProposals[currentLocation.id];
   const altarHasTree = (currentLocation.altar?.troopIds ?? []).length > 0;
   const altarState = currentLocation.altar;
@@ -1963,7 +1963,7 @@ export const TownView = ({
           <div className="space-y-6 animate-fade-in">
             <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
               <p className="text-stone-400 text-sm">
-                祭坛深处的神秘人等待你的教义。对话会实时更新兵种草案，满意后再确立教义。
+                祭坛深处的神秘人等待你的宗教名字与教义。对话会实时更新兵种草案，满意后再确立教义。
               </p>
             </div>
 
@@ -2017,6 +2017,7 @@ export const TownView = ({
                 </div>
 
                 <div className="bg-stone-950/40 border border-stone-800 rounded p-3 text-sm text-stone-400 space-y-1">
+                  <div>宗教名字：{altarDraft.religionName.trim() || '未命名'}</div>
                   <div>权柄：{altarDraft.domain.trim() || '未说明'}</div>
                   <div>散播方式：{altarDraft.spread.trim() || '未说明'}</div>
                   <div>禁忌祝福：{altarDraft.blessing.trim() || '未说明'}</div>
@@ -2030,7 +2031,7 @@ export const TownView = ({
                       if (e.key === 'Enter') handleAltarChatSend();
                     }}
                     className="flex-1 bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded placeholder:text-stone-600"
-                    placeholder="与神秘人对话，描述权柄、散播方式、禁忌祝福"
+                    placeholder="与神秘人对话，描述宗教名字、权柄、散播方式、禁忌祝福"
                   />
                   <Button
                     onClick={handleAltarChatSend}
@@ -2765,6 +2766,49 @@ export const TownView = ({
           <div className="animate-fade-in">
             <div className="col-span-1 md:col-span-2 bg-stone-900/40 p-4 rounded border border-stone-800 mb-4">
               <p className="text-stone-400 text-sm">这里记录着所有为你牺牲的战士。</p>
+            </div>
+            <div className="bg-stone-900/40 p-4 rounded border border-stone-800 mb-4">
+              <div className="text-stone-200 font-bold mb-3">英雄遗骸</div>
+              {heroes.filter(h => h.recruited && h.status === 'DEAD').length === 0 ? (
+                <div className="text-stone-500 text-sm">暂无英雄殒命。</div>
+              ) : (
+                <div className="space-y-3">
+                  {heroes.filter(h => h.recruited && h.status === 'DEAD').map(hero => {
+                    const reviveCost = 400 + Math.max(0, (hero.level ?? 1) - 1) * 250;
+                    const canAfford = player.gold >= reviveCost;
+                    return (
+                      <div key={`dead_${hero.id}`} className="bg-stone-950/40 border border-stone-800 rounded p-3 flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-stone-200 font-semibold truncate">{hero.name} · {hero.title}</div>
+                          <div className="text-xs text-stone-500 truncate">复活后等级清零，持久记忆将被抹除</div>
+                        </div>
+                        <Button
+                          variant={canAfford ? 'gold' : 'secondary'}
+                          disabled={!canAfford}
+                          onClick={() => {
+                            setPlayer(prev => ({ ...prev, gold: prev.gold - reviveCost }));
+                            setHeroes(prev => prev.map(h => h.id === hero.id ? ({
+                              ...h,
+                              status: 'ACTIVE',
+                              currentExpression: 'IDLE',
+                              currentHp: h.maxHp,
+                              level: 1,
+                              xp: 0,
+                              maxXp: 100,
+                              attributePoints: 0,
+                              permanentMemory: [],
+                              chatRounds: 0
+                            }) : h));
+                            addLog(`你在英灵殿花费 ${reviveCost} 第纳尔，复活了 ${hero.name}。`);
+                          }}
+                        >
+                          复活（{reviveCost}）
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
             {player.fallenRecords.length === 0 ? (
               <div className="text-center py-20 bg-stone-900/50 rounded border border-stone-800">

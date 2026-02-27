@@ -4516,14 +4516,15 @@ export default function App() {
         return {
           ...prev,
           [location.id]: [
-            { role: 'NPC', text: '黑纱之下传来低语：说出你的教义。回答三件事。' },
+            { role: 'NPC', text: '黑纱之下传来低语：说出你的宗教名字与教义。回答四件事。' },
+            { role: 'NPC', text: '你的信仰叫什么名字？' },
             { role: 'NPC', text: '你的神明掌管什么权柄？' },
             { role: 'NPC', text: '你的信徒如何散播恐惧？' },
             { role: 'NPC', text: '赐予他们何种禁忌的祝福？' }
           ]
         };
       });
-      setAltarDrafts(prev => prev[location.id] ? prev : { ...prev, [location.id]: { domain: '', spread: '', blessing: '' } });
+      setAltarDrafts(prev => prev[location.id] ? prev : { ...prev, [location.id]: { religionName: '', domain: '', spread: '', blessing: '' } });
     }
 
     const relationTarget = getLocationRelationTarget(location);
@@ -5837,6 +5838,24 @@ export default function App() {
             nextHero = { ...nextHero, currentHp: 0, status: 'INJURED' };
             logsToAdd.push(`${hero.name} 重伤退场！`);
           }
+          if (nextHero.currentHp <= 0) {
+            const injurySeverity = heroInjury?.hpLoss ? Math.min(1, heroInjury.hpLoss / Math.max(1, hero.maxHp)) : 0;
+            let deathChance = 0.22 + injurySeverity * 0.18 + (casualtyCount > 0 ? 0.18 : 0);
+            deathChance *= (1 - Math.min(0.7, prev.attributes.medicine * 0.04));
+            deathChance = Math.max(0.06, Math.min(0.6, deathChance));
+            if (Math.random() < deathChance) {
+              nextHero = { ...nextHero, status: 'DEAD', currentExpression: 'DEAD', currentHp: 0 };
+              newFallenRecords.push({
+                id: `fallen_${Date.now()}_${Math.random()}`,
+                unitName: `${hero.name}（英雄）`,
+                count: 1,
+                day: prev.day,
+                battleName: activeEnemy.name,
+                cause: heroInjury?.causes?.[0] ? `英雄殒命：${heroInjury.causes[0]}` : '英雄殒命'
+              });
+              logsToAdd.push(`【噩耗】${hero.name} 没能撑过这次重伤，永远离开了队伍。`);
+            }
+          }
           return nextHero;
         });
 
@@ -5984,6 +6003,22 @@ export default function App() {
 
     addLog(`一名 ${troop.name} 晋升为 ${targetTemplate.name}！`);
     setPlayer({ ...prev, gold: prev.gold - troop.upgradeCost, troops: newTroops.filter(t => t.count > 0) });
+  };
+
+  const handleDisband = (troopId: string, mode: 'ONE' | 'ALL') => {
+    const prev = playerRef.current;
+    const troop = prev.troops.find(t => t.id === troopId);
+    if (!troop || troop.count <= 0) return;
+    const remove = mode === 'ALL' ? troop.count : 1;
+    const nextCount = Math.max(0, troop.count - remove);
+    const ratio = troop.count > 0 ? nextCount / troop.count : 0;
+    const nextXpCap = (troop.maxXp ?? 0) * nextCount;
+    const nextXp = Math.max(0, Math.min(nextXpCap, Math.floor((troop.xp ?? 0) * ratio)));
+    const nextTroops = prev.troops
+      .map(t => (t.id === troopId ? ({ ...t, count: nextCount, xp: nextXp }) : t))
+      .filter(t => t.count > 0);
+    setPlayer({ ...prev, troops: nextTroops });
+    addLog(mode === 'ALL' ? `你遣散了全部 ${troop.name}。` : `你遣散了 1 名 ${troop.name}。`);
   };
 
   const startSiegeBattle = (location: Location) => {
@@ -6356,16 +6391,36 @@ export default function App() {
         return Math.min(max, Math.max(min, Math.round(n)));
       };
       const buildShaperAttributes = (tier: TroopTier) => {
-        if (tier === TroopTier.TIER_1) return { attack: 3, defense: 2, agility: 3, hp: 3, range: 2, morale: 4 };
-        if (tier === TroopTier.TIER_2) return { attack: 4, defense: 3, agility: 4, hp: 4, range: 3, morale: 5 };
-        if (tier === TroopTier.TIER_3) return { attack: 6, defense: 4, agility: 5, hp: 5, range: 3, morale: 6 };
-        if (tier === TroopTier.TIER_4) return { attack: 7, defense: 5, agility: 6, hp: 6, range: 4, morale: 7 };
-        return { attack: 9, defense: 7, agility: 6, hp: 8, range: 5, morale: 9 };
+        if (tier === TroopTier.TIER_1) return { attack: 30, defense: 20, agility: 25, hp: 30, range: 5, morale: 25 };
+        if (tier === TroopTier.TIER_2) return { attack: 75, defense: 85, agility: 50, hp: 80, range: 5, morale: 75 };
+        if (tier === TroopTier.TIER_3) return { attack: 110, defense: 115, agility: 70, hp: 110, range: 5, morale: 110 };
+        if (tier === TroopTier.TIER_4) return { attack: 155, defense: 150, agility: 90, hp: 145, range: 5, morale: 140 };
+        return { attack: 220, defense: 185, agility: 115, hp: 170, range: 5, morale: 170 };
+      };
+      const capByTier: Record<number, number> = { 1: 85, 2: 115, 3: 150, 4: 185, 5: 225 };
+      const sanitizeShaperAttributes = (tier: TroopTier, raw: any) => {
+        const cap = capByTier[tier] ?? 85;
+        const base = buildShaperAttributes(tier);
+        if (!raw || typeof raw !== 'object') return base;
+        return {
+          attack: clampInt(raw.attack, 0, cap),
+          defense: clampInt(raw.defense, 0, cap),
+          agility: clampInt(raw.agility, 0, cap),
+          hp: clampInt(raw.hp, 0, cap),
+          range: clampInt(raw.range, 0, cap),
+          morale: clampInt(raw.morale, 0, cap)
+        };
+      };
+      const sanitizeShaperRace = (raw: any) => {
+        const val = String(raw ?? '').toUpperCase().trim();
+        const allowed = new Set(['HUMAN', 'ROACH', 'UNDEAD', 'IMPOSTER', 'BANDIT', 'AUTOMATON', 'VOID', 'MADNESS', 'UNKNOWN']);
+        return allowed.has(val) ? val : 'UNKNOWN';
       };
 
       const troop = proposal.troop;
       const troopTemplate = troop ? (() => {
-        const id = `shaped_${Date.now()}`;
+        const race = sanitizeShaperRace((troop as any).race);
+        const id = `shaped_${race.toLowerCase()}_${Date.now()}`;
         const tier = clampInt((troop as any).tier, 1, 5) as TroopTier;
         const basePower = clampInt((troop as any).basePower, 1, 9999);
         const maxXp = clampInt((troop as any).maxXp, 10, 2000);
@@ -6375,9 +6430,11 @@ export default function App() {
         const equipmentRaw = Array.isArray((troop as any).equipment) ? (troop as any).equipment : [];
         const equipment = equipmentRaw.map((x: any) => String(x)).filter(Boolean).slice(0, 5);
         const upgradeTargetId = String((troop as any).upgradeTargetId || '').trim();
+        const attributes = sanitizeShaperAttributes(tier, (troop as any).attributes);
         return {
           id,
           name,
+          race: race as any,
           tier,
           basePower,
           cost: Math.max(0, clampInt(proposal.price, 0, 1000000)),
@@ -6386,7 +6443,7 @@ export default function App() {
           upgradeTargetId: upgradeTargetId ? upgradeTargetId : undefined,
           description,
           equipment: equipment.length > 0 ? equipment : ['破剪刀'],
-          attributes: buildShaperAttributes(tier)
+          attributes
         } as Omit<Troop, 'count' | 'xp'>;
       })() : undefined;
 
@@ -6397,6 +6454,7 @@ export default function App() {
         troopTemplate,
         troopForPrompt: troop ? {
           name: troopTemplate?.name ?? String((troop as any).name || '裁缝的造物').slice(0, 40),
+          race: troopTemplate?.race ?? (sanitizeShaperRace((troop as any).race) as any),
           tier: troopTemplate?.tier ?? (clampInt((troop as any).tier, 1, 5) as any),
           basePower: troopTemplate?.basePower ?? clampInt((troop as any).basePower, 1, 9999),
           maxXp: troopTemplate?.maxXp ?? clampInt((troop as any).maxXp, 10, 2000),
@@ -6404,7 +6462,7 @@ export default function App() {
           upgradeTargetId: troopTemplate?.upgradeTargetId,
           description: troopTemplate?.description ?? String((troop as any).description || '沉默的造物。').slice(0, 500),
           equipment: troopTemplate?.equipment ?? (Array.isArray((troop as any).equipment) ? (troop as any).equipment : []).map((x: any) => String(x)).filter(Boolean).slice(0, 5),
-          attributes: troopTemplate?.attributes ?? buildShaperAttributes((clampInt((troop as any).tier, 1, 5) as TroopTier))
+          attributes: troopTemplate?.attributes ?? sanitizeShaperAttributes((clampInt((troop as any).tier, 1, 5) as TroopTier), (troop as any).attributes)
         } : undefined
       });
     } finally {
@@ -6462,7 +6520,8 @@ export default function App() {
     const baseId = `altar_${currentLocation.id}_${Date.now()}`;
     const costByTier = [0, 20, 60, 140, 300, 600];
     const tierCounts: Record<number, number> = {};
-    const doctrineSuffix = `隶属于${doctrine.domain}教义`;
+    const religionName = String((doctrine as any).religionName ?? '').trim() || String(doctrine.domain ?? '').trim() || '无名信仰';
+    const doctrineSuffix = `隶属于「${religionName}」`;
     const appendDoctrineSuffix = (value: string) => {
       const trimmed = value.trim();
       if (!trimmed) return doctrineSuffix;
@@ -6485,7 +6544,7 @@ export default function App() {
         upgradeCost: clampInt(troop.upgradeCost, 0, 1000000),
         maxXp: clampInt(troop.maxXp, 10, 2000),
         upgradeTargetId: undefined as string | undefined,
-        description: appendDoctrineSuffix(String(troop.description || `教义：${doctrine.domain}。`)).slice(0, 500),
+        description: appendDoctrineSuffix(String(troop.description || `信仰：${religionName}。教义：${doctrine.domain}。`)).slice(0, 500),
         equipment: (() => {
           const list = (troop.equipment ?? []).map(item => String(item)).filter(Boolean).slice(0, 5);
           return list.length > 0 ? list : ['布袍'];
@@ -6498,7 +6557,7 @@ export default function App() {
           range: clampInt(attrs.range, 1, 300),
           morale: clampInt(attrs.morale, 1, 300)
         },
-        doctrine: doctrine.domain,
+        doctrine: religionName,
         evangelist: true
       } as Omit<Troop, 'count' | 'xp'>;
     });
@@ -7869,6 +7928,7 @@ export default function App() {
       setPartyCategoryFilter={setPartyCategoryFilter}
       getTroopTemplate={getTroopTemplate}
       handleUpgrade={handleUpgrade}
+      handleDisband={handleDisband}
       getHeroRoleLabel={getHeroRoleLabel}
       spendHeroAttributePoint={spendHeroAttributePoint}
       onOpenHeroChat={(heroId) => {

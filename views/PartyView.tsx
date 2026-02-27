@@ -14,6 +14,7 @@ type PartyViewProps = {
   setPartyCategoryFilter: (value: PartyCategoryFilter) => void;
   getTroopTemplate: (troopId: string) => any;
   handleUpgrade: (troopId: string) => void;
+  handleDisband: (troopId: string, mode: 'ONE' | 'ALL') => void;
   getHeroRoleLabel: (role: Hero['role']) => string;
   spendHeroAttributePoint: (heroId: string, key: keyof Hero['attributes']) => void;
   onOpenHeroChat: (heroId: string) => void;
@@ -27,6 +28,7 @@ export const PartyView = ({
   setPartyCategoryFilter,
   getTroopTemplate,
   handleUpgrade,
+  handleDisband,
   getHeroRoleLabel,
   spendHeroAttributePoint,
   onOpenHeroChat,
@@ -120,6 +122,10 @@ export const PartyView = ({
               key={troop.id}
               troop={troop}
               count={troop.count}
+              secondaryActionLabel="遣散1个"
+              onSecondaryAction={() => handleDisband(troop.id, 'ONE')}
+              actionLabel="遣散全部"
+              onAction={() => handleDisband(troop.id, 'ALL')}
               canUpgrade={!!troop.upgradeTargetId}
               onUpgrade={() => handleUpgrade(troop.id)}
               upgradeDisabled={!canAffordUpgrade}
@@ -171,8 +177,8 @@ export const PartyView = ({
                     ))}
                   </div>
                   <div className="flex items-center justify-between text-xs text-stone-500">
-                    <span className={hero.status === 'INJURED' ? 'text-red-400' : 'text-green-400'}>
-                      {hero.status === 'INJURED' ? '重伤恢复中' : '状态良好'}
+                    <span className={hero.status === 'DEAD' ? 'text-stone-500' : hero.status === 'INJURED' ? 'text-red-400' : 'text-green-400'}>
+                      {hero.status === 'DEAD' ? '已死亡' : hero.status === 'INJURED' ? '重伤恢复中' : '状态良好'}
                     </span>
                     <span>{hero.currentHp} / {hero.maxHp}（{hpPercent}%）</span>
                     <span>{canBattle ? '可参战' : '需恢复'}</span>
@@ -200,21 +206,21 @@ export const PartyView = ({
                     <span>可用点数 {hero.attributePoints}</span>
                     <div className="flex items-center gap-2">
                       <button
-                        disabled={hero.attributePoints <= 0}
+                        disabled={hero.attributePoints <= 0 || hero.status === 'DEAD'}
                         onClick={() => spendHeroAttributePoint(hero.id, 'attack')}
                         className="w-6 h-6 rounded bg-stone-700 hover:bg-green-700 flex items-center justify-center disabled:opacity-20 disabled:cursor-not-allowed text-white"
                       >
                         <Plus size={12} />
                       </button>
                       <button
-                        disabled={hero.attributePoints <= 0}
+                        disabled={hero.attributePoints <= 0 || hero.status === 'DEAD'}
                         onClick={() => spendHeroAttributePoint(hero.id, 'hp')}
                         className="w-6 h-6 rounded bg-stone-700 hover:bg-green-700 flex items-center justify-center disabled:opacity-20 disabled:cursor-not-allowed text-white"
                       >
                         <Heart size={12} />
                       </button>
                       <button
-                        disabled={hero.attributePoints <= 0}
+                        disabled={hero.attributePoints <= 0 || hero.status === 'DEAD'}
                         onClick={() => spendHeroAttributePoint(hero.id, 'agility')}
                         className="w-6 h-6 rounded bg-stone-700 hover:bg-green-700 flex items-center justify-center disabled:opacity-20 disabled:cursor-not-allowed text-white"
                       >
@@ -226,6 +232,7 @@ export const PartyView = ({
                     <Button
                       onClick={() => onOpenHeroChat(hero.id)}
                       variant="secondary"
+                      disabled={hero.status === 'DEAD'}
                     >
                       <MessageCircle size={14} className="inline mr-2" />
                       聊天

@@ -2970,11 +2970,12 @@ export const TROOP_RACE_LABELS: Record<TroopRace, string> = {
 };
 
 export const getTroopRace = (
-  troop: Pick<Troop, 'id' | 'name' | 'doctrine' | 'evangelist'>,
+  troop: Pick<Troop, 'id' | 'name' | 'doctrine' | 'evangelist' | 'race'>,
   imposterTroopIds: Set<string> = IMPOSTER_TROOP_IDS
 ): TroopRace => {
   const normalizedId = troop.id.startsWith('garrison_') ? troop.id.slice('garrison_'.length) : troop.id;
   const doctrineLabel = troop.doctrine?.trim();
+  if (troop.race) return troop.race;
   if (normalizedId.startsWith('shaped_')) return 'UNKNOWN';
   if (normalizedId.startsWith('altar_') || troop.evangelist || !!doctrineLabel) return 'HUMAN';
   if (normalizedId.startsWith('bug_')) return 'UNKNOWN';
@@ -3569,7 +3570,7 @@ export const LOCATIONS: Location[] = [
     name: '虚空缓冲区 0x00',
     type: 'VOID_BUFFER_MINE',
     description: '空间维度不断重叠，物质呈现半透明或闪烁状态。',
-    coordinates: { x: 186, y: 188 },
+    coordinates: { x: 38, y: 64 },
     terrain: 'MOUNTAIN',
     lastRefreshDay: 0,
     volunteers: [],
@@ -3580,7 +3581,7 @@ export const LOCATIONS: Location[] = [
     name: '内存溢出大峡谷',
     type: 'MEMORY_OVERFLOW_MINE',
     description: '地表疯狂增生重复的岩石，植物生长速度快到违背物理常律。',
-    coordinates: { x: 220, y: 212 },
+    coordinates: { x: 362, y: 78 },
     terrain: 'MOUNTAIN',
     lastRefreshDay: 0,
     volunteers: [],
@@ -3591,7 +3592,7 @@ export const LOCATIONS: Location[] = [
     name: '逻辑悖论深渊',
     type: 'LOGIC_PARADOX_MINE',
     description: '时间感模糊，光线在空中绕圈，掉进去的东西永远落不到底。',
-    coordinates: { x: 210, y: 232 },
+    coordinates: { x: 340, y: 352 },
     terrain: 'MOUNTAIN',
     lastRefreshDay: 0,
     volunteers: [],

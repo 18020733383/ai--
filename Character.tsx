@@ -141,7 +141,7 @@ export default function Character({
                 }}
                 className="flex-1 bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded placeholder:text-stone-600"
                 placeholder="对英雄说点什么..."
-                disabled={isLoading}
+                disabled={isLoading || hero.status === 'DEAD'}
               />
               <Button
                 onClick={async () => {
@@ -150,7 +150,7 @@ export default function Character({
                   window.setTimeout(() => setCopyNotice(null), 1400);
                 }}
                 variant="secondary"
-                disabled={isLoading || !chatInput.trim()}
+                disabled={isLoading || hero.status === 'DEAD' || !chatInput.trim()}
               >
                 <Copy size={14} className="inline mr-2" />
                 复制Prompt
@@ -158,7 +158,7 @@ export default function Character({
               <Button
                 onClick={onSend}
                 variant="secondary"
-                disabled={isLoading || !chatInput.trim()}
+                disabled={isLoading || hero.status === 'DEAD' || !chatInput.trim()}
               >
                 {isLoading ? '…' : '发送'}
               </Button>
@@ -184,8 +184,8 @@ export default function Character({
               </div>
               <div>
                 <div className="text-stone-500">状态</div>
-                <div className={hero.status === 'INJURED' ? 'text-red-300 text-sm' : 'text-emerald-300 text-sm'}>
-                  {hero.status === 'INJURED' ? '重伤恢复中' : '状态良好'}
+                <div className={hero.status === 'DEAD' ? 'text-stone-500 text-sm' : hero.status === 'INJURED' ? 'text-red-300 text-sm' : 'text-emerald-300 text-sm'}>
+                  {hero.status === 'DEAD' ? '已死亡' : hero.status === 'INJURED' ? '重伤恢复中' : '状态良好'}
                 </div>
               </div>
             </div>
@@ -193,21 +193,21 @@ export default function Character({
               <span>可用点数 {hero.attributePoints}</span>
               <div className="flex items-center gap-2">
                 <button
-                  disabled={hero.attributePoints <= 0}
+                  disabled={hero.attributePoints <= 0 || hero.status === 'DEAD'}
                   onClick={() => onSpendAttribute('attack')}
                   className="w-7 h-7 rounded bg-stone-700 hover:bg-green-700 flex items-center justify-center disabled:opacity-20 disabled:cursor-not-allowed text-white"
                 >
                   <Plus size={12} />
                 </button>
                 <button
-                  disabled={hero.attributePoints <= 0}
+                  disabled={hero.attributePoints <= 0 || hero.status === 'DEAD'}
                   onClick={() => onSpendAttribute('hp')}
                   className="w-7 h-7 rounded bg-stone-700 hover:bg-green-700 flex items-center justify-center disabled:opacity-20 disabled:cursor-not-allowed text-white"
                 >
                   <Heart size={12} />
                 </button>
                 <button
-                  disabled={hero.attributePoints <= 0}
+                  disabled={hero.attributePoints <= 0 || hero.status === 'DEAD'}
                   onClick={() => onSpendAttribute('agility')}
                   className="w-7 h-7 rounded bg-stone-700 hover:bg-green-700 flex items-center justify-center disabled:opacity-20 disabled:cursor-not-allowed text-white"
                 >
