@@ -232,6 +232,7 @@ export interface PlayerState {
   anomalies: AnomalyInventory;
   relationMatrix: RelationMatrix;
   relationEvents: RelationEvent[];
+  locationRelations: Record<string, number>;
 }
 
 export interface EnemyForce {

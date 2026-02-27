@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.24',
+    date: '2026-02-27',
+    items: [
+      '修复据点被夺回后仍被当作敌占，城镇功能未恢复的问题',
+      '新增玩家与据点关系，过低会触发通缉无法入城',
+      '城镇界面新增与此地关系的文字反馈显示'
+    ]
+  },
+  {
     version: '0.3.23',
     date: '2026-02-27',
     items: [

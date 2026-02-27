@@ -4230,7 +4230,8 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
       BEAST: -10
     }
   },
-  relationEvents: []
+  relationEvents: [],
+  locationRelations: {}
 };
 
 // Initial state for locations, recruits will be generated at runtime

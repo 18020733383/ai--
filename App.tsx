@@ -1348,6 +1348,24 @@ export default function App() {
     });
   };
 
+  const updateLocationRelation = (locationId: string, delta: number, text: string) => {
+    if (!delta) return;
+    const safeId = String(locationId || '').trim();
+    if (!safeId) return;
+    setPlayer(prev => {
+      const current = (prev.locationRelations?.[safeId] ?? 0);
+      const next = clampRelation(current + delta);
+      if (next === current) return prev;
+      return {
+        ...prev,
+        locationRelations: {
+          ...(prev.locationRelations ?? {}),
+          [safeId]: next
+        }
+      };
+    });
+  };
+
   const updateLordRelation = (locationId: string, delta: number, text?: string) => {
     if (!delta) return;
     const nextDay = playerRef.current.day;
@@ -3357,22 +3375,22 @@ export default function App() {
                nextWorldDiplomacy = applyWorldDiplomacyDelta(nextWorldDiplomacy, { kind: 'RACE_RACE', aId: 'HUMAN', bId: attackerRaceId, delta: -6, text: `${raceLabel} 攻陷据点`, day: nextDay });
                nextWorldDiplomacy = applyWorldDiplomacyDelta(nextWorldDiplomacy, { kind: 'RACE_RACE', aId: attackerRaceId, bId: 'HUMAN', delta: -6, text: `攻陷人类据点`, day: nextDay });
              }
-             return {
-                 ...loc,
-                 owner: 'ENEMY',
-                 factionId: attackerFactionId ?? undefined,
-                 claimFactionId: attackerFactionId ?? claimFactionId,
-                 garrison: siege.troops, // Attackers move in
-                 stayParties: [],
-                 stationedArmies: [],
-                 activeSiege: undefined,
-                 sackedUntilDay: undefined,
-                 lastRefreshDay: nextDay,
-                 volunteers: [],
-                 mercenaries: [],
-                 lord: undefined,
-                 isUnderSiege: false
-             };
+            return {
+                ...loc,
+                owner: attackerFactionId ? undefined : 'ENEMY',
+                factionId: attackerFactionId ?? undefined,
+                claimFactionId: attackerFactionId ?? claimFactionId,
+                garrison: siege.troops, // Attackers move in
+                stayParties: [],
+                stationedArmies: [],
+                activeSiege: undefined,
+                sackedUntilDay: undefined,
+                lastRefreshDay: nextDay,
+                volunteers: [],
+                mercenaries: [],
+                lord: undefined,
+                isUnderSiege: false
+            };
          }
          
         if (attackerCount <= 0) {
@@ -4632,6 +4650,15 @@ export default function App() {
         };
       });
       setAltarDrafts(prev => prev[location.id] ? prev : { ...prev, [location.id]: { religionName: '', domain: '', spread: '', blessing: '' } });
+    }
+
+    const localRelation = playerRef.current.locationRelations?.[location.id] ?? 0;
+    if (localRelation <= -60 && location.owner !== 'PLAYER' && (location.type === 'CITY' || location.type === 'CASTLE' || location.type === 'VILLAGE')) {
+      setCurrentLocation(location);
+      setView('TOWN');
+      addLog(`${location.name} 的守卫认出了你：你发现自己在通缉令上。`);
+      addLocationLog(location.id, `守卫拦下了 ${playerRef.current.name}：此人被通缉。`);
+      return;
     }
 
     const relationTarget = getLocationRelationTarget(location);
@@ -6318,12 +6345,14 @@ export default function App() {
       const relationTarget = getLocationRelationTarget(location);
       const factionPenalty = location.type === 'CITY' ? -20 : location.type === 'CASTLE' ? -16 : -12;
       const lordPenalty = location.type === 'CITY' ? -18 : location.type === 'CASTLE' ? -14 : -10;
+      const localPenalty = location.type === 'CITY' ? -28 : location.type === 'CASTLE' ? -24 : -18;
       if (relationTarget?.type === 'FACTION') {
         updateRelation(relationTarget.type, relationTarget.id, factionPenalty, `进攻 ${location.name}`);
       }
       if (location.lord) {
         updateLordRelation(location.id, lordPenalty, `遭到玩家围攻`);
       }
+      updateLocationRelation(location.id, localPenalty, `围攻 ${location.name}`);
     }
     setActiveEnemy(enemy);
     setPendingBattleMeta({ mode: 'SIEGE', targetLocationId: location.id, siegeContext });
@@ -6454,6 +6483,7 @@ export default function App() {
            if (target.lord) {
              updateLordRelation(target.id, relationDelta, `协助 ${target.name} 守城`);
            }
+           updateLocationRelation(target.id, relationDelta, `协助守城 ${target.name}`);
            const updated = target.activeSiege ? { ...target, activeSiege: undefined, isUnderSiege: false } : target;
            if (updated !== target) updateLocationState(updated);
            if (target.activeSiege) {
@@ -7283,7 +7313,10 @@ export default function App() {
         giftRecords: Array.isArray((nextPlayer as any)?.giftRecords) ? (nextPlayer as any).giftRecords : [],
         minerals: nextPlayer.minerals ?? INITIAL_PLAYER_STATE.minerals,
         relationMatrix: normalizeRelationMatrix((nextPlayer as any)?.relationMatrix),
-        relationEvents: Array.isArray((nextPlayer as any)?.relationEvents) ? (nextPlayer as any).relationEvents : []
+        relationEvents: Array.isArray((nextPlayer as any)?.relationEvents) ? (nextPlayer as any).relationEvents : [],
+        locationRelations: ((nextPlayer as any)?.locationRelations && typeof (nextPlayer as any).locationRelations === 'object')
+          ? (nextPlayer as any).locationRelations
+          : {}
       };
       setPlayer(normalizedPlayer);
       const normalizedHeroes = Array.isArray(nextHeroes) && nextHeroes.length > 0
@@ -7291,9 +7324,12 @@ export default function App() {
         : heroesRef.current.map(normalizeHero);
       setHeroes(normalizedHeroes);
       const normalizedLocations = ensureLocationLords(seedStayParties(nextLocations)).map(loc => {
-        if (loc.claimFactionId) return loc;
-        if (loc.factionId) return { ...loc, claimFactionId: loc.factionId };
-        return loc;
+        const normalizedOwner = (loc.owner === 'ENEMY' && loc.factionId && (loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE'))
+          ? undefined
+          : loc.owner;
+        if (loc.claimFactionId) return normalizedOwner === loc.owner ? loc : { ...loc, owner: normalizedOwner };
+        if (loc.factionId) return { ...loc, owner: normalizedOwner, claimFactionId: loc.factionId };
+        return normalizedOwner === loc.owner ? loc : { ...loc, owner: normalizedOwner };
       });
       setLocations(normalizedLocations);
       const nextLogs = Array.isArray(parsed?.logs) ? parsed.logs.filter((x: any) => typeof x === 'string').slice(0, 120) : [];

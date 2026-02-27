@@ -262,7 +262,10 @@ export const TownView = ({
   const isFieldCamp = currentLocation.type === 'FIELD_CAMP';
   const isSpecialLocation = isMine || isBlacksmith || isAltar || isMagicianLibrary || isRecompiler;
   const isOwnedByPlayer = currentLocation.owner === 'PLAYER';
-  const isRestricted = (currentLocation.sackedUntilDay ?? 0) >= player.day || currentLocation.owner === 'ENEMY' || !!currentLocation.isUnderSiege;
+  const locationRelationValue = player.locationRelations?.[currentLocation.id] ?? 0;
+  const isWantedHere = !isOwnedByPlayer && (isCity || isCastle || isVillage) && locationRelationValue <= -60;
+  const isRestrictedEnemyHeld = currentLocation.owner === 'ENEMY' && (isCity || isCastle || isVillage) && !currentLocation.factionId;
+  const isRestricted = (currentLocation.sackedUntilDay ?? 0) >= player.day || isRestrictedEnemyHeld || !!currentLocation.isUnderSiege;
   const restrictedTabs = ['RECRUIT', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'OWNED', 'MINING', 'FORGE', 'ROACH_LURE', 'LORD', 'MAGICIAN_LIBRARY', 'RECOMPILER'];
   const specialHiddenTabs = ['RECRUIT', 'GARRISON', 'LOCAL_GARRISON', 'DEFENSE', 'SIEGE', 'OWNED', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'LORD'];
   const specialFallbackTab = isMine ? 'MINING' : isBlacksmith ? 'FORGE' : isAltar ? 'ALTAR' : isMagicianLibrary ? 'MAGICIAN_LIBRARY' : isRecompiler ? 'RECOMPILER' : 'LOCAL_GARRISON';
@@ -339,6 +342,24 @@ export const TownView = ({
     if (value >= -10) return '中立';
     if (value >= -30) return '疏远';
     return '敌视';
+  };
+  const getLocationRelationLabel = (value: number) => {
+    if (value >= 60) return '拥戴';
+    if (value >= 30) return '友善';
+    if (value >= 10) return '熟悉';
+    if (value >= -10) return '中立';
+    if (value >= -30) return '冷淡';
+    if (value >= -60) return '敌视';
+    return '通缉';
+  };
+  const getLocationRelationFlavor = (value: number) => {
+    if (value >= 60) return '这里的人把你当作英雄般谈论。';
+    if (value >= 30) return '这里的居民都用友善的目光看着你。';
+    if (value >= 10) return '你在这里已经不算陌生人了。';
+    if (value >= -10) return '人们对你不冷不热，各做各的事。';
+    if (value >= -30) return '你能感觉到一些躲闪与警惕。';
+    if (value >= -60) return '守卫会盯着你，手始终没离开武器。';
+    return '你发现自己在通缉令上。';
   };
   const getStayPartyOwnerLabel = (party: StayParty) => {
     if (party.owner === 'PLAYER') return '玩家';
@@ -1360,6 +1381,46 @@ export const TownView = ({
     );
   };
 
+  if (isWantedHere) {
+    const mood = getLocationRelationFlavor(locationRelationValue);
+    return (
+      <div className="max-w-5xl mx-auto p-4 animate-fade-in pb-20 mt-10">
+        <div className="relative h-48 rounded-t-lg overflow-hidden border-b-4 border-red-700 mb-6 bg-stone-800">
+          <div
+            className="absolute inset-0 opacity-60"
+            style={getBgImageStyle()}
+          />
+          <div className="absolute bottom-0 left-0 p-6 bg-gradient-to-t from-stone-900 to-transparent w-full">
+            <div className="flex justify-between items-end">
+              <div>
+                <h2 className="text-4xl font-serif flex items-center gap-3 text-red-300">
+                  <AlertTriangle size={32} />
+                  {currentLocation.name}
+                  <span className="text-sm bg-stone-800 text-stone-400 px-2 py-1 rounded border border-stone-600 uppercase">{currentLocation.type}</span>
+                </h2>
+                <p className="text-stone-300 mt-2">{currentLocation.description}</p>
+                <div className="text-sm text-red-200 mt-2">{mood}</div>
+                <div className="text-xs text-stone-400 mt-2">
+                  与此地关系：{getLocationRelationLabel(locationRelationValue)}（{locationRelationValue}）
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <Button onClick={onBackToMap} variant="secondary">返回地图</Button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="bg-red-950/30 border border-red-800 rounded p-4">
+          <div className="text-red-200 font-bold">守卫拦下了你</div>
+          <div className="text-sm text-stone-300 mt-2">
+            你无法进入城内。若想解除通缉，需要改善你与此地的关系。
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-5xl mx-auto p-4 animate-fade-in pb-20 mt-10">
       <div className="relative h-48 rounded-t-lg overflow-hidden border-b-4 border-amber-600 mb-6 bg-stone-800">
@@ -1380,6 +1441,11 @@ export const TownView = ({
                 <span className="text-sm bg-stone-800 text-stone-400 px-2 py-1 rounded border border-stone-600 uppercase">{currentLocation.type}</span>
               </h2>
               <p className="text-stone-300 mt-2">{currentLocation.description}</p>
+              {(isCity || isCastle || isVillage) && !isOwnedByPlayer && (
+                <div className="text-sm text-stone-400 mt-2">
+                  与此地关系：{getLocationRelationLabel(locationRelationValue)}（{locationRelationValue}）{` `}{getLocationRelationFlavor(locationRelationValue)}
+                </div>
+              )}
               {ownerLord && (
                 <div className="text-sm text-stone-400 mt-2">{isFieldCamp ? '营地首领' : '归属领主'}：{ownerLord.title}{ownerLord.name}</div>
               )}
