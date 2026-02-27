@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.21',
+    date: '2026-02-27',
+    items: [
+      '新增地图据点“栖息地”，可设置快进天数并显示进度',
+      '快进改为短间隔逐日结算，世界事件照常推进'
+    ]
+  },
+  {
     version: '0.3.20',
     date: '2026-02-27',
     items: [

@@ -1,12 +1,12 @@
 import React from 'react';
-import { AlertTriangle, Beer, Brain, Coins, Ghost, Hammer, History, Home, MessageCircle, Mountain, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, Zap } from 'lucide-react';
+import { AlertTriangle, Beer, Brain, Coins, Ghost, Hammer, History, Home, MapPin, MessageCircle, Mountain, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, Zap } from 'lucide-react';
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
 import { chatWithAltar, chatWithCampLeader, chatWithLord, proposeHeroPromotion, type HeroPromotionDraft } from '../services/geminiService';
 import { ANOMALY_CATALOG, getTroopRace, TROOP_RACE_LABELS } from '../constants';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, StayParty, Troop, TroopTier } from '../types';
 
-type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER';
+type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER' | 'HABITAT';
 
 type WorkState = {
   isActive: boolean;
@@ -31,6 +31,13 @@ type RoachLureState = {
   totalDays: number;
   daysPassed: number;
   recruitedByTroopId: Record<string, number>;
+};
+
+type HabitatStayState = {
+  isActive: boolean;
+  locationId: string;
+  totalDays: number;
+  daysPassed: number;
 };
 
 type AltarRecruitState = {
@@ -66,6 +73,8 @@ type TownViewProps = {
   setMiningState: (value: MiningState | null) => void;
   roachLureState: RoachLureState | null;
   setRoachLureState: (value: RoachLureState | null) => void;
+  habitatStayState: HabitatStayState | null;
+  setHabitatStayState: (value: HabitatStayState | null) => void;
   altarRecruitDays: number;
   setAltarRecruitDays: (value: number) => void;
   altarRecruitState: AltarRecruitState | null;
@@ -155,6 +164,8 @@ export const TownView = ({
   setMiningState,
   roachLureState,
   setRoachLureState,
+  habitatStayState,
+  setHabitatStayState,
   altarRecruitDays,
   setAltarRecruitDays,
   altarRecruitState,
@@ -239,6 +250,7 @@ export const TownView = ({
   const isSiegeTarget = isCity || isCastle || isVillage || isRoachNest || isUndeadFortress;
   const isHotpot = currentLocation.type === 'HOTPOT_RESTAURANT';
   const isCoffee = currentLocation.type === 'COFFEE';
+  const isHabitat = currentLocation.type === 'HABITAT';
   const isHeavyTrialGrounds = currentLocation.type === 'HEAVY_TRIAL_GROUNDS';
   const isImposterPortal = currentLocation.type === 'IMPOSTER_PORTAL';
   const isAltar = currentLocation.type === 'ALTAR';
@@ -267,6 +279,7 @@ export const TownView = ({
           : townTab;
 
   const recruitLabel = isGraveyard ? "挖掘尸体" : isHotpot ? "点菜 (招募)" : isCoffee ? "招募亡灵" : isHeavyTrialGrounds ? "采购重型单位" : "征募志愿兵";
+  const [habitatStayDays, setHabitatStayDays] = React.useState(10);
 
   const coffeeGiftItems = [
     { id: 'coffee_black', name: '黑咖啡', price: 30, itemType: 'COFFEE' as const },
@@ -1494,6 +1507,14 @@ export const TownView = ({
             <MessageCircle size={16} className="inline mr-2" /> 亡灵闲谈
           </button>
         )}
+        {isHabitat && !isRestricted && (
+          <button
+            onClick={() => setTownTab('HABITAT')}
+            className={`px-6 py-3 font-serif font-bold text-sm whitespace-nowrap ${activeTownTab === 'HABITAT' ? 'bg-stone-800 text-emerald-300 border-t-2 border-emerald-500' : 'text-stone-500 hover:text-stone-300'}`}
+          >
+            <MapPin size={16} className="inline mr-2" /> 栖息
+          </button>
+        )}
         {isCity && !isRestricted && (
           <button
             onClick={() => setTownTab('TAVERN')}
@@ -1674,6 +1695,57 @@ export const TownView = ({
                 </div>
               )
             )}
+          </div>
+        )}
+
+        {isHabitat && activeTownTab === 'HABITAT' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-stone-200 font-bold">栖息地</div>
+                <div className="text-xs text-stone-600">时间会加速流逝，世界照常运转</div>
+              </div>
+              <div className="text-sm text-stone-400 mt-2 leading-relaxed">
+                你可以在此停留一段时间，用更短的间隔推进每日结算（商队、袭掠、攻城、招募刷新等都会照常发生）。
+              </div>
+            </div>
+
+            <div className="bg-stone-900/40 p-4 rounded border border-stone-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-stone-200 font-bold">快进天数</div>
+                <div className="text-xs text-stone-500">当前第 {player.day} 天</div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+                <div className="md:col-span-2">
+                  <div className="text-xs text-stone-500 mb-1">天数（1-365）</div>
+                  <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={habitatStayDays}
+                    onChange={e => setHabitatStayDays(Number(e.target.value))}
+                    className="w-full bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded"
+                  />
+                </div>
+                <Button
+                  variant="secondary"
+                  disabled={habitatStayState?.isActive}
+                  onClick={() => {
+                    const days = Math.max(1, Math.min(365, Math.floor(habitatStayDays || 1)));
+                    setHabitatStayDays(days);
+                    setHabitatStayState({
+                      isActive: true,
+                      locationId: currentLocation.id,
+                      totalDays: days,
+                      daysPassed: 0
+                    });
+                    onBackToMap();
+                  }}
+                >
+                  <MapPin size={16} className="inline mr-2" /> 开始栖息
+                </Button>
+              </div>
+            </div>
           </div>
         )}
 

@@ -28,6 +28,13 @@ type RoachLureState = {
   recruitedByTroopId: Record<string, number>;
 };
 
+type HabitatStayState = {
+  isActive: boolean;
+  locationId: string;
+  totalDays: number;
+  daysPassed: number;
+};
+
 type BigMapViewProps = {
   zoom: number;
   camera: { x: number; y: number };
@@ -36,6 +43,7 @@ type BigMapViewProps = {
   workState: WorkState | null;
   miningState: MiningState | null;
   roachLureState: RoachLureState | null;
+  habitatStayState: HabitatStayState | null;
   hoveredLocation: Location | null;
   mousePos: { x: number; y: number };
   mapRef: React.RefObject<HTMLDivElement>;
@@ -54,6 +62,7 @@ export const BigMapView = ({
   workState,
   miningState,
   roachLureState,
+  habitatStayState,
   hoveredLocation,
   mousePos,
   mapRef,
@@ -277,6 +286,37 @@ export const BigMapView = ({
           </div>
         </div>
       )}
+      {habitatStayState?.isActive && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-none">
+          <div className="bg-stone-900/90 border-2 border-emerald-600 rounded-lg p-6 shadow-2xl flex flex-col items-center gap-4 min-w-[300px] animate-fade-in">
+            <div className="flex items-center gap-2 text-emerald-300 text-xl font-bold font-serif">
+              <MapPin className="animate-pulse" />
+              <span>栖息中...</span>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="text-center">
+                <div className="text-xs text-stone-500 uppercase tracking-wider mb-1">当前天数</div>
+                <div className="bg-black border border-stone-700 rounded px-3 py-2 min-w-[80px]">
+                  <div className="text-3xl font-mono text-stone-200 font-bold relative overflow-hidden h-9">
+                    <div key={player.day} className="animate-[slide-up_0.2s_ease-out]">
+                      {player.day}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="w-full bg-stone-800 rounded-full h-2 mt-2">
+              <div
+                className="bg-emerald-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${(habitatStayState.daysPassed / habitatStayState.totalDays) * 100}%` }}
+              />
+            </div>
+            <div className="text-xs text-stone-400">
+              进度：{habitatStayState.daysPassed} / {habitatStayState.totalDays} 天
+            </div>
+          </div>
+        </div>
+      )}
       {hoveredLocation && (
         <div
           className="fixed z-50 bg-stone-900 border border-amber-500/50 px-3 py-2 rounded shadow-2xl pointer-events-none text-left"
@@ -428,6 +468,7 @@ export const BigMapView = ({
                   loc.type === 'ALTAR' ? <span className="text-[20px] leading-none">🛐</span> :
                   loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={20} /> :
                   loc.type === 'SOURCE_RECOMPILER' ? <Brain className="text-fuchsia-300" size={20} /> :
+                  loc.type === 'HABITAT' ? <MapPin className="text-emerald-300" size={20} /> :
                   <Tent className="text-green-500" size={16} />}
                 {loc.factionId && loc.owner !== 'PLAYER' && (
                   <span

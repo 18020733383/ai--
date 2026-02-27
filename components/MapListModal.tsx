@@ -49,7 +49,8 @@ export const MapListModal = ({
     ALTAR: '祭坛',
     MAGICIAN_LIBRARY: '魔法师图书馆',
     SOURCE_RECOMPILER: '源码重塑塔',
-    FIELD_CAMP: '行军营地'
+    FIELD_CAMP: '行军营地',
+    HABITAT: '栖息地'
   };
 
   const typeBadge: Record<Location['type'], string> = {
@@ -77,7 +78,8 @@ export const MapListModal = ({
     ALTAR: 'bg-indigo-950/30 border-indigo-900/50 text-indigo-200',
     MAGICIAN_LIBRARY: 'bg-sky-950/30 border-sky-900/50 text-sky-200',
     SOURCE_RECOMPILER: 'bg-fuchsia-950/30 border-fuchsia-900/60 text-fuchsia-200',
-    FIELD_CAMP: 'bg-stone-900/40 border-stone-700 text-stone-200'
+    FIELD_CAMP: 'bg-stone-900/40 border-stone-700 text-stone-200',
+    HABITAT: 'bg-emerald-950/25 border-emerald-900/50 text-emerald-200'
   };
 
   const mineTypes: Location['type'][] = ['VOID_BUFFER_MINE', 'MEMORY_OVERFLOW_MINE', 'LOGIC_PARADOX_MINE', 'HERO_CRYSTAL_MINE'];

@@ -3548,6 +3548,17 @@ export const LOCATIONS: Location[] = [
     mercenaries: []
   },
   {
+    id: 'habitat_sanctuary',
+    name: '栖息地',
+    type: 'HABITAT',
+    description: '一处不属于任何势力的小小营地。风不急，火不灭，适合把时间往前推。',
+    coordinates: { x: 210, y: 204 },
+    terrain: 'PLAINS',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
     id: 'altar_whisper',
     name: '低语祭坛',
     type: 'ALTAR',

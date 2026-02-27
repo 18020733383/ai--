@@ -734,7 +734,7 @@ export default function App() {
   const [trainInputEnemy, setTrainInputEnemy] = useState({ id: 'peasant', count: 10 });
 
   // Town View State
-  const [townTab, setTownTab] = useState<'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER'>('RECRUIT');
+  const [townTab, setTownTab] = useState<'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER' | 'HABITAT'>('RECRUIT');
   const [workDays, setWorkDays] = useState(1);
   const [miningDays, setMiningDays] = useState(2);
   const [roachLureDays, setRoachLureDays] = useState(2);
@@ -846,6 +846,12 @@ export default function App() {
     daysPassed: number;
     dailyIncome: number;
     accumulatedIncome: number;
+  } | null>(null);
+  const [habitatStayState, setHabitatStayState] = useState<{
+    isActive: boolean;
+    locationId: string;
+    totalDays: number;
+    daysPassed: number;
   } | null>(null);
 
   // Logs
@@ -1033,6 +1039,34 @@ export default function App() {
 
       return () => clearTimeout(timer);
     }, [roachLureState]);
+
+  useEffect(() => {
+    if (!habitatStayState?.isActive) return;
+    if (habitatStayState.daysPassed >= habitatStayState.totalDays) {
+      const finishTimer = setTimeout(() => {
+        addLog(`栖息结束，时间已快进 ${habitatStayState.totalDays} 天。`);
+        setHabitatStayState(null);
+        if (currentLocation) {
+          setView('TOWN');
+          setTownTab('HABITAT');
+        }
+      }, 700);
+      return () => clearTimeout(finishTimer);
+    }
+
+    const timer = setTimeout(() => {
+      if (!currentLocation) return;
+      if (currentLocation.id !== habitatStayState.locationId) {
+        addLog('栖息被打断：你离开了栖息地。');
+        setHabitatStayState(null);
+        return;
+      }
+      processDailyCycle(currentLocation, 0, 1, 0, true);
+      setHabitatStayState(prev => prev ? { ...prev, daysPassed: prev.daysPassed + 1 } : null);
+    }, 160);
+
+    return () => clearTimeout(timer);
+  }, [habitatStayState]);
 
   useEffect(() => {
     if (!altarRecruitState?.isActive) return;
@@ -4559,7 +4593,7 @@ export default function App() {
 
      if (location.type === 'WORLD_BOARD') {
        setCurrentLocation(location);
-       if (!workState?.isActive) {
+      if (!workState?.isActive && !habitatStayState?.isActive) {
          setView('WORLD_BOARD');
        }
        addLog(`抵达了 ${location.name}。`);
@@ -4674,35 +4708,40 @@ export default function App() {
     } else if (location.type === 'IMPOSTER_PORTAL') {
        setView('TOWN');
        setTownTab('LOCAL_GARRISON');
+    } else if (location.type === 'HABITAT') {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive && !habitatStayState?.isActive) {
+        setView('TOWN');
+        setTownTab('HABITAT');
+      }
     } else if (location.type === 'ALTAR') {
-      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive) {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive && !habitatStayState?.isActive) {
         setView('TOWN');
         setTownTab('ALTAR');
       }
     } else if (MINE_CONFIGS[location.type]) {
-      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive) {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !habitatStayState?.isActive) {
         setView('TOWN');
         setTownTab('MINING');
       }
     } else if (location.type === 'BLACKSMITH') {
-      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive) {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !habitatStayState?.isActive) {
         setView('TOWN');
         setTownTab('FORGE');
       }
     } else if (location.type === 'MAGICIAN_LIBRARY') {
-      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive) {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive && !habitatStayState?.isActive) {
         setView('TOWN');
         setTownTab('MAGICIAN_LIBRARY');
       }
     } else if (location.type === 'SOURCE_RECOMPILER') {
-      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive) {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive && !habitatStayState?.isActive) {
         setView('TOWN');
         setTownTab('RECOMPILER');
       }
      } else {
        // Only set view to TOWN if not working.
        // The work loop will handle the view.
-      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive) {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !habitatStayState?.isActive) {
         setView('TOWN');
         setTownTab('RECRUIT');
        }
@@ -8477,6 +8516,7 @@ export default function App() {
             workState={workState}
             miningState={miningState}
             roachLureState={roachLureState}
+            habitatStayState={habitatStayState}
             hoveredLocation={hoveredLocation}
             mousePos={mousePos}
             mapRef={mapRef}
@@ -8516,6 +8556,8 @@ export default function App() {
             setMiningState={setMiningState}
             roachLureState={roachLureState}
             setRoachLureState={setRoachLureState}
+            habitatStayState={habitatStayState}
+            setHabitatStayState={setHabitatStayState}
             altarRecruitDays={altarRecruitDays}
             setAltarRecruitDays={setAltarRecruitDays}
             altarRecruitState={altarRecruitState}
