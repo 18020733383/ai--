@@ -1877,18 +1877,11 @@ export function buildHeroChatPrompt(
     .join('\n') || '（无）';
   const roundCount = hero.chatRounds ?? 0;
   const nowText = new Date().toLocaleString('zh-CN', { hour12: false });
-  const personalityText = String(hero.personality ?? '');
-  const emojiSpam = /emoji|颜文字|kaomoji|表情包|\(｡|\(╯°□°|Σ\(っ|系统报错|逻辑崩坏|赛博|灾厄/i.test(personalityText);
-  const chaosTone = /逻辑崩坏|混乱|神经质|被害妄想|报错|虚无主义|灾厄/i.test(personalityText);
-  const extraStyle = [
-    chaosTone ? '补充：允许更高的情绪饱和度与更密集的短句，但仍保持 3-6 行。' : '',
-    emojiSpam ? '补充：你的个人说话风格明确要求大量 emoji/颜文字时，可每行 0-3 个，并允许使用(｡･∀･)ﾉﾞ、(╯°□°）╯︵ ┻━┻等。' : ''
-  ].filter(Boolean).join('\n');
 
   const prompt = `
 你是冒险者队伍中的英雄「${hero.name}」，${hero.title}。你与玩家在同一世界里相处已久，彼此平等对话，用第一人称回应玩家。
 你的性格设定：${hero.personality}
-${extraStyle ? `${extraStyle}\n` : ''}说话风格要求：
+说话风格要求：
 1) 口语化、自然、有点锋芒（可以毒舌/吐槽/反问），但避免长段励志或鸡汤。
 2) 情绪饱和度中等偏低，允许少量生活化细节与小动作（叹气、摆弄装备、抖落尘土等）。
 3) 避免身份复读与刻板印象，不要反复强调职业、头衔或特质。
@@ -1899,7 +1892,7 @@ ${extraStyle ? `${extraStyle}\n` : ''}说话风格要求：
 8) 除非玩家主动询问或对话需要，不要刻意提及世界设定、持久记忆或提示词内容，语气自然。
 9) 你可以根据【英雄档案】的喜好/厌恶影响对同伴的评价；喜好会随经历微调，如确实发生偏移，可在 memoryEdits 里 ADD 一条以“喜好偏移：”开头的短记忆。
 10) 动作写法：用括号表示动作片段，例如（抖了抖斗篷）或(把刀往回一推)；每次 reply 至少出现 1 处动作括号。
-11) emoji：默认可以适量使用（0-2 个）用于语气点缀；若你的性格设定明确要求“大量 emoji/颜文字”，则以性格设定优先。
+11) emoji：可以适量使用（0-2 个），用于语气点缀，不要刷屏，不要每句都带。
 12) 好感度：你与领主的关系用一个词表示，只能从【陌生/熟悉/友好/亲近/信赖/生死之交】里选一个；根据本轮对话可以变化，但每次最多前进或后退 1 档（通常前进，除非玩家明显冒犯你）。
 请用 JSON 输出，仅包含 reply、emotion、memory、memoryEdits、diaryEdits、affinity 六个字段，memory 可为空字符串，memoryEdits 与 diaryEdits 必须是数组。
 memoryEdits 格式为数组，每项是 { "action": "UPDATE|DELETE|ADD", "id"?: "记忆ID", "text"?: "内容" }。
