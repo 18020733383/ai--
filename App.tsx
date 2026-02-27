@@ -3759,10 +3759,19 @@ export default function App() {
           if (nextLord.travelDaysLeft && nextLord.targetLocationId) {
             const remaining = nextLord.travelDaysLeft - 1;
             if (remaining <= 0) {
-              nextLord = { ...nextLord, currentLocationId: nextLord.targetLocationId, travelDaysLeft: undefined, targetLocationId: undefined };
+              const purpose = nextLord.travelPurpose;
+              nextLord = {
+                ...nextLord,
+                currentLocationId: nextLord.targetLocationId,
+                travelDaysLeft: undefined,
+                targetLocationId: undefined,
+                travelPurpose: undefined,
+                visitPurpose: purpose ?? nextLord.visitPurpose,
+                arrivedDay: nextDay
+              };
               const arrivedLoc = getLocationById(nextLord.currentLocationId);
               if (arrivedLoc) {
-                nextLord = recordLordAction(nextLord, arrivedLoc.id, `${nextLord.title}${nextLord.name} 抵达了 ${arrivedLoc.name}`);
+                nextLord = recordLordAction(nextLord, arrivedLoc.id, `${nextLord.title}${nextLord.name} 抵达了 ${arrivedLoc.name}${purpose ? `（${purpose}）` : ''}`);
               }
             } else {
               return { ...nextLord, travelDaysLeft: remaining };
@@ -3791,18 +3800,18 @@ export default function App() {
           if (desiredState !== nextLord.state) {
             nextLord = { ...nextLord, state: desiredState, stateSinceDay: nextDay };
           }
-          const moveTo = (target: Location | null) => {
+          const moveTo = (target: Location | null, purpose: string) => {
             if (!target || nextLord.currentLocationId === target.id) return nextLord;
             const from = getLocationById(nextLord.currentLocationId) ?? fief ?? target;
             if (!from) return nextLord;
-            return { ...nextLord, targetLocationId: target.id, travelDaysLeft: estimateTravelDays(from, target) };
+            return { ...nextLord, targetLocationId: target.id, travelDaysLeft: estimateTravelDays(from, target), travelPurpose: purpose, visitPurpose: undefined };
           };
           if (nextLord.state === 'RESTING') {
             const restLoc = (currentLoc.factionId === nextLord.factionId && currentLoc.owner !== 'ENEMY')
               ? currentLoc
               : (fief && fief.factionId === nextLord.factionId ? fief : (friendlyStrongholds(nextLord.factionId)[0] ?? currentLoc));
             if (restLoc.id !== nextLord.currentLocationId) {
-              return moveTo(restLoc);
+              return moveTo(restLoc, `前往${restLoc.name}休整补员`);
             }
             const available = Math.max(0, Math.min(partyMax - partyCount, restLoc.type === 'CITY' ? 18 : restLoc.type === 'CASTLE' ? 12 : 8));
             const recruited = applyRecruitment(nextLord.partyTroops, restLoc, available);
@@ -3813,7 +3822,7 @@ export default function App() {
           if (nextLord.state === 'MARSHALLING') {
             const gatherLoc = raidSource ? getLocationById(raidSource.id) ?? fief ?? currentLoc : fief ?? currentLoc;
             if (gatherLoc.id !== nextLord.currentLocationId) {
-              return moveTo(gatherLoc);
+              return moveTo(gatherLoc, `前往${gatherLoc.name}集结待命`);
             }
             const trained = applyGarrisonTraining(nextLord.partyTroops, 3);
             nextLord = recordLordAction(nextLord, gatherLoc.id, `在${gatherLoc.name}集结待命`);
@@ -3822,7 +3831,7 @@ export default function App() {
           if (nextLord.state === 'BESIEGING') {
             const targetLoc = raidSource ? getLocationById(raidSource.factionRaidTargetId ?? '') : null;
             if (targetLoc && targetLoc.id !== nextLord.currentLocationId) {
-              return moveTo(targetLoc);
+              return moveTo(targetLoc, `前往${targetLoc.name}围攻`);
             }
             if (targetLoc && targetLoc.id === nextLord.currentLocationId) {
               if (!targetLoc.activeSiege && targetLoc.owner !== 'PLAYER') {
@@ -3852,7 +3861,7 @@ export default function App() {
               ? [...options].sort((a, b) => getGarrisonCount(getLocationTroops(b)) - getGarrisonCount(getLocationTroops(a)))[0]
               : currentLoc;
             if (feastHost.id !== nextLord.currentLocationId) {
-              return moveTo(feastHost);
+              return moveTo(feastHost, `前往${feastHost.name}赴宴`);
             }
             nextLord = recordLordAction(nextLord, feastHost.id, `在${feastHost.name}参加宴会`);
             return nextLord;
@@ -3867,7 +3876,7 @@ export default function App() {
             const patrolTargets = friendlyStrongholds(nextLord.factionId).filter(loc => loc.id !== nextLord.currentLocationId);
             const patrolTarget = patrolTargets.length > 0 ? findNearestLocation(patrolBase, patrolTargets) : null;
             if (patrolTarget) {
-              return moveTo(patrolTarget);
+              return moveTo(patrolTarget, `前往${patrolTarget.name}巡逻`);
             }
             nextLord = recordLordAction(nextLord, patrolBase.id, `在${patrolBase.name}附近巡逻`);
           }

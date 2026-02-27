@@ -1577,6 +1577,12 @@ type LordRaceContext = {
   xenophobiaPenalty?: number;
 };
 
+type LordMeetingContext = {
+  roleText: string;
+  homeText: string;
+  homeLocalText: string;
+};
+
 export const chatWithLord = async (
   dialogue: LordChatLine[],
   lord: Lord,
@@ -1586,6 +1592,7 @@ export const chatWithLord = async (
   localLogs: { day: number; text: string }[],
   garrisonSummary: string,
   raceContext: LordRaceContext | null,
+  meetingContext: LordMeetingContext | null,
   openAI?: OpenAIConfig
 ): Promise<{ reply: string; relationDelta: number; memory?: string; attack?: boolean; attackReason?: string; attackRatio?: number }> => {
   const historyText = dialogue
@@ -1613,6 +1620,9 @@ export const chatWithLord = async (
   const playerTroopSummary = raceContext
     ? `- 队伍总人数: ${raceContext.playerTroops.total}\n- 种族构成:\n${playerTroopText}`
     : '（无）';
+  const meetingText = meetingContext
+    ? `${meetingContext.roleText}\n\n【你的封地】\n${meetingContext.homeText}\n\n【封地近况（近期）】\n${meetingContext.homeLocalText}`
+    : '（无）';
 
   const isRoachNest = location.type === 'ROACH_NEST';
   const isUndeadHold = location.type === 'GRAVEYARD';
@@ -1632,6 +1642,9 @@ export const chatWithLord = async (
 - 性格: ${lord.temperament}
 - 特质: ${lord.traits.join('、') || '（无）'}
 - 倾向: ${focusLabel}
+
+【来访与封地信息】
+${meetingText}
 
 【巢穴群落概况】
 ${garrisonSummary || '（无）'}
@@ -1679,6 +1692,9 @@ ${historyText || '（暂无）'}
 - 特质: ${lord.traits.join('、') || '（无）'}
 - 倾向: ${focusLabel}
 
+【来访与封地信息】
+${meetingText}
+
 【死亡堡垒驻军概况】
 ${garrisonSummary || '（无）'}
 
@@ -1724,6 +1740,9 @@ ${historyText || '（暂无）'}
 - 性格: ${lord.temperament}
 - 特质: ${lord.traits.join('、') || '（无）'}
 - 倾向: ${focusLabel}
+
+【来访与封地信息】
+${meetingText}
 
 【据点驻军概况】
 ${garrisonSummary || '（无）'}

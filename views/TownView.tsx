@@ -287,7 +287,9 @@ export const TownView = ({
   const ownerLord = currentLocation.lord
     ? lords.find(lord => lord.id === currentLocation.lord?.id) ?? currentLocation.lord
     : null;
-  const lordsHere = isFieldCamp ? (ownerLord ? [ownerLord] : []) : lords.filter(lord => lord.currentLocationId === currentLocation.id);
+  const lordsHere = isFieldCamp
+    ? (ownerLord ? [ownerLord] : [])
+    : lords.filter(lord => lord.currentLocationId === currentLocation.id && !lord.travelDaysLeft);
   const [selectedLordId, setSelectedLordId] = React.useState<string | null>(null);
   const selectedLord = lordsHere.find(lord => lord.id === selectedLordId) ?? lordsHere[0] ?? null;
   const currentLord = selectedLord;
@@ -686,6 +688,32 @@ export const TownView = ({
         return;
       }
       const raceContext = buildLordRaceContext();
+      const homeFief = locations.find(loc => loc.id === currentLord.fiefId) ?? null;
+      const arrivedDayRaw = typeof (currentLord as any).arrivedDay === 'number'
+        ? Math.floor((currentLord as any).arrivedDay)
+        : Math.floor(currentLord.stateSinceDay ?? playerRef.current.day);
+      const stayDays = Math.max(0, Math.floor(playerRef.current.day) - arrivedDayRaw);
+      const stateLabel = currentLord.state === 'RESTING'
+        ? '休整补员'
+        : currentLord.state === 'MARSHALLING'
+          ? '集结待命'
+          : currentLord.state === 'BESIEGING'
+            ? '指挥围攻'
+            : currentLord.state === 'FEASTING'
+              ? '赴宴交际'
+              : '巡逻';
+      const visitPurpose = String((currentLord as any).visitPurpose ?? '').trim() || stateLabel;
+      const hostText = ownerLord ? `${ownerLord.title}${ownerLord.name}` : '（无）';
+      const isGuest = !!ownerLord && ownerLord.id !== currentLord.id;
+      const roleText = isGuest
+        ? `- 当前地点: ${currentLocation.name}（${currentLocation.type}）\n- 身份: 你是这里的客人（统治者是 ${hostText}）\n- 注意: 你不是此地统治者，用“来访/借宿/会晤”的口吻\n- 抵达: 第${arrivedDayRaw}天（已停留${stayDays}天）\n- 到访目的: ${visitPurpose}\n- 你最近动作: ${currentLord.lastAction ? `${currentLord.lastAction.text}（第${currentLord.lastAction.day}天）` : '（无）'}`
+        : `- 当前地点: ${currentLocation.name}（${currentLocation.type}）\n- 身份: 你是这里的统治者\n- 近况: ${currentLord.lastAction ? `${currentLord.lastAction.text}（第${currentLord.lastAction.day}天）` : '（无）'}\n- 当前事务: ${stateLabel}（自第${currentLord.stateSinceDay}天起）`;
+      const homeText = homeFief
+        ? `- 名称: ${homeFief.name}\n- 类型: ${homeFief.type}\n- 归属: ${homeFief.owner ?? 'NEUTRAL'}\n- 势力: ${homeFief.factionId ?? '（无）'}\n- 是否围攻: ${homeFief.isUnderSiege ? '是' : '否'}`
+        : '（未知）';
+      const homeLocalText = homeFief
+        ? (homeFief.localLogs ?? []).slice(0, 6).map(entry => `- 第${entry.day}天：${entry.text}`).join('\n') || '（无）'
+        : '（无）';
       const response = await chatWithLord(
         nextDialogue,
         currentLord,
@@ -695,6 +723,7 @@ export const TownView = ({
         currentLocation.localLogs ?? [],
         buildLordGarrisonSummary(),
         raceContext,
+        { roleText, homeText, homeLocalText },
         aiConfig
       );
       const reply = response.reply;

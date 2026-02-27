@@ -300,6 +300,9 @@ export interface Lord {
   stateSinceDay: number;
   targetLocationId?: string;
   travelDaysLeft?: number;
+  travelPurpose?: string;
+  arrivedDay?: number;
+  visitPurpose?: string;
   partyTroops: Troop[];
   partyMaxCount?: number;
   lastAction?: { day: number; text: string };
