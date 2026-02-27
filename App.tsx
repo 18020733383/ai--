@@ -2760,6 +2760,23 @@ export default function App() {
     };
 
     for (let dayIndex = 0; dayIndex < days; dayIndex++) {
+      const caravanCamps = newLocations.filter(l => l.type === 'FIELD_CAMP' && l.owner === 'ENEMY' && l.camp?.kind === 'CARAVAN');
+      if (caravanCamps.length > 0) {
+        newLocations = newLocations.flatMap(loc => {
+          if (loc.type !== 'FIELD_CAMP' || loc.owner !== 'ENEMY' || loc.camp?.kind !== 'CARAVAN') return [loc];
+          const camp = loc.camp;
+          const daysLeft = Math.max(0, Math.floor((camp.daysLeft ?? 0) - 1));
+          if (daysLeft <= 0) return [];
+          const total = Math.max(1, Math.floor(camp.totalDays ?? 1));
+          const progressed = total - daysLeft;
+          const ratio = Math.max(0, Math.min(1, progressed / total));
+          const start = camp.routeStart ?? { x: 0, y: 80 };
+          const end = camp.routeEnd ?? { x: MAP_WIDTH, y: MAP_HEIGHT - 80 };
+          const x = Math.round(start.x + (end.x - start.x) * ratio);
+          const y = Math.round(start.y + (end.y - start.y) * ratio);
+          return [{ ...loc, coordinates: { x, y }, camp: { ...camp, daysLeft } }];
+        });
+      }
       const banditCampCount = newLocations.filter(l => l.type === 'BANDIT_CAMP').length;
       if (banditCampCount < 15 && Math.random() < 0.03) {
         const spawnX = Math.floor(Math.random() * MAP_WIDTH);
@@ -2787,6 +2804,54 @@ export default function App() {
         };
         newLocations.push(newCamp);
         logsToAdd.push("侦察兵报告：发现了一处新的劫匪窝点！");
+      }
+
+      const activeCaravanCount = newLocations.filter(l => l.type === 'FIELD_CAMP' && l.owner === 'ENEMY' && l.camp?.kind === 'CARAVAN').length;
+      if (activeCaravanCount < 2 && Math.random() < 0.12) {
+        const spawnLeft = Math.random() < 0.5;
+        const startX = spawnLeft ? 8 : MAP_WIDTH - 8;
+        const endX = spawnLeft ? MAP_WIDTH - 8 : 8;
+        const startY = 20 + Math.floor(Math.random() * Math.max(1, MAP_HEIGHT - 40));
+        const endY = 20 + Math.floor(Math.random() * Math.max(1, MAP_HEIGHT - 40));
+        const totalDays = 7 + Math.floor(Math.random() * 7);
+        const goldMultiplier = 2.6 + Math.random() * 1.4;
+        const guards: Troop[] = [];
+        const addGuard = (id: string, count: number) => {
+          const tmpl = getTroopTemplate(id);
+          if (!tmpl) return;
+          guards.push({ ...tmpl, count, xp: 0 });
+        };
+        addGuard('militia', 10 + Math.floor(Math.random() * 6));
+        addGuard('archer', 6 + Math.floor(Math.random() * 4));
+        addGuard('footman', 3 + Math.floor(Math.random() * 3));
+        const caravan: Location = {
+          id: `caravan_${Date.now()}_${dayIndex}`,
+          name: '商队临时营地',
+          type: 'FIELD_CAMP',
+          description: '驮马与货车围成车阵，护卫警惕地守着箱笼。',
+          coordinates: { x: startX, y: startY },
+          terrain: 'PLAINS',
+          lastRefreshDay: 0,
+          volunteers: [],
+          mercenaries: [],
+          owner: 'ENEMY',
+          garrison: guards,
+          buildings: [],
+          camp: {
+            kind: 'CARAVAN',
+            sourceLocationId: 'caravan_route',
+            targetLocationId: 'caravan_route',
+            totalDays,
+            daysLeft: totalDays,
+            attackerName: '商队护卫',
+            leaderName: '押镖队长',
+            routeStart: { x: startX, y: startY },
+            routeEnd: { x: endX, y: endY },
+            goldMultiplier
+          }
+        };
+        newLocations.push(caravan);
+        logsToAdd.push("斥候报告：一支商队出现在地平线，正沿着道路缓慢行军。");
       }
 
       const nextDay = nextPlayer.day + 1;
@@ -4461,19 +4526,21 @@ export default function App() {
          const withDefense = (location.buildings ?? []).includes('DEFENSE')
            ? mergeTroops(troops, defenseAddon)
            : troops;
-         const enemy: EnemyForce = {
+        const isCaravan = location.camp?.kind === 'CARAVAN';
+        const caravanMultiplier = Math.max(1, location.camp?.goldMultiplier ?? 3.0);
+        const enemy: EnemyForce = {
            id: `field_camp_${Date.now()}`,
            name: location.camp?.attackerName ?? location.name,
-           description: `${location.description}${(location.buildings ?? []).includes('DEFENSE') ? '营地四周有简易木栅与拒马。' : ''}`,
+          description: `${location.description}${(location.buildings ?? []).includes('DEFENSE') ? '营地四周有简易木栅与拒马。' : ''}${isCaravan ? ' 车阵里传来钱币与货箱碰撞声。' : ''}`,
            troops: withDefense,
-           difficulty: '一般',
-           lootPotential: 1.0,
+          difficulty: isCaravan ? 'CARAVAN' : '一般',
+          lootPotential: isCaravan ? caravanMultiplier : 1.0,
            terrain: location.terrain,
-           baseTroopId: withDefense[0]?.id ?? 'militia'
+          baseTroopId: isCaravan ? 'caravan' : (withDefense[0]?.id ?? 'militia')
          };
          addLog(`你接近了 ${location.name}，敌军立即出营迎战！`);
          setActiveEnemy(enemy);
-         setPendingBattleMeta({ mode: 'FIELD', targetLocationId: location.id, siegeContext: '临时营地：有简易木栅、拒马与壕沟，适合防守反击。' });
+        setPendingBattleMeta({ mode: 'FIELD', targetLocationId: location.id, siegeContext: isCaravan ? '商队临时营地：车阵围成半环，护卫在木箱后方布防，适合防守反击。' : '临时营地：有简易木栅、拒马与壕沟，适合防守反击。' });
          setPendingBattleIsTraining(false);
          setView('BATTLE');
          return;
@@ -4802,7 +4869,8 @@ export default function App() {
     const diffFactor = Math.max(0.6, Math.min(2.0, 1 + tierDelta * 0.25));
     const trainingFactor = 1 + Math.max(0, trainingLevel) * 0.05;
     const baseXp = sizeFactor * Math.max(1, avgTier) * 14;
-    const baseGold = sizeFactor * Math.max(1, avgTier) * 14 * Math.max(0.5, enemy.lootPotential ?? 1);
+    const caravanBonus = enemy.difficulty === 'CARAVAN' || enemy.baseTroopId === 'caravan' ? 3.5 : 1;
+    const baseGold = sizeFactor * Math.max(1, avgTier) * 14 * Math.max(0.5, enemy.lootPotential ?? 1) * caravanBonus;
     const baseRenown = Math.max(1, Math.round(Math.max(1, avgTier) * Math.log2(enemyCount + 1)));
     return {
       xp: Math.max(10, Math.round(baseXp * diffFactor * trainingFactor)),
@@ -5659,8 +5727,9 @@ export default function App() {
             currentPlayer,
             battleInfo
           );
+      const trainingRewardsRaw = calculateLocalBattleRewards(activeEnemy, currentPlayer.level, currentPlayer.attributes.training ?? 0, result.outcome);
       const localRewards = isTraining
-        ? { gold: 0, renown: 0, xp: 0 }
+        ? { gold: 0, renown: 0, xp: Math.floor(trainingRewardsRaw.xp / 3) }
         : calculateLocalBattleRewards(activeEnemy, currentPlayer.level, currentPlayer.attributes.training ?? 0, result.outcome);
       const finalResult = {
         ...result,
@@ -5953,6 +6022,41 @@ export default function App() {
         
         logsToAdd.forEach(addLog);
       }
+      if (isTraining && localRewards.xp > 0) {
+        const prev = playerRef.current;
+        const eligibleTroops = prev.troops.filter(t => t.count > 0 && getTroopRace(t, IMPOSTER_TROOP_IDS) !== 'ROACH');
+        const eligibleHeroes = heroesRef.current.filter(hero => hero.recruited && canHeroBattle(hero) && hero.currentHp > 0);
+        const playerEligible = prev.currentHp > 0;
+        const shareCount = eligibleTroops.length + eligibleHeroes.length + (playerEligible ? 1 : 0);
+        const xpShare = shareCount > 0 ? Math.floor(localRewards.xp / shareCount) : 0;
+        if (xpShare > 0) {
+          const nextTroops = prev.troops.map(t => {
+            if (t.count <= 0) return t;
+            const race = getTroopRace(t, IMPOSTER_TROOP_IDS);
+            if (race === 'ROACH') return { ...t, xp: 0 };
+            return { ...t, xp: (t.xp ?? 0) + xpShare };
+          });
+          const updatedHeroes = heroesRef.current.map(hero => {
+            if (!hero.recruited) return hero;
+            if (!canHeroBattle(hero) || hero.currentHp <= 0) return hero;
+            const { xp, level, attributePoints, maxXp } = calculateXpGain(hero.xp, hero.level, hero.attributePoints, hero.maxXp, xpShare);
+            return { ...hero, xp, level, attributePoints, maxXp };
+          });
+          const playerXpResult = playerEligible
+            ? calculateXpGain(prev.xp, prev.level, prev.attributePoints, prev.maxXp, xpShare)
+            : { xp: prev.xp, level: prev.level, attributePoints: prev.attributePoints, maxXp: prev.maxXp };
+          setPlayer(current => ({
+            ...current,
+            troops: nextTroops,
+            xp: playerXpResult.xp,
+            level: playerXpResult.level,
+            attributePoints: playerXpResult.attributePoints,
+            maxXp: playerXpResult.maxXp
+          }));
+          setHeroes(updatedHeroes);
+          addLog(`训练场演练结束，获得经验 +${localRewards.xp}（每单位分配 ${xpShare}）。`);
+        }
+      }
 
     } catch (e: any) {
       console.error("Battle failed:", e);
@@ -6120,6 +6224,19 @@ export default function App() {
   };
 
   const closeBattleResult = () => {
+    if (pendingBattleIsTraining) {
+      setBattleResult(null);
+      setActiveEnemy(null);
+      setIsBattling(false);
+      setIsBattleStreaming(false);
+      setIsBattleResultFinal(true);
+      setBattleMeta(null);
+      setBattleSnapshot(null);
+      setPendingBattleMeta(null);
+      setPendingBattleIsTraining(false);
+      setView('TRAINING');
+      return;
+    }
     if (battleMeta?.mode === 'SIEGE' && battleMeta.targetLocationId) {
       const target = locations.find(l => l.id === battleMeta.targetLocationId);
       if (target && battleResult) {
@@ -6170,7 +6287,7 @@ export default function App() {
           const meta = camp.camp;
           setLocations(prev => {
             let next = prev.filter(l => l.id !== camp.id);
-            if (meta) {
+            if (meta && meta.kind !== 'CARAVAN') {
               next = next.map(l => {
                 if (l.id !== meta.sourceLocationId) return l;
                 return meta.kind === 'IMPOSTER_RAID'
@@ -6189,8 +6306,8 @@ export default function App() {
             }
             return next;
           });
-          addLog(`你摧毁了 ${camp.name}。`);
-          if (meta?.targetLocationId) addLocationLog(meta.targetLocationId, `${meta.attackerName} 的行军营地被击溃。`);
+          addLog(meta?.kind === 'CARAVAN' ? `你洗劫了 ${camp.name}。` : `你摧毁了 ${camp.name}。`);
+          if (meta?.targetLocationId && meta.kind !== 'CARAVAN') addLocationLog(meta.targetLocationId, `${meta.attackerName} 的行军营地被击溃。`);
         } else {
           addLog(`你未能击溃 ${camp.name}。`);
         }
@@ -8107,6 +8224,18 @@ export default function App() {
       calculateFleeChance={calculateFleeChance}
       calculateRearGuardPlan={calculateRearGuardPlan}
       estimateBattleRewards={(enemy, current) => calculateLocalBattleRewards(enemy, current.level, current.attributes.training ?? 0, 'A')}
+      exitTrainingBattle={() => {
+        setActiveEnemy(null);
+        setPendingBattleMeta(null);
+        setPendingBattleIsTraining(false);
+        setBattleError(null);
+        setIsBattling(false);
+        setIsBattleStreaming(false);
+        setIsBattleResultFinal(true);
+        setBattleResult(null);
+        setBattleSnapshot(null);
+        setView('TRAINING');
+      }}
       getTroopTemplate={getTroopTemplate}
       setHoveredTroop={setHoveredTroop}
       setBattlePlan={setBattlePlan}

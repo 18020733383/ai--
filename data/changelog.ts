@@ -6,6 +6,16 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.18',
+    date: '2026-02-27',
+    items: [
+      '帝国训练场模拟战胜利将获得 1/3 经验并分配给队伍',
+      '训练战斗界面新增“返回训练场”替代撤退/殿后',
+      '地图新增随机行军商队临时营地：出现后跨图移动并会自动消失',
+      '击败商队可获得大量金钱（受掠夺技能加成）'
+    ]
+  },
+  {
     version: '0.3.17',
     date: '2026-02-27',
     items: [

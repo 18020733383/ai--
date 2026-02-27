@@ -395,7 +395,7 @@ export interface StayParty {
   lordId?: string;
 }
 
-export type FieldCampKind = 'FACTION_RAID' | 'IMPOSTER_RAID' | 'LORD_MARCH';
+export type FieldCampKind = 'FACTION_RAID' | 'IMPOSTER_RAID' | 'LORD_MARCH' | 'CARAVAN';
 
 export type FieldCampMeta = {
   kind: FieldCampKind;
@@ -405,6 +405,9 @@ export type FieldCampMeta = {
   daysLeft: number;
   attackerName: string;
   leaderName: string;
+  routeStart?: { x: number; y: number };
+  routeEnd?: { x: number; y: number };
+  goldMultiplier?: number;
 };
 
 export interface Location {

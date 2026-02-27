@@ -44,6 +44,7 @@ type BattleViewProps = {
   calculateFleeChance: (playerTroops: Troop[], enemyTroops: Troop[], escape: number) => number;
   calculateRearGuardPlan: (playerTroops: Troop[], enemyTroops: Troop[], escape: number) => { lost: number; successChance: number };
   estimateBattleRewards: (enemy: EnemyForce, player: PlayerState) => { gold: number; renown: number; xp: number };
+  exitTrainingBattle: () => void;
   getTroopTemplate: (id: string) => Omit<Troop, 'count' | 'xp'> | undefined;
   setHoveredTroop: (troop: Troop | null) => void;
   setBattlePlan: React.Dispatch<React.SetStateAction<BattlePlan>>;
@@ -84,6 +85,7 @@ export const BattleView = ({
   calculateFleeChance,
   calculateRearGuardPlan,
   estimateBattleRewards,
+  exitTrainingBattle,
   getTroopTemplate,
   setHoveredTroop,
   setBattlePlan,
@@ -771,14 +773,22 @@ export const BattleView = ({
         </div>
 
         <div className="flex flex-col gap-3">
-          <div className="flex gap-3">
-            <Button onClick={attemptFlee} className="flex-1" variant="secondary">
-              <Flag className="inline mr-2" size={14} /> 尝试逃跑 ({Math.floor(fleeChance * 100)}% 成功率)
-            </Button>
-            <Button onClick={sacrificeRetreat} className="flex-1" variant="secondary">
-              <Skull className="inline mr-2" size={14} /> 断尾求生 (牺牲 {rearGuardPlan.lost} 人 | {Math.floor(rearGuardPlan.successChance * 100)}% 成功率)
-            </Button>
-          </div>
+          {pendingBattleIsTraining ? (
+            <div className="flex gap-3">
+              <Button onClick={exitTrainingBattle} className="flex-1" variant="secondary">
+                返回训练场
+              </Button>
+            </div>
+          ) : (
+            <div className="flex gap-3">
+              <Button onClick={attemptFlee} className="flex-1" variant="secondary">
+                <Flag className="inline mr-2" size={14} /> 尝试逃跑 ({Math.floor(fleeChance * 100)}% 成功率)
+              </Button>
+              <Button onClick={sacrificeRetreat} className="flex-1" variant="secondary">
+                <Skull className="inline mr-2" size={14} /> 断尾求生 (牺牲 {rearGuardPlan.lost} 人 | {Math.floor(rearGuardPlan.successChance * 100)}% 成功率)
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </div>
