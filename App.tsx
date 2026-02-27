@@ -1252,7 +1252,8 @@ export default function App() {
       BANDIT: matrix?.races?.BANDIT ?? INITIAL_PLAYER_STATE.relationMatrix.races.BANDIT,
       AUTOMATON: matrix?.races?.AUTOMATON ?? INITIAL_PLAYER_STATE.relationMatrix.races.AUTOMATON,
       VOID: matrix?.races?.VOID ?? INITIAL_PLAYER_STATE.relationMatrix.races.VOID,
-      MADNESS: matrix?.races?.MADNESS ?? INITIAL_PLAYER_STATE.relationMatrix.races.MADNESS
+      MADNESS: matrix?.races?.MADNESS ?? INITIAL_PLAYER_STATE.relationMatrix.races.MADNESS,
+      BEAST: (matrix as any)?.races?.BEAST ?? (INITIAL_PLAYER_STATE as any).relationMatrix.races.BEAST ?? -10
     }
   });
 
@@ -3677,12 +3678,18 @@ export default function App() {
         councilFactions.forEach(faction => {
           const factionLocations = getFactionLocations(faction.id, newLocations);
           const totalTroops = factionLocations.reduce((sum, loc) => sum + getGarrisonCount(getLocationTroops(loc)), 0);
+          const hasImposterClaim = newLocations.some(loc => isImposterControlledLocation(loc) && loc.claimFactionId === faction.id);
+          const avgGarrison = factionLocations.length > 0 ? totalTroops / factionLocations.length : totalTroops;
           let decision: 'EXPAND' | 'HOLD' | 'ATTACK' = 'HOLD';
           const roll = Math.random();
-          if (totalTroops < factionLocations.length * 700) {
-            decision = roll < 0.7 ? 'EXPAND' : 'HOLD';
+          if (hasImposterClaim) {
+            decision = roll < 0.72 ? 'ATTACK' : 'EXPAND';
+          } else if (avgGarrison < 280) {
+            decision = roll < 0.8 ? 'EXPAND' : 'HOLD';
+          } else if (avgGarrison < 520) {
+            decision = roll < 0.35 ? 'ATTACK' : roll < 0.75 ? 'EXPAND' : 'HOLD';
           } else {
-            decision = roll < 0.4 ? 'ATTACK' : roll < 0.7 ? 'EXPAND' : 'HOLD';
+            decision = roll < 0.55 ? 'ATTACK' : roll < 0.8 ? 'EXPAND' : 'HOLD';
           }
           if (decision === 'HOLD') {
             logsToAdd.push(`【议会】${faction.name} 决定按兵不动。`);
@@ -4783,6 +4790,34 @@ export default function App() {
     if (type === 'COFFEE') {
        if (mode === 'VOLUNTEER') return ['zombie', 'undead_grave_thrall', 'undead_ashen_runner', 'skeleton_warrior'];
        return [];
+    }
+    if (type === 'HABITAT') {
+      if (mode === 'VOLUNTEER') {
+        return [
+          'beast_primate_juvenile_chimp',
+          'beast_rhino_calf',
+          'beast_hippo_calf',
+          'beast_elephant_calf',
+          'beast_lion_cub',
+          'beast_tiger_cub',
+          'beast_bear_cub',
+          'beast_wolf_grey',
+          'beast_croc_nile_juvenile',
+          'beast_bison_calf'
+        ];
+      }
+      return [
+        'beast_primate_adult_gorilla',
+        'beast_rhino_black_subadult',
+        'beast_hippo_swamp',
+        'beast_elephant_bush',
+        'beast_lion_wanderer',
+        'beast_tiger_jungle_hunter',
+        'beast_bear_grizzly',
+        'beast_wolf_king',
+        'beast_croc_wetland_giant',
+        'beast_bison_african_buffalo'
+      ];
     }
     if (type === 'MARKET') return [];
     if (type === 'IMPOSTER_PORTAL') return [];

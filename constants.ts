@@ -21,7 +21,8 @@ export const RACE_LABELS: Record<RaceId, string> = {
   BANDIT: '盗匪团伙',
   AUTOMATON: '失控机兵',
   VOID: '深渊势力',
-  MADNESS: '疯人群体'
+  MADNESS: '疯人群体',
+  BEAST: '野兽族群'
 };
 
 export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
@@ -33,7 +34,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     BANDIT: -50,
     AUTOMATON: -30,
     VOID: -60,
-    MADNESS: -40
+    MADNESS: -40,
+    BEAST: -10
   },
   ROACH: {
     HUMAN: -35,
@@ -43,7 +45,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     BANDIT: -20,
     AUTOMATON: -15,
     VOID: -45,
-    MADNESS: -25
+    MADNESS: -25,
+    BEAST: -25
   },
   UNDEAD: {
     HUMAN: -25,
@@ -53,7 +56,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     BANDIT: -20,
     AUTOMATON: -20,
     VOID: -40,
-    MADNESS: -15
+    MADNESS: -15,
+    BEAST: -5
   },
   IMPOSTER: {
     HUMAN: -80,
@@ -63,7 +67,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     BANDIT: -55,
     AUTOMATON: -40,
     VOID: -70,
-    MADNESS: -50
+    MADNESS: -50,
+    BEAST: -55
   },
   BANDIT: {
     HUMAN: -50,
@@ -73,7 +78,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     BANDIT: 0,
     AUTOMATON: -25,
     VOID: -35,
-    MADNESS: -15
+    MADNESS: -15,
+    BEAST: -20
   },
   AUTOMATON: {
     HUMAN: -30,
@@ -83,7 +89,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     BANDIT: -25,
     AUTOMATON: 0,
     VOID: -45,
-    MADNESS: -25
+    MADNESS: -25,
+    BEAST: -18
   },
   VOID: {
     HUMAN: -60,
@@ -93,7 +100,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     BANDIT: -35,
     AUTOMATON: -45,
     VOID: 0,
-    MADNESS: -30
+    MADNESS: -30,
+    BEAST: -40
   },
   MADNESS: {
     HUMAN: -40,
@@ -103,7 +111,19 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     BANDIT: -15,
     AUTOMATON: -25,
     VOID: -30,
-    MADNESS: 0
+    MADNESS: 0,
+    BEAST: -8
+  },
+  BEAST: {
+    HUMAN: -10,
+    ROACH: -25,
+    UNDEAD: -5,
+    IMPOSTER: -55,
+    BANDIT: -20,
+    AUTOMATON: -18,
+    VOID: -40,
+    MADNESS: -8,
+    BEAST: 0
   }
 };
 
@@ -2812,6 +2832,696 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     supportRole: 'ARTILLERY',
     supportRules: '更适合平原与城外开阔地，雨雪天气削弱效果。'
   },
+  beast_primate_juvenile_chimp: {
+    id: 'beast_primate_juvenile_chimp',
+    name: '幼年黑猩猩',
+    race: 'BEAST',
+    tier: TroopTier.TIER_1,
+    basePower: 24,
+    cost: 160,
+    upgradeCost: 220,
+    maxXp: 80,
+    upgradeTargetId: 'beast_primate_adult_gorilla',
+    description: '灵长类入门单位，反应快、爆发高，但护甲几乎为零。',
+    equipment: ['拳头', '獠牙'],
+    attributes: troopAttr(70, 35, 95, 70, 5, 60)
+  },
+  beast_primate_adult_gorilla: {
+    id: 'beast_primate_adult_gorilla',
+    name: '成年大猩猩',
+    race: 'BEAST',
+    tier: TroopTier.TIER_2,
+    basePower: 55,
+    cost: 320,
+    upgradeCost: 480,
+    maxXp: 150,
+    upgradeTargetId: 'beast_primate_silverback',
+    description: '肌肉与骨骼开始承担军阵责任，能用蛮力撕开盾墙。',
+    equipment: ['巨臂', '厚皮'],
+    attributes: troopAttr(110, 70, 80, 120, 5, 90)
+  },
+  beast_primate_silverback: {
+    id: 'beast_primate_silverback',
+    name: '银背大猩猩',
+    race: 'BEAST',
+    tier: TroopTier.TIER_3,
+    basePower: 105,
+    cost: 650,
+    upgradeCost: 900,
+    maxXp: 300,
+    upgradeTargetId: 'beast_primate_giant_legacy',
+    description: '族群领袖的体格与气势，爆发力足以碾碎前排。',
+    equipment: ['钢铁般的拳', '咆哮'],
+    attributes: troopAttr(145, 95, 85, 160, 5, 120)
+  },
+  beast_primate_giant_legacy: {
+    id: 'beast_primate_giant_legacy',
+    name: '巨猿遗脉',
+    race: 'BEAST',
+    tier: TroopTier.TIER_4,
+    basePower: 170,
+    cost: 1200,
+    upgradeCost: 1600,
+    maxXp: 600,
+    upgradeTargetId: 'beast_primate_kong_prototype',
+    description: '古老血脉醒来，力量与耐久压制一切花活。',
+    equipment: ['碎岩拳', '厚重骨甲'],
+    attributes: troopAttr(180, 120, 70, 200, 5, 150)
+  },
+  beast_primate_kong_prototype: {
+    id: 'beast_primate_kong_prototype',
+    name: '金刚原型',
+    race: 'BEAST',
+    tier: TroopTier.TIER_5,
+    basePower: 240,
+    cost: 2200,
+    upgradeCost: 0,
+    maxXp: 2000,
+    description: '巨兽的原型，像移动的攻城槌。',
+    equipment: ['泰坦级臂力', '撕裂'],
+    attributes: troopAttr(220, 150, 65, 230, 5, 190)
+  },
+  beast_rhino_calf: {
+    id: 'beast_rhino_calf',
+    name: '幼年犀牛',
+    race: 'BEAST',
+    tier: TroopTier.TIER_1,
+    basePower: 26,
+    cost: 170,
+    upgradeCost: 240,
+    maxXp: 90,
+    upgradeTargetId: 'beast_rhino_black_subadult',
+    description: '重装甲类入门，皮厚耐打，冲撞能打乱阵型。',
+    equipment: ['小角', '厚皮'],
+    attributes: troopAttr(85, 70, 45, 110, 5, 90)
+  },
+  beast_rhino_black_subadult: {
+    id: 'beast_rhino_black_subadult',
+    name: '亚成体黑犀牛',
+    race: 'BEAST',
+    tier: TroopTier.TIER_2,
+    basePower: 60,
+    cost: 340,
+    upgradeCost: 520,
+    maxXp: 170,
+    upgradeTargetId: 'beast_rhino_white_warrior',
+    description: '冲刺距离更长，穿刺更狠，能顶穿散阵。',
+    equipment: ['尖角', '厚皮'],
+    attributes: troopAttr(115, 95, 55, 150, 5, 120)
+  },
+  beast_rhino_white_warrior: {
+    id: 'beast_rhino_white_warrior',
+    name: '白犀牛武士',
+    race: 'BEAST',
+    tier: TroopTier.TIER_3,
+    basePower: 115,
+    cost: 700,
+    upgradeCost: 980,
+    maxXp: 320,
+    upgradeTargetId: 'beast_rhino_iron_unicorn',
+    description: '披甲般的角质与骨板，正面推进几乎不停。',
+    equipment: ['战角', '甲壳皮'],
+    attributes: troopAttr(150, 130, 55, 190, 5, 150)
+  },
+  beast_rhino_iron_unicorn: {
+    id: 'beast_rhino_iron_unicorn',
+    name: '独角铁甲犀',
+    race: 'BEAST',
+    tier: TroopTier.TIER_4,
+    basePower: 180,
+    cost: 1300,
+    upgradeCost: 1750,
+    maxXp: 650,
+    upgradeTargetId: 'beast_rhino_elasmotherium',
+    description: '重装冲锋的化身，能把步兵阵列硬生生推开。',
+    equipment: ['铁甲角', '重皮甲'],
+    attributes: troopAttr(185, 160, 60, 220, 5, 175)
+  },
+  beast_rhino_elasmotherium: {
+    id: 'beast_rhino_elasmotherium',
+    name: '板齿犀',
+    race: 'BEAST',
+    tier: TroopTier.TIER_5,
+    basePower: 255,
+    cost: 2400,
+    upgradeCost: 0,
+    maxXp: 2000,
+    description: '远古巨兽，穿刺与碾压同时发生。',
+    equipment: ['远古巨角', '厚重骨板'],
+    attributes: troopAttr(215, 185, 55, 245, 5, 200)
+  },
+  beast_hippo_calf: {
+    id: 'beast_hippo_calf',
+    name: '幼年河马',
+    race: 'BEAST',
+    tier: TroopTier.TIER_1,
+    basePower: 26,
+    cost: 160,
+    upgradeCost: 240,
+    maxXp: 90,
+    upgradeTargetId: 'beast_hippo_swamp',
+    description: '重型坦克入门，咬合与体重就是护甲。',
+    equipment: ['钝齿', '厚皮'],
+    attributes: troopAttr(90, 70, 40, 125, 5, 85)
+  },
+  beast_hippo_swamp: {
+    id: 'beast_hippo_swamp',
+    name: '沼泽河马',
+    race: 'BEAST',
+    tier: TroopTier.TIER_2,
+    basePower: 62,
+    cost: 330,
+    upgradeCost: 520,
+    maxXp: 170,
+    upgradeTargetId: 'beast_hippo_raging_bull',
+    description: '更耐打，更难停下，适合硬顶前线。',
+    equipment: ['重咬合', '泥甲'],
+    attributes: troopAttr(120, 95, 45, 165, 5, 120)
+  },
+  beast_hippo_raging_bull: {
+    id: 'beast_hippo_raging_bull',
+    name: '暴怒公河马',
+    race: 'BEAST',
+    tier: TroopTier.TIER_3,
+    basePower: 120,
+    cost: 720,
+    upgradeCost: 1000,
+    maxXp: 320,
+    upgradeTargetId: 'beast_hippo_bloodpool_lord',
+    description: '愤怒与咬合堆成一面墙，近战会被拖进泥里。',
+    equipment: ['巨颚', '厚皮'],
+    attributes: troopAttr(155, 120, 50, 200, 5, 150)
+  },
+  beast_hippo_bloodpool_lord: {
+    id: 'beast_hippo_bloodpool_lord',
+    name: '血池霸主',
+    race: 'BEAST',
+    tier: TroopTier.TIER_4,
+    basePower: 190,
+    cost: 1350,
+    upgradeCost: 1750,
+    maxXp: 650,
+    upgradeTargetId: 'beast_hippo_terror_giant',
+    description: '体型放大到能把战线压塌，咬合无视恐惧。',
+    equipment: ['断骨巨颚', '战痕厚皮'],
+    attributes: troopAttr(190, 150, 55, 235, 5, 175)
+  },
+  beast_hippo_terror_giant: {
+    id: 'beast_hippo_terror_giant',
+    name: '恐河马',
+    race: 'BEAST',
+    tier: TroopTier.TIER_5,
+    basePower: 260,
+    cost: 2500,
+    upgradeCost: 0,
+    maxXp: 2000,
+    description: '巨型化的河马怪物，咬合像合拢的城门。',
+    equipment: ['巨型断头咬合', '钢筋般的肌肉'],
+    attributes: troopAttr(220, 175, 50, 255, 5, 195)
+  },
+  beast_elephant_calf: {
+    id: 'beast_elephant_calf',
+    name: '幼年非洲象',
+    race: 'BEAST',
+    tier: TroopTier.TIER_1,
+    basePower: 28,
+    cost: 180,
+    upgradeCost: 260,
+    maxXp: 100,
+    upgradeTargetId: 'beast_elephant_bush',
+    description: '长鼻系入门，耐久优秀，力量会随成长爆炸。',
+    equipment: ['短鼻', '厚皮'],
+    attributes: troopAttr(95, 85, 35, 140, 5, 90)
+  },
+  beast_elephant_bush: {
+    id: 'beast_elephant_bush',
+    name: '成年灌木象',
+    race: 'BEAST',
+    tier: TroopTier.TIER_2,
+    basePower: 70,
+    cost: 360,
+    upgradeCost: 560,
+    maxXp: 190,
+    upgradeTargetId: 'beast_elephant_musth_bull',
+    description: '体型成型后，冲撞几乎等同攻城器械。',
+    equipment: ['长鼻', '厚皮'],
+    attributes: troopAttr(130, 110, 40, 190, 5, 130)
+  },
+  beast_elephant_musth_bull: {
+    id: 'beast_elephant_musth_bull',
+    name: '非洲雄象（发情期）',
+    race: 'BEAST',
+    tier: TroopTier.TIER_3,
+    basePower: 130,
+    cost: 780,
+    upgradeCost: 1050,
+    maxXp: 350,
+    upgradeTargetId: 'beast_elephant_warleader',
+    description: '力量与狂暴叠加，冲锋会带走整条前排。',
+    equipment: ['象牙', '怒意'],
+    attributes: troopAttr(165, 140, 45, 230, 5, 160)
+  },
+  beast_elephant_warleader: {
+    id: 'beast_elephant_warleader',
+    name: '战象领袖',
+    race: 'BEAST',
+    tier: TroopTier.TIER_4,
+    basePower: 205,
+    cost: 1500,
+    upgradeCost: 1900,
+    maxXp: 750,
+    upgradeTargetId: 'beast_elephant_mammoth',
+    description: '战场中心的重压，带着整支兽群往前推。',
+    equipment: ['巨象牙', '铁蹄'],
+    attributes: troopAttr(195, 170, 45, 255, 5, 185)
+  },
+  beast_elephant_mammoth: {
+    id: 'beast_elephant_mammoth',
+    name: '猛犸象',
+    race: 'BEAST',
+    tier: TroopTier.TIER_5,
+    basePower: 270,
+    cost: 2700,
+    upgradeCost: 0,
+    maxXp: 2000,
+    description: '远古的长鼻巨兽，践踏会把阵线踩成碎屑。',
+    equipment: ['远古象牙', '冻土厚毛'],
+    attributes: troopAttr(225, 195, 40, 255, 5, 210)
+  },
+  beast_lion_cub: {
+    id: 'beast_lion_cub',
+    name: '幼年雄狮',
+    race: 'BEAST',
+    tier: TroopTier.TIER_1,
+    basePower: 24,
+    cost: 160,
+    upgradeCost: 220,
+    maxXp: 80,
+    upgradeTargetId: 'beast_lion_wanderer',
+    description: '猫科入门，敏捷与杀戮本能会快速成型。',
+    equipment: ['利爪', '獠牙'],
+    attributes: troopAttr(80, 45, 90, 80, 5, 70)
+  },
+  beast_lion_wanderer: {
+    id: 'beast_lion_wanderer',
+    name: '流浪雄狮',
+    race: 'BEAST',
+    tier: TroopTier.TIER_2,
+    basePower: 58,
+    cost: 330,
+    upgradeCost: 500,
+    maxXp: 160,
+    upgradeTargetId: 'beast_lion_pride_king',
+    description: '单独狩猎的猛兽，速度与爆发兼具。',
+    equipment: ['锋爪', '撕咬'],
+    attributes: troopAttr(110, 70, 95, 115, 5, 110)
+  },
+  beast_lion_pride_king: {
+    id: 'beast_lion_pride_king',
+    name: '狮群之王',
+    race: 'BEAST',
+    tier: TroopTier.TIER_3,
+    basePower: 115,
+    cost: 700,
+    upgradeCost: 980,
+    maxXp: 320,
+    upgradeTargetId: 'beast_lion_giant_savage',
+    description: '战场嗅觉敏锐，能抓住破绽持续斩杀。',
+    equipment: ['王者獠牙', '利爪'],
+    attributes: troopAttr(145, 95, 105, 150, 5, 140)
+  },
+  beast_lion_giant_savage: {
+    id: 'beast_lion_giant_savage',
+    name: '蛮荒巨狮',
+    race: 'BEAST',
+    tier: TroopTier.TIER_4,
+    basePower: 185,
+    cost: 1350,
+    upgradeCost: 1750,
+    maxXp: 650,
+    upgradeTargetId: 'beast_lion_ancient_brutal',
+    description: '体型与速度同时提升，突入后排像刀切黄油。',
+    equipment: ['巨爪', '蛮荒怒意'],
+    attributes: troopAttr(180, 120, 110, 190, 5, 170)
+  },
+  beast_lion_ancient_brutal: {
+    id: 'beast_lion_ancient_brutal',
+    name: '残暴狮（远古种）',
+    race: 'BEAST',
+    tier: TroopTier.TIER_5,
+    basePower: 250,
+    cost: 2500,
+    upgradeCost: 0,
+    maxXp: 2000,
+    description: '远古杀戮本能回归，攻击与机动都极其致命。',
+    equipment: ['远古獠牙', '裂肉爪'],
+    attributes: troopAttr(210, 150, 105, 220, 5, 195)
+  },
+  beast_tiger_cub: {
+    id: 'beast_tiger_cub',
+    name: '幼年孟加拉虎',
+    race: 'BEAST',
+    tier: TroopTier.TIER_1,
+    basePower: 25,
+    cost: 170,
+    upgradeCost: 230,
+    maxXp: 85,
+    upgradeTargetId: 'beast_tiger_jungle_hunter',
+    description: '虎系入门，单兵强度会迅速拉开差距。',
+    equipment: ['利爪', '獠牙'],
+    attributes: troopAttr(85, 50, 95, 85, 5, 75)
+  },
+  beast_tiger_jungle_hunter: {
+    id: 'beast_tiger_jungle_hunter',
+    name: '丛林猎手',
+    race: 'BEAST',
+    tier: TroopTier.TIER_2,
+    basePower: 62,
+    cost: 340,
+    upgradeCost: 520,
+    maxXp: 175,
+    upgradeTargetId: 'beast_tiger_siberian',
+    description: '伏击与爆发兼备，专挑重甲的缝隙下手。',
+    equipment: ['狩猎利爪', '撕咬'],
+    attributes: troopAttr(120, 75, 105, 125, 5, 115)
+  },
+  beast_tiger_siberian: {
+    id: 'beast_tiger_siberian',
+    name: '东北虎（西伯利亚）',
+    race: 'BEAST',
+    tier: TroopTier.TIER_3,
+    basePower: 125,
+    cost: 760,
+    upgradeCost: 1040,
+    maxXp: 340,
+    upgradeTargetId: 'beast_tiger_sabertooth_spirit',
+    description: '体格与耐久更强，仍保留可怕的机动。',
+    equipment: ['重爪', '寒地肌肉'],
+    attributes: troopAttr(155, 95, 110, 170, 5, 145)
+  },
+  beast_tiger_sabertooth_spirit: {
+    id: 'beast_tiger_sabertooth_spirit',
+    name: '剑齿虎魂',
+    race: 'BEAST',
+    tier: TroopTier.TIER_4,
+    basePower: 195,
+    cost: 1450,
+    upgradeCost: 1900,
+    maxXp: 720,
+    upgradeTargetId: 'beast_tiger_giant_sabertooth',
+    description: '远古捕食者的残影，攻击更专注于一击毙命。',
+    equipment: ['长剑齿', '猎杀本能'],
+    attributes: troopAttr(190, 125, 105, 210, 5, 175)
+  },
+  beast_tiger_giant_sabertooth: {
+    id: 'beast_tiger_giant_sabertooth',
+    name: '巨型剑齿虎',
+    race: 'BEAST',
+    tier: TroopTier.TIER_5,
+    basePower: 260,
+    cost: 2600,
+    upgradeCost: 0,
+    maxXp: 2000,
+    description: '巨型化的剑齿虎，靠单兵强度撕开任何阵线。',
+    equipment: ['巨齿', '裂甲利爪'],
+    attributes: troopAttr(220, 155, 100, 240, 5, 195)
+  },
+  beast_bear_cub: {
+    id: 'beast_bear_cub',
+    name: '幼年棕熊',
+    race: 'BEAST',
+    tier: TroopTier.TIER_1,
+    basePower: 26,
+    cost: 160,
+    upgradeCost: 240,
+    maxXp: 90,
+    upgradeTargetId: 'beast_bear_grizzly',
+    description: '熊系入门，全能重装，适合当战线填充。',
+    equipment: ['利爪', '厚皮'],
+    attributes: troopAttr(80, 60, 55, 110, 5, 85)
+  },
+  beast_bear_grizzly: {
+    id: 'beast_bear_grizzly',
+    name: '森林灰熊',
+    race: 'BEAST',
+    tier: TroopTier.TIER_2,
+    basePower: 64,
+    cost: 330,
+    upgradeCost: 520,
+    maxXp: 175,
+    upgradeTargetId: 'beast_bear_kodiak',
+    description: '力量与耐久稳步成长，能扛能打。',
+    equipment: ['钢爪', '厚皮'],
+    attributes: troopAttr(115, 90, 60, 155, 5, 120)
+  },
+  beast_bear_kodiak: {
+    id: 'beast_bear_kodiak',
+    name: '科迪亚克棕熊',
+    race: 'BEAST',
+    tier: TroopTier.TIER_3,
+    basePower: 130,
+    cost: 760,
+    upgradeCost: 1040,
+    maxXp: 350,
+    upgradeTargetId: 'beast_bear_polar_butcher',
+    description: '超大体型，几乎是移动的盾墙。',
+    equipment: ['巨爪', '厚脂'],
+    attributes: troopAttr(150, 120, 65, 200, 5, 150)
+  },
+  beast_bear_polar_butcher: {
+    id: 'beast_bear_polar_butcher',
+    name: '极地屠夫（北极熊）',
+    race: 'BEAST',
+    tier: TroopTier.TIER_4,
+    basePower: 205,
+    cost: 1450,
+    upgradeCost: 1900,
+    maxXp: 720,
+    upgradeTargetId: 'beast_bear_short_faced',
+    description: '寒地顶级捕食者，护甲与杀伤同时在线。',
+    equipment: ['雪原巨爪', '撕咬'],
+    attributes: troopAttr(185, 145, 70, 235, 5, 180)
+  },
+  beast_bear_short_faced: {
+    id: 'beast_bear_short_faced',
+    name: '短面熊',
+    race: 'BEAST',
+    tier: TroopTier.TIER_5,
+    basePower: 270,
+    cost: 2700,
+    upgradeCost: 0,
+    maxXp: 2000,
+    description: '陆地最强捕食者之一，正面接战几乎不会退。',
+    equipment: ['短面重咬合', '巨爪'],
+    attributes: troopAttr(215, 175, 65, 255, 5, 200)
+  },
+  beast_wolf_grey: {
+    id: 'beast_wolf_grey',
+    name: '灰狼',
+    race: 'BEAST',
+    tier: TroopTier.TIER_1,
+    basePower: 20,
+    cost: 130,
+    upgradeCost: 200,
+    maxXp: 70,
+    upgradeTargetId: 'beast_wolf_king',
+    description: '犬科入门，依靠集群与耐力拖垮敌人。',
+    equipment: ['利齿', '爪'],
+    attributes: troopAttr(65, 35, 105, 70, 5, 65)
+  },
+  beast_wolf_king: {
+    id: 'beast_wolf_king',
+    name: '荒野狼王',
+    race: 'BEAST',
+    tier: TroopTier.TIER_2,
+    basePower: 52,
+    cost: 280,
+    upgradeCost: 450,
+    maxXp: 150,
+    upgradeTargetId: 'beast_wolf_tundra_giant',
+    description: '狼群核心，速度与士气更强。',
+    equipment: ['撕咬', '怒嚎'],
+    attributes: troopAttr(95, 55, 115, 105, 5, 110)
+  },
+  beast_wolf_tundra_giant: {
+    id: 'beast_wolf_tundra_giant',
+    name: '冻原巨狼',
+    race: 'BEAST',
+    tier: TroopTier.TIER_3,
+    basePower: 105,
+    cost: 650,
+    upgradeCost: 900,
+    maxXp: 300,
+    upgradeTargetId: 'beast_wolf_dire_orphan',
+    description: '更大、更快、更耐打，适合持续追击。',
+    equipment: ['巨齿', '冻原肌肉'],
+    attributes: troopAttr(125, 80, 110, 140, 5, 140)
+  },
+  beast_wolf_dire_orphan: {
+    id: 'beast_wolf_dire_orphan',
+    name: '恐狼遗孤',
+    race: 'BEAST',
+    tier: TroopTier.TIER_4,
+    basePower: 170,
+    cost: 1200,
+    upgradeCost: 1600,
+    maxXp: 600,
+    upgradeTargetId: 'beast_wolf_fenrir',
+    description: '古种血脉回归，咬合能撕开铠甲接缝。',
+    equipment: ['恐狼獠牙', '残酷耐力'],
+    attributes: troopAttr(160, 110, 105, 185, 5, 170)
+  },
+  beast_wolf_fenrir: {
+    id: 'beast_wolf_fenrir',
+    name: '芬里尔',
+    race: 'BEAST',
+    tier: TroopTier.TIER_5,
+    basePower: 240,
+    cost: 2400,
+    upgradeCost: 0,
+    maxXp: 2000,
+    description: '概念化的巨狼，速度与杀伤同时达到极限。',
+    equipment: ['概念獠牙', '终末嚎叫'],
+    attributes: troopAttr(195, 140, 100, 220, 5, 200)
+  },
+  beast_croc_nile_juvenile: {
+    id: 'beast_croc_nile_juvenile',
+    name: '幼体尼罗鳄',
+    race: 'BEAST',
+    tier: TroopTier.TIER_1,
+    basePower: 22,
+    cost: 140,
+    upgradeCost: 210,
+    maxXp: 75,
+    upgradeTargetId: 'beast_croc_wetland_giant',
+    description: '爬行类入门，伏击与咬合是全部逻辑。',
+    equipment: ['利齿', '鳞甲'],
+    attributes: troopAttr(70, 60, 50, 115, 5, 75)
+  },
+  beast_croc_wetland_giant: {
+    id: 'beast_croc_wetland_giant',
+    name: '湿地巨鳄',
+    race: 'BEAST',
+    tier: TroopTier.TIER_2,
+    basePower: 58,
+    cost: 310,
+    upgradeCost: 500,
+    maxXp: 160,
+    upgradeTargetId: 'beast_croc_saltwater',
+    description: '鳞甲更硬，咬合更凶，能把敌人拖下线。',
+    equipment: ['巨颚', '鳞甲'],
+    attributes: troopAttr(105, 90, 55, 160, 5, 120)
+  },
+  beast_croc_saltwater: {
+    id: 'beast_croc_saltwater',
+    name: '咸水鳄（湾鳄）',
+    race: 'BEAST',
+    tier: TroopTier.TIER_3,
+    basePower: 120,
+    cost: 720,
+    upgradeCost: 1000,
+    maxXp: 320,
+    upgradeTargetId: 'beast_croc_prehistoric_killer',
+    description: '力量与护甲都达标，正面接战也能赢。',
+    equipment: ['重颚', '厚鳞'],
+    attributes: troopAttr(135, 120, 55, 200, 5, 150)
+  },
+  beast_croc_prehistoric_killer: {
+    id: 'beast_croc_prehistoric_killer',
+    name: '史前杀手',
+    race: 'BEAST',
+    tier: TroopTier.TIER_4,
+    basePower: 190,
+    cost: 1400,
+    upgradeCost: 1850,
+    maxXp: 720,
+    upgradeTargetId: 'beast_croc_deinosuchus',
+    description: '体型逼近怪物，咬合能把整排拖进混乱。',
+    equipment: ['史前巨颚', '骨板鳞甲'],
+    attributes: troopAttr(170, 150, 60, 235, 5, 175)
+  },
+  beast_croc_deinosuchus: {
+    id: 'beast_croc_deinosuchus',
+    name: '帝鳄',
+    race: 'BEAST',
+    tier: TroopTier.TIER_5,
+    basePower: 255,
+    cost: 2550,
+    upgradeCost: 0,
+    maxXp: 2000,
+    description: '猎龙者级别的帝鳄，咬合带着碾碎般的压迫。',
+    equipment: ['帝鳄巨颚', '装甲鳞片'],
+    attributes: troopAttr(205, 175, 55, 255, 5, 195)
+  },
+  beast_bison_calf: {
+    id: 'beast_bison_calf',
+    name: '幼年野牛',
+    race: 'BEAST',
+    tier: TroopTier.TIER_1,
+    basePower: 24,
+    cost: 150,
+    upgradeCost: 220,
+    maxXp: 80,
+    upgradeTargetId: 'beast_bison_african_buffalo',
+    description: '牛科入门，冲撞与耐力是核心。',
+    equipment: ['小角', '厚皮'],
+    attributes: troopAttr(75, 60, 55, 110, 5, 85)
+  },
+  beast_bison_african_buffalo: {
+    id: 'beast_bison_african_buffalo',
+    name: '非洲水牛',
+    race: 'BEAST',
+    tier: TroopTier.TIER_2,
+    basePower: 60,
+    cost: 310,
+    upgradeCost: 500,
+    maxXp: 160,
+    upgradeTargetId: 'beast_bison_rabid_king',
+    description: '更重、更狠，能顶着箭雨冲到脸上。',
+    equipment: ['硬角', '厚皮'],
+    attributes: troopAttr(110, 90, 60, 155, 5, 120)
+  },
+  beast_bison_rabid_king: {
+    id: 'beast_bison_rabid_king',
+    name: '狂暴野牛王',
+    race: 'BEAST',
+    tier: TroopTier.TIER_3,
+    basePower: 120,
+    cost: 700,
+    upgradeCost: 980,
+    maxXp: 320,
+    upgradeTargetId: 'beast_bison_wasteland_heavy',
+    description: '冲锋如破城槌，正面硬顶能力很强。',
+    equipment: ['战角', '狂暴'],
+    attributes: troopAttr(145, 120, 65, 195, 5, 150)
+  },
+  beast_bison_wasteland_heavy: {
+    id: 'beast_bison_wasteland_heavy',
+    name: '荒原重骑',
+    race: 'BEAST',
+    tier: TroopTier.TIER_4,
+    basePower: 190,
+    cost: 1350,
+    upgradeCost: 1800,
+    maxXp: 720,
+    upgradeTargetId: 'beast_bison_siberian_ancient',
+    description: '靠体重与冲撞碾压阵线，适合打碎防守。',
+    equipment: ['重角', '荒原铁蹄'],
+    attributes: troopAttr(175, 150, 65, 230, 5, 175)
+  },
+  beast_bison_siberian_ancient: {
+    id: 'beast_bison_siberian_ancient',
+    name: '西伯利亚野牛（远古）',
+    race: 'BEAST',
+    tier: TroopTier.TIER_5,
+    basePower: 250,
+    cost: 2500,
+    upgradeCost: 0,
+    maxXp: 2000,
+    description: '远古血脉的重装野牛，碾压与耐久同时拉满。',
+    equipment: ['远古重角', '冻土厚毛'],
+    attributes: troopAttr(205, 175, 60, 255, 5, 195)
+  },
 };
 
 export const TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = Object.fromEntries(
@@ -2966,6 +3676,7 @@ export const TROOP_RACE_LABELS: Record<TroopRace, string> = {
   AUTOMATON: '机兵',
   VOID: '深渊',
   MADNESS: '疯人',
+  BEAST: '野兽',
   UNKNOWN: '未知'
 };
 
@@ -2985,6 +3696,7 @@ export const getTroopRace = (
   if (normalizedId.startsWith('automaton') || normalizedId.startsWith('ai_')) return 'AUTOMATON';
   if (normalizedId.startsWith('void_')) return 'VOID';
   if (normalizedId.startsWith('mad_') || normalizedId.includes('patient')) return 'MADNESS';
+  if (normalizedId.startsWith('beast_')) return 'BEAST';
   if (normalizedId.includes('bandit') || normalizedId.includes('raider') || normalizedId.includes('thief')) return 'BANDIT';
   const name = String(troop.name ?? '');
   if (name.includes('匪') || name.includes('盗') || name.includes('强盗') || name.includes('劫匪')) return 'BANDIT';
@@ -3514,7 +4226,8 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
       BANDIT: 0,
       AUTOMATON: 0,
       VOID: 0,
-      MADNESS: 0
+      MADNESS: 0,
+      BEAST: -10
     }
   },
   relationEvents: []

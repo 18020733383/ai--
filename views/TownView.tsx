@@ -278,7 +278,7 @@ export const TownView = ({
           ? 'LOCAL_GARRISON'
           : townTab;
 
-  const recruitLabel = isGraveyard ? "挖掘尸体" : isHotpot ? "点菜 (招募)" : isCoffee ? "招募亡灵" : isHeavyTrialGrounds ? "采购重型单位" : "征募志愿兵";
+  const recruitLabel = isGraveyard ? "挖掘尸体" : isHotpot ? "点菜 (招募)" : isCoffee ? "招募亡灵" : isHabitat ? "招募野兽" : isHeavyTrialGrounds ? "采购重型单位" : "征募志愿兵";
   const [habitatStayDays, setHabitatStayDays] = React.useState(10);
 
   const coffeeGiftItems = [

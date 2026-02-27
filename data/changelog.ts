@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.23',
+    date: '2026-02-27',
+    items: [
+      '势力议会更积极出兵，尤其会优先夺回被伪人占领的封地',
+      '新增“野兽族群”与 10 条动物兵种升级树（栖息地可招募）',
+      '栖息地招募标签调整为“招募野兽”'
+    ]
+  },
+  {
     version: '0.3.22',
     date: '2026-02-27',
     items: [
