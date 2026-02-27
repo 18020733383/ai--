@@ -268,6 +268,23 @@ export type RelationMatrix = {
   races: Record<RaceId, number>;
 };
 
+export type WorldDiplomacyEvent = {
+  id: string;
+  day: number;
+  kind: 'FACTION_FACTION' | 'FACTION_RACE' | 'RACE_RACE';
+  aId: string;
+  bId: string;
+  delta: number;
+  text: string;
+};
+
+export type WorldDiplomacyState = {
+  factionRelations: Record<FactionId, Record<FactionId, number>>;
+  raceRelations: Record<RaceId, Record<RaceId, number>>;
+  factionRaceRelations: Record<FactionId, Record<RaceId, number>>;
+  events: WorldDiplomacyEvent[];
+};
+
 export interface Lord {
   id: string;
   name: string;
@@ -383,6 +400,7 @@ export interface Location {
   coordinates: { x: number; y: number };
   terrain: TerrainType;
   factionId?: FactionId;
+  claimFactionId?: FactionId;
   
   // Dynamic Recruitment System
   lastRefreshDay: number;

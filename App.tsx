@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult } from './types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState } from './types';
 import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { Button } from './components/Button';
@@ -516,7 +516,11 @@ const buildInitialWorld = () => {
   const seeded = seedStayParties(LOCATIONS);
   const withLords = ensureLocationLords(seeded);
   const lords = withLords.flatMap(loc => (loc.lord ? [{ ...loc.lord }] : []));
-  const syncedLocations = syncLordPresence(withLords, lords);
+  const syncedLocations = syncLordPresence(withLords, lords).map(loc => {
+    if (loc.claimFactionId) return loc;
+    if (loc.factionId) return { ...loc, claimFactionId: loc.factionId };
+    return loc;
+  });
   return { locations: syncedLocations, lords };
 };
 
@@ -552,6 +556,7 @@ export default function App() {
   const [battleSnapshot, setBattleSnapshot] = useState<{ playerTroops: Troop[]; enemyTroops: Troop[] } | null>(null);
   const [recentBattleBriefs, setRecentBattleBriefs] = useState<BattleBrief[]>([]);
   const [worldBattleReports, setWorldBattleReports] = useState<WorldBattleReport[]>([]);
+  const [worldDiplomacy, setWorldDiplomacy] = useState<WorldDiplomacyState>(() => buildInitialWorldDiplomacy());
   const [battleTimeline, setBattleTimeline] = useState<{ day: number; count: number }[]>(() => ([
     { day: INITIAL_PLAYER_STATE.day, count: initialWorld.locations.filter(loc => loc.activeSiege).length }
   ]));
@@ -718,6 +723,7 @@ export default function App() {
   const heroesRef = useRef(heroes);
   const lordsRef = useRef(lords);
   const battleTimelineRef = useRef(battleTimeline);
+  const worldDiplomacyRef = useRef(worldDiplomacy);
   const partyDiaryRef = useRef(partyDiary);
   const defenseAidMetaRef = useRef<{ locationId: string; delta: number; ratio: number } | null>(null);
   const undeadChatListRef = useRef<HTMLDivElement>(null);
@@ -993,6 +999,10 @@ export default function App() {
   }, [battleTimeline]);
 
   useEffect(() => {
+    worldDiplomacyRef.current = worldDiplomacy;
+  }, [worldDiplomacy]);
+
+  useEffect(() => {
     partyDiaryRef.current = partyDiary;
   }, [partyDiary]);
 
@@ -1128,6 +1138,139 @@ export default function App() {
   };
 
   const clampRelation = (value: number) => Math.max(-100, Math.min(100, Math.round(value)));
+
+  const buildInitialWorldDiplomacy = (): WorldDiplomacyState => {
+    const factionIds = FACTIONS.map(f => f.id);
+    const raceIds = Object.keys(RACE_LABELS) as RaceId[];
+    const factionRelations = factionIds.reduce((acc, a) => {
+      acc[a] = factionIds.reduce((row, b) => {
+        row[b] = 0;
+        return row;
+      }, {} as Record<string, number>) as Record<typeof factionIds[number], number>;
+      return acc;
+    }, {} as Record<string, Record<string, number>>) as WorldDiplomacyState['factionRelations'];
+    if (factionIds.includes('VERDANT_COVENANT') && factionIds.includes('FROST_OATH')) {
+      (factionRelations as any).VERDANT_COVENANT.FROST_OATH = -18;
+      (factionRelations as any).FROST_OATH.VERDANT_COVENANT = -18;
+    }
+    if (factionIds.includes('VERDANT_COVENANT') && factionIds.includes('RED_DUNE')) {
+      (factionRelations as any).VERDANT_COVENANT.RED_DUNE = -10;
+      (factionRelations as any).RED_DUNE.VERDANT_COVENANT = -10;
+    }
+    if (factionIds.includes('FROST_OATH') && factionIds.includes('RED_DUNE')) {
+      (factionRelations as any).FROST_OATH.RED_DUNE = -22;
+      (factionRelations as any).RED_DUNE.FROST_OATH = -22;
+    }
+    const raceRelations = raceIds.reduce((acc, a) => {
+      acc[a] = raceIds.reduce((row, b) => {
+        row[b] = clampRelation(RACE_RELATION_MATRIX[a]?.[b] ?? 0);
+        return row;
+      }, {} as Record<string, number>) as Record<typeof raceIds[number], number>;
+      return acc;
+    }, {} as WorldDiplomacyState['raceRelations']);
+    const factionRaceRelations = factionIds.reduce((acc, factionId) => {
+      acc[factionId] = raceIds.reduce((row, raceId) => {
+        row[raceId] = clampRelation(RACE_RELATION_MATRIX.HUMAN?.[raceId] ?? 0);
+        return row;
+      }, {} as Record<string, number>) as Record<typeof raceIds[number], number>;
+      return acc;
+    }, {} as WorldDiplomacyState['factionRaceRelations']);
+    return { factionRelations, raceRelations, factionRaceRelations, events: [] };
+  };
+
+  const normalizeWorldDiplomacy = (raw?: any): WorldDiplomacyState => {
+    const base = buildInitialWorldDiplomacy();
+    const factionIds = FACTIONS.map(f => f.id);
+    const raceIds = Object.keys(RACE_LABELS) as RaceId[];
+    const next: WorldDiplomacyState = {
+      factionRelations: { ...base.factionRelations },
+      raceRelations: { ...base.raceRelations },
+      factionRaceRelations: { ...base.factionRaceRelations },
+      events: Array.isArray(raw?.events) ? raw.events.filter((e: any) => e && typeof e.text === 'string').slice(0, 60) : []
+    };
+    factionIds.forEach(a => {
+      const row = raw?.factionRelations?.[a];
+      const nextRow: Record<string, number> = { ...(next.factionRelations as any)[a] };
+      factionIds.forEach(b => {
+        nextRow[b] = clampRelation(Number(row?.[b] ?? nextRow[b] ?? 0));
+      });
+      (next.factionRelations as any)[a] = nextRow;
+    });
+    raceIds.forEach(a => {
+      const row = raw?.raceRelations?.[a];
+      const nextRow: Record<string, number> = { ...(next.raceRelations as any)[a] };
+      raceIds.forEach(b => {
+        nextRow[b] = clampRelation(Number(row?.[b] ?? nextRow[b] ?? 0));
+      });
+      (next.raceRelations as any)[a] = nextRow;
+    });
+    factionIds.forEach(factionId => {
+      const row = raw?.factionRaceRelations?.[factionId];
+      const nextRow: Record<string, number> = { ...(next.factionRaceRelations as any)[factionId] };
+      raceIds.forEach(raceId => {
+        nextRow[raceId] = clampRelation(Number(row?.[raceId] ?? nextRow[raceId] ?? 0));
+      });
+      (next.factionRaceRelations as any)[factionId] = nextRow;
+    });
+    next.events = next.events.map((e: any) => ({
+      id: String(e?.id ?? `dip_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`),
+      day: typeof e?.day === 'number' ? e.day : playerRef.current.day,
+      kind: e?.kind === 'FACTION_FACTION' || e?.kind === 'FACTION_RACE' || e?.kind === 'RACE_RACE' ? e.kind : 'FACTION_FACTION',
+      aId: String(e?.aId ?? ''),
+      bId: String(e?.bId ?? ''),
+      delta: clampRelation(Number(e?.delta ?? 0)),
+      text: String(e?.text ?? '').trim()
+    })).filter((e: any) => e.text);
+    return next;
+  };
+
+  const getWorldFactionRelation = (state: WorldDiplomacyState, a: string, b: string) => clampRelation(Number((state.factionRelations as any)?.[a]?.[b] ?? 0));
+  const getWorldRaceRelation = (state: WorldDiplomacyState, a: string, b: string) => clampRelation(Number((state.raceRelations as any)?.[a]?.[b] ?? 0));
+  const getWorldFactionRaceRelation = (state: WorldDiplomacyState, factionId: string, raceId: string) => clampRelation(Number((state.factionRaceRelations as any)?.[factionId]?.[raceId] ?? 0));
+
+  const applyWorldDiplomacyDelta = (state: WorldDiplomacyState, payload: { kind: WorldDiplomacyState['events'][number]['kind']; aId: string; bId: string; delta: number; text: string; day: number }) => {
+    const delta = clampRelation(payload.delta);
+    if (!delta) return state;
+    const id = `dip_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const event = { id, day: payload.day, kind: payload.kind, aId: payload.aId, bId: payload.bId, delta, text: payload.text };
+    if (payload.kind === 'FACTION_FACTION') {
+      const current = getWorldFactionRelation(state, payload.aId, payload.bId);
+      const nextValue = clampRelation(current + delta);
+      if (nextValue === current) return state;
+      return {
+        ...state,
+        factionRelations: {
+          ...state.factionRelations,
+          [payload.aId]: { ...(state.factionRelations as any)[payload.aId], [payload.bId]: nextValue }
+        } as any,
+        events: [event, ...(state.events ?? [])].slice(0, 60)
+      };
+    }
+    if (payload.kind === 'RACE_RACE') {
+      const current = getWorldRaceRelation(state, payload.aId, payload.bId);
+      const nextValue = clampRelation(current + delta);
+      if (nextValue === current) return state;
+      return {
+        ...state,
+        raceRelations: {
+          ...state.raceRelations,
+          [payload.aId]: { ...(state.raceRelations as any)[payload.aId], [payload.bId]: nextValue }
+        } as any,
+        events: [event, ...(state.events ?? [])].slice(0, 60)
+      };
+    }
+    const current = getWorldFactionRaceRelation(state, payload.aId, payload.bId);
+    const nextValue = clampRelation(current + delta);
+    if (nextValue === current) return state;
+    return {
+      ...state,
+      factionRaceRelations: {
+        ...state.factionRaceRelations,
+        [payload.aId]: { ...(state.factionRaceRelations as any)[payload.aId], [payload.bId]: nextValue }
+      } as any,
+      events: [event, ...(state.events ?? [])].slice(0, 60)
+    };
+  };
 
   const getRelationValue = (state: PlayerState, targetType: 'FACTION' | 'RACE', targetId: string) => {
     const matrix = normalizeRelationMatrix(state.relationMatrix);
@@ -2580,8 +2723,18 @@ export default function App() {
     let nextHeroes = heroesRef.current.map(h => ({ ...h }));
     let nextLords = lordsRef.current.map(lord => ({ ...lord, partyTroops: lord.partyTroops.map(t => ({ ...t })) }));
     let nextBattleTimeline = [...battleTimelineRef.current];
+    let nextWorldDiplomacy = worldDiplomacyRef.current;
     const logsToAdd: string[] = [];
     const isRoachId = (id: string) => id.startsWith('roach_');
+    const isImposterControlledLocation = (loc: Location) => {
+      if (loc.owner !== 'ENEMY') return false;
+      const troops = loc.garrison ?? [];
+      if (troops.length === 0) return false;
+      const total = troops.reduce((sum, t) => sum + (t.count ?? 0), 0);
+      if (total <= 0) return false;
+      const imposter = troops.reduce((sum, t) => sum + (IMPOSTER_TROOP_IDS.has(t.id) ? (t.count ?? 0) : 0), 0);
+      return imposter / total >= 0.6;
+    };
     const rollBinomial = (n: number, p: number) => {
       if (n <= 0) return 0;
       if (p <= 0) return 0;
@@ -3023,6 +3176,14 @@ export default function App() {
          if (!loc.activeSiege) return loc;
          
          const siege = { ...loc.activeSiege };
+         const defenderFactionId = loc.factionId;
+         const claimFactionId = loc.claimFactionId ?? loc.factionId;
+         const attackerFactionId = siege.attackerFactionId;
+         const sampleTroop = siege.troops?.[0];
+         const inferredRace = sampleTroop ? getTroopRace(sampleTroop) : 'UNKNOWN';
+         const attackerRaceId: RaceId | null = attackerFactionId
+           ? 'HUMAN'
+           : (inferredRace && inferredRace !== 'UNKNOWN' ? (inferredRace as RaceId) : null);
          const siegeFactionName = siege.attackerFactionId ? (FACTIONS.find(f => f.id === siege.attackerFactionId)?.name ?? siege.attackerName) : siege.attackerName;
          let garrison = loc.garrison && loc.garrison.length > 0 ? [...loc.garrison] : buildGarrisonTroops(loc);
          const stayParties = (loc.stayParties ?? []).map(party => ({
@@ -3086,10 +3247,21 @@ export default function App() {
          if (garrisonCount <= 0) {
              logsToAdd.push(`【据点陷落】${loc.name} 的守军全军覆没，据点被 ${siegeFactionName} 占领！`);
              addLocalLog(loc.id, `${loc.name} 守军覆灭，城池陷落。`);
+             if (attackerFactionId && defenderFactionId && attackerFactionId !== defenderFactionId) {
+               nextWorldDiplomacy = applyWorldDiplomacyDelta(nextWorldDiplomacy, { kind: 'FACTION_FACTION', aId: attackerFactionId, bId: defenderFactionId, delta: -18, text: `占领 ${loc.name}`, day: nextDay });
+               nextWorldDiplomacy = applyWorldDiplomacyDelta(nextWorldDiplomacy, { kind: 'FACTION_FACTION', aId: defenderFactionId, bId: attackerFactionId, delta: -26, text: `失去 ${loc.name}`, day: nextDay });
+             }
+             if (!attackerFactionId && attackerRaceId && claimFactionId) {
+               const raceLabel = RACE_LABELS[attackerRaceId] ?? '未知势力';
+               nextWorldDiplomacy = applyWorldDiplomacyDelta(nextWorldDiplomacy, { kind: 'FACTION_RACE', aId: claimFactionId, bId: attackerRaceId, delta: -28, text: `${raceLabel} 占领 ${loc.name}`, day: nextDay });
+               nextWorldDiplomacy = applyWorldDiplomacyDelta(nextWorldDiplomacy, { kind: 'RACE_RACE', aId: 'HUMAN', bId: attackerRaceId, delta: -6, text: `${raceLabel} 攻陷据点`, day: nextDay });
+               nextWorldDiplomacy = applyWorldDiplomacyDelta(nextWorldDiplomacy, { kind: 'RACE_RACE', aId: attackerRaceId, bId: 'HUMAN', delta: -6, text: `攻陷人类据点`, day: nextDay });
+             }
              return {
                  ...loc,
                  owner: 'ENEMY',
-                 factionId: siege.attackerFactionId ?? undefined,
+                 factionId: attackerFactionId ?? undefined,
+                 claimFactionId: attackerFactionId ?? claimFactionId,
                  garrison: siege.troops, // Attackers move in
                  stayParties: [],
                  stationedArmies: [],
@@ -3434,12 +3606,16 @@ export default function App() {
             return;
           }
           const source = [...factionLocations].sort((a, b) => getGarrisonCount(getLocationTroops(b)) - getGarrisonCount(getLocationTroops(a)))[0];
-          const targetCandidates = newLocations.filter(loc => (
-            loc.factionId !== faction.id &&
-            loc.owner !== 'PLAYER' &&
-            FACTIONS.some(f => f.id === loc.factionId) &&
-            (loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE')
-          ));
+          const targetCandidates = newLocations.filter(loc => {
+            if (!(loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE')) return false;
+            if (loc.owner === 'PLAYER') return false;
+            if (loc.factionId && FACTIONS.some(f => f.id === loc.factionId) && loc.factionId !== faction.id) {
+              const relation = getWorldFactionRelation(nextWorldDiplomacy, faction.id, loc.factionId);
+              return relation <= -20;
+            }
+            if (isImposterControlledLocation(loc) && loc.claimFactionId === faction.id) return true;
+            return false;
+          });
           if (!source || targetCandidates.length === 0) {
             logsToAdd.push(`【议会】${faction.name} 决定保持戒备。`);
             return;
@@ -3458,8 +3634,22 @@ export default function App() {
             return;
           }
           const defenderFactionName = FACTIONS.find(f => f.id === target.factionId)?.name ?? target.name;
-          logsToAdd.push(`【宣战】${faction.name} 向 ${defenderFactionName} 宣战。`);
-          logsToAdd.push(`【议会】${faction.name} 决定出兵。`);
+          const defenderFactionId = target.factionId as any;
+          if (defenderFactionId && defenderFactionId !== faction.id) {
+            logsToAdd.push(`【宣战】${faction.name} 向 ${defenderFactionName} 宣战。`);
+            logsToAdd.push(`【议会】${faction.name} 决定出兵。`);
+            const currentAB = getWorldFactionRelation(nextWorldDiplomacy, faction.id, defenderFactionId);
+            const currentBA = getWorldFactionRelation(nextWorldDiplomacy, defenderFactionId, faction.id);
+            if (currentAB > -80) {
+              nextWorldDiplomacy = applyWorldDiplomacyDelta(nextWorldDiplomacy, { kind: 'FACTION_FACTION', aId: faction.id, bId: defenderFactionId, delta: -80 - currentAB, text: `对 ${defenderFactionName} 宣战`, day: nextDay });
+            }
+            if (currentBA > -80) {
+              nextWorldDiplomacy = applyWorldDiplomacyDelta(nextWorldDiplomacy, { kind: 'FACTION_FACTION', aId: defenderFactionId, bId: faction.id, delta: -80 - currentBA, text: `被 ${faction.name} 宣战`, day: nextDay });
+            }
+          } else {
+            logsToAdd.push(`【反攻】${faction.name} 组织军队，准备收复 ${target.name}。`);
+            nextWorldDiplomacy = applyWorldDiplomacyDelta(nextWorldDiplomacy, { kind: 'FACTION_RACE', aId: faction.id, bId: 'IMPOSTER', delta: -6, text: `收复 ${target.name}`, day: nextDay });
+          }
           const marchDays = 2 + Math.floor(Math.random() * 3);
           const etaDay = nextDay + marchDays;
           logsToAdd.push(`【远征军】${faction.name} 远征军从 ${source.name} 出发，目标 ${target.name}，预计 ${marchDays} 天后抵达。`);
@@ -3710,6 +3900,7 @@ export default function App() {
     setPlayer(nextPlayer);
     setHeroes(nextHeroes);
     setLords(nextLords);
+    setWorldDiplomacy(nextWorldDiplomacy);
     setBattleTimeline(nextBattleTimeline.slice(-60));
     logsToAdd.forEach(addLog);
 
@@ -6448,6 +6639,7 @@ export default function App() {
     logs,
     recentBattleBriefs,
     worldBattleReports,
+    worldDiplomacy,
     view,
     currentLocationId: currentLocation?.id ?? null,
     townTab,
@@ -6504,6 +6696,20 @@ export default function App() {
     const outcomeLabel = (outcome: BattleResult['outcome']) => outcome === 'A' ? '胜利' : '战败';
     const logLines = (logs ?? []).map(item => `- ${item}`).join('\n') || '（无）';
     const pct = (value: number) => `${Math.round(value * 100)}%`;
+    const factionPairs = FACTIONS.flatMap((a, idx) => {
+      return FACTIONS.slice(idx + 1).map(b => {
+        const value = Math.max(-100, Math.min(100, Math.round(Number((worldDiplomacy.factionRelations as any)?.[a.id]?.[b.id] ?? 0))));
+        return `- ${a.name} ↔ ${b.name}：${value}`;
+      });
+    }).join('\n') || '（无）';
+    const factionRaceLines = FACTIONS.map(faction => {
+      const row = (worldDiplomacy.factionRaceRelations as any)?.[faction.id] ?? {};
+      const imposter = Math.max(-100, Math.min(100, Math.round(Number(row.IMPOSTER ?? 0))));
+      const roach = Math.max(-100, Math.min(100, Math.round(Number(row.ROACH ?? 0))));
+      const undead = Math.max(-100, Math.min(100, Math.round(Number(row.UNDEAD ?? 0))));
+      return `- ${faction.name}：伪人${imposter}，蟑螂${roach}，亡灵${undead}`;
+    }).join('\n') || '（无）';
+    const diplomacyEvents = (worldDiplomacy.events ?? []).slice(0, 24).map(e => `- 第${e.day}天：${e.text}（${e.delta >= 0 ? `+${e.delta}` : e.delta}）`).join('\n') || '（无）';
     const reportBlocks = (worldBattleReports ?? []).map((report, index) => {
       const roundLines = (report.rounds ?? []).map(round => {
         const roundCasualtiesA = round.casualtiesA ?? (round as any).playerCasualties ?? [];
@@ -6565,6 +6771,17 @@ export default function App() {
       '',
       '## 事件日志',
       logLines,
+      '',
+      '## 外交与关系',
+      '',
+      '### 势力关系（两两）',
+      factionPairs,
+      '',
+      '### 势力对物种态度',
+      factionRaceLines,
+      '',
+      '### 近期外交事件',
+      diplomacyEvents,
       '',
       '## 战斗详情',
       reportBlocks,
@@ -6751,7 +6968,11 @@ export default function App() {
         ? nextHeroes.map(normalizeHero)
         : heroesRef.current.map(normalizeHero);
       setHeroes(normalizedHeroes);
-      const normalizedLocations = ensureLocationLords(seedStayParties(nextLocations));
+      const normalizedLocations = ensureLocationLords(seedStayParties(nextLocations)).map(loc => {
+        if (loc.claimFactionId) return loc;
+        if (loc.factionId) return { ...loc, claimFactionId: loc.factionId };
+        return loc;
+      });
       setLocations(normalizedLocations);
       const nextLogs = Array.isArray(parsed?.logs) ? parsed.logs.filter((x: any) => typeof x === 'string').slice(0, 120) : [];
       setLogs(nextLogs);
@@ -6837,6 +7058,7 @@ export default function App() {
         })) : []
       })).slice(0, 12);
       setWorldBattleReports(nextReports);
+      setWorldDiplomacy(normalizeWorldDiplomacy(parsed?.worldDiplomacy));
       const nextLocationId = typeof parsed?.currentLocationId === 'string' ? parsed.currentLocationId : null;
       const nextLocation = normalizedLocations.find(l => l.id === nextLocationId) ?? null;
       setCurrentLocation(nextLocation);
@@ -7286,6 +7508,7 @@ export default function App() {
         currentLocation={currentLocation}
         logs={logs}
         worldBattleReports={worldBattleReports}
+        worldDiplomacy={worldDiplomacy}
         activeBattles={activeBattles}
         battleTimeline={battleTimeline}
         troopTypeCount={troopTypeCount}

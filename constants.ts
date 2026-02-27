@@ -27,82 +27,82 @@ export const RACE_LABELS: Record<RaceId, string> = {
 export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
   HUMAN: {
     HUMAN: 0,
-    ROACH: 0,
-    UNDEAD: 0,
-    IMPOSTER: 0,
-    BANDIT: 0,
-    AUTOMATON: 0,
-    VOID: 0,
-    MADNESS: 0
+    ROACH: -35,
+    UNDEAD: -25,
+    IMPOSTER: -80,
+    BANDIT: -50,
+    AUTOMATON: -30,
+    VOID: -60,
+    MADNESS: -40
   },
   ROACH: {
-    HUMAN: 0,
+    HUMAN: -35,
     ROACH: 0,
-    UNDEAD: 0,
-    IMPOSTER: 0,
-    BANDIT: 0,
-    AUTOMATON: 0,
-    VOID: 0,
-    MADNESS: 0
+    UNDEAD: -10,
+    IMPOSTER: -60,
+    BANDIT: -20,
+    AUTOMATON: -15,
+    VOID: -45,
+    MADNESS: -25
   },
   UNDEAD: {
-    HUMAN: 0,
-    ROACH: 0,
+    HUMAN: -25,
+    ROACH: -10,
     UNDEAD: 0,
-    IMPOSTER: 0,
-    BANDIT: 0,
-    AUTOMATON: 0,
-    VOID: 0,
-    MADNESS: 0
+    IMPOSTER: -55,
+    BANDIT: -20,
+    AUTOMATON: -20,
+    VOID: -40,
+    MADNESS: -15
   },
   IMPOSTER: {
-    HUMAN: 0,
-    ROACH: 0,
-    UNDEAD: 0,
+    HUMAN: -80,
+    ROACH: -60,
+    UNDEAD: -55,
     IMPOSTER: 0,
-    BANDIT: 0,
-    AUTOMATON: 0,
-    VOID: 0,
-    MADNESS: 0
+    BANDIT: -55,
+    AUTOMATON: -40,
+    VOID: -70,
+    MADNESS: -50
   },
   BANDIT: {
-    HUMAN: 0,
-    ROACH: 0,
-    UNDEAD: 0,
-    IMPOSTER: 0,
+    HUMAN: -50,
+    ROACH: -20,
+    UNDEAD: -20,
+    IMPOSTER: -55,
     BANDIT: 0,
-    AUTOMATON: 0,
-    VOID: 0,
-    MADNESS: 0
+    AUTOMATON: -25,
+    VOID: -35,
+    MADNESS: -15
   },
   AUTOMATON: {
-    HUMAN: 0,
-    ROACH: 0,
-    UNDEAD: 0,
-    IMPOSTER: 0,
-    BANDIT: 0,
+    HUMAN: -30,
+    ROACH: -15,
+    UNDEAD: -20,
+    IMPOSTER: -40,
+    BANDIT: -25,
     AUTOMATON: 0,
-    VOID: 0,
-    MADNESS: 0
+    VOID: -45,
+    MADNESS: -25
   },
   VOID: {
-    HUMAN: 0,
-    ROACH: 0,
-    UNDEAD: 0,
-    IMPOSTER: 0,
-    BANDIT: 0,
-    AUTOMATON: 0,
+    HUMAN: -60,
+    ROACH: -45,
+    UNDEAD: -40,
+    IMPOSTER: -70,
+    BANDIT: -35,
+    AUTOMATON: -45,
     VOID: 0,
-    MADNESS: 0
+    MADNESS: -30
   },
   MADNESS: {
-    HUMAN: 0,
-    ROACH: 0,
-    UNDEAD: 0,
-    IMPOSTER: 0,
-    BANDIT: 0,
-    AUTOMATON: 0,
-    VOID: 0,
+    HUMAN: -40,
+    ROACH: -25,
+    UNDEAD: -15,
+    IMPOSTER: -50,
+    BANDIT: -15,
+    AUTOMATON: -25,
+    VOID: -30,
     MADNESS: 0
   }
 };
