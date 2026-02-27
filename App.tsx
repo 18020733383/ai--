@@ -4868,7 +4868,7 @@ export default function App() {
     const tierDelta = Math.max(-4, Math.min(4, avgTier - levelBracket));
     const diffFactor = Math.max(0.6, Math.min(2.0, 1 + tierDelta * 0.25));
     const trainingFactor = 1 + Math.max(0, trainingLevel) * 0.05;
-    const baseXp = sizeFactor * Math.max(1, avgTier) * 14;
+    const baseXp = sizeFactor * Math.max(1, avgTier) * 21;
     const caravanBonus = enemy.difficulty === 'CARAVAN' || enemy.baseTroopId === 'caravan' ? 3.5 : 1;
     const baseGold = sizeFactor * Math.max(1, avgTier) * 14 * Math.max(0.5, enemy.lootPotential ?? 1) * caravanBonus;
     const baseRenown = Math.max(1, Math.round(Math.max(1, avgTier) * Math.log2(enemyCount + 1)));
@@ -5976,8 +5976,12 @@ export default function App() {
         });
 
         const eligibleTroops = survivingTroopsMeta.filter(item => !item.isRoach && !item.isMaxed);
-        const eligibleHeroes = updatedHeroesBase.filter(hero => canHeroBattle(hero) && hero.currentHp > 0);
-        const playerEligible = newHp > 0;
+        const eligibleHeroes = updatedHeroesBase.filter(hero => {
+          if (!hero.recruited) return false;
+          if (hero.status === 'DEAD') return false;
+          return battleHeroNames.has(hero.name);
+        });
+        const playerEligible = prev.status === 'ACTIVE';
         const shareCount = eligibleTroops.length + eligibleHeroes.length + (playerEligible ? 1 : 0);
         const xpShare = shareCount > 0 ? Math.floor(localRewards.xp / shareCount) : 0;
 
@@ -5992,8 +5996,8 @@ export default function App() {
         }).filter(t => t.count > 0);
 
         const updatedHeroes = updatedHeroesBase.map(hero => {
-          if (!canHeroBattle(hero)) return hero;
-          if (hero.currentHp <= 0 || xpShare <= 0) return hero;
+          const eligible = hero.recruited && hero.status !== 'DEAD' && battleHeroNames.has(hero.name);
+          if (!eligible || xpShare <= 0) return hero;
           const { xp, level, attributePoints, maxXp, logs: heroLogs } = calculateXpGain(hero.xp, hero.level, hero.attributePoints, hero.maxXp, xpShare);
           if (heroLogs.length > 0) logsToAdd.push(...heroLogs.map(log => `${hero.name}：${log}`));
           return { ...hero, xp, level, attributePoints, maxXp };

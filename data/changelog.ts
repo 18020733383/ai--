@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.19',
+    date: '2026-02-27',
+    items: [
+      '英雄与玩家即使重伤退场也能获得战斗经验',
+      '战斗经验基线提升至 1.5 倍'
+    ]
+  },
+  {
     version: '0.3.18',
     date: '2026-02-27',
     items: [
