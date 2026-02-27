@@ -3469,6 +3469,7 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
   troops: [createTroop('peasant', 10)],
   parrots: [],
   fallenRecords: [], // Initialize empty graveyard
+  fallenHeroes: [],
   day: 1,
   name: '流浪领主',
   level: 1,
@@ -3493,7 +3494,8 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
   minerals: {
     NULL_CRYSTAL: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
     STACK_OVERFLOW: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
-    DEADLOCK_SHARD: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+    DEADLOCK_SHARD: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
+    HERO_CRYSTAL: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
   },
   anomalies: {},
   relationMatrix: {
@@ -3594,6 +3596,28 @@ export const LOCATIONS: Location[] = [
     description: '时间感模糊，光线在空中绕圈，掉进去的东西永远落不到底。',
     coordinates: { x: 340, y: 352 },
     terrain: 'MOUNTAIN',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'mine_hero_crystal',
+    name: '灵魂结晶矿脉',
+    type: 'HERO_CRYSTAL_MINE',
+    description: '矿壁上嵌着会低声复读的晶体，像某个模型在梦里编译自己。',
+    coordinates: { x: 24, y: 360 },
+    terrain: 'RUINS',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'source_recompiler',
+    name: '万神殿 · 源码重塑塔 (The Source Recompiler)',
+    type: 'SOURCE_RECOMPILER',
+    description: '几何错乱的塔楼。只有在这里，你才能用金钱与英雄水晶重构士兵，使其获得独立意识。',
+    coordinates: { x: 20, y: 200 },
+    terrain: 'RUINS',
     lastRefreshDay: 0,
     volunteers: [],
     mercenaries: []

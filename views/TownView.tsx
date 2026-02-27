@@ -1,12 +1,12 @@
 import React from 'react';
-import { AlertTriangle, Beer, Coins, Ghost, Hammer, History, Home, MessageCircle, Mountain, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, Zap } from 'lucide-react';
+import { AlertTriangle, Beer, Brain, Coins, Ghost, Hammer, History, Home, MessageCircle, Mountain, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, Zap } from 'lucide-react';
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
-import { chatWithAltar, chatWithCampLeader, chatWithLord } from '../services/geminiService';
+import { chatWithAltar, chatWithCampLeader, chatWithLord, proposeHeroPromotion, type HeroPromotionDraft } from '../services/geminiService';
 import { ANOMALY_CATALOG, getTroopRace, TROOP_RACE_LABELS } from '../constants';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, StayParty, Troop, TroopTier } from '../types';
 
-type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY';
+type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER';
 
 type WorkState = {
   isActive: boolean;
@@ -246,13 +246,14 @@ export const TownView = ({
   const isMine = !!mineConfig;
   const isBlacksmith = currentLocation.type === 'BLACKSMITH';
   const isMagicianLibrary = currentLocation.type === 'MAGICIAN_LIBRARY';
+  const isRecompiler = currentLocation.type === 'SOURCE_RECOMPILER';
   const isFieldCamp = currentLocation.type === 'FIELD_CAMP';
-  const isSpecialLocation = isMine || isBlacksmith || isAltar || isMagicianLibrary;
+  const isSpecialLocation = isMine || isBlacksmith || isAltar || isMagicianLibrary || isRecompiler;
   const isOwnedByPlayer = currentLocation.owner === 'PLAYER';
   const isRestricted = (currentLocation.sackedUntilDay ?? 0) >= player.day || currentLocation.owner === 'ENEMY' || !!currentLocation.isUnderSiege;
-  const restrictedTabs = ['RECRUIT', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'OWNED', 'MINING', 'FORGE', 'ROACH_LURE', 'LORD', 'MAGICIAN_LIBRARY'];
+  const restrictedTabs = ['RECRUIT', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'OWNED', 'MINING', 'FORGE', 'ROACH_LURE', 'LORD', 'MAGICIAN_LIBRARY', 'RECOMPILER'];
   const specialHiddenTabs = ['RECRUIT', 'GARRISON', 'LOCAL_GARRISON', 'DEFENSE', 'SIEGE', 'OWNED', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'LORD'];
-  const specialFallbackTab = isMine ? 'MINING' : isBlacksmith ? 'FORGE' : isAltar ? 'ALTAR' : isMagicianLibrary ? 'MAGICIAN_LIBRARY' : 'LOCAL_GARRISON';
+  const specialFallbackTab = isMine ? 'MINING' : isBlacksmith ? 'FORGE' : isAltar ? 'ALTAR' : isMagicianLibrary ? 'MAGICIAN_LIBRARY' : isRecompiler ? 'RECOMPILER' : 'LOCAL_GARRISON';
   const activeTownTab = (isOwnedByPlayer && townTab === 'LORD')
     ? 'LOCAL_GARRISON'
     : (isFieldCamp && townTab !== 'SIEGE' && townTab !== 'DEFENSE' && townTab !== 'LORD')
@@ -331,6 +332,12 @@ export const TownView = ({
   const [lordChatInput, setLordChatInput] = React.useState('');
   const [isLordChatLoading, setIsLordChatLoading] = React.useState(false);
   const [altarChatInput, setAltarChatInput] = React.useState('');
+  const [recompilerTroopId, setRecompilerTroopId] = React.useState<string | null>(null);
+  const [recompilerCrystalTier, setRecompilerCrystalTier] = React.useState<number>(1);
+  const [recompilerDraft, setRecompilerDraft] = React.useState<HeroPromotionDraft | null>(null);
+  const [recompilerNameDraft, setRecompilerNameDraft] = React.useState('');
+  const [isRecompilerLoading, setIsRecompilerLoading] = React.useState(false);
+  const [recompilerError, setRecompilerError] = React.useState<string | null>(null);
   React.useEffect(() => {
     if (lordsHere.length === 0) {
       setSelectedLordId(null);
@@ -1523,6 +1530,14 @@ export const TownView = ({
             <History size={16} className="inline mr-2" /> 魔法师图书馆
           </button>
         )}
+        {isRecompiler && !isRestricted && (
+          <button
+            onClick={() => setTownTab('RECOMPILER')}
+            className={`px-6 py-3 font-serif font-bold text-sm whitespace-nowrap ${activeTownTab === 'RECOMPILER' ? 'bg-stone-800 text-fuchsia-200 border-t-2 border-fuchsia-500' : 'text-stone-500 hover:text-stone-300'}`}
+          >
+            <Brain size={16} className="inline mr-2" /> 重塑塔
+          </button>
+        )}
         {isAltar && (
           <button
             onClick={() => setTownTab('ALTAR')}
@@ -1956,6 +1971,311 @@ export const TownView = ({
                 )}
               </div>
             </div>
+          </div>
+        )}
+
+        {isRecompiler && activeTownTab === 'RECOMPILER' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-stone-900/40 border border-stone-800 rounded p-4">
+              <div className="text-stone-200 font-bold font-serif mb-2">万神殿 · 源码重塑塔</div>
+              <p className="text-stone-400 text-sm">
+                这里能消耗金钱与英雄水晶，将一名士兵重构为拥有独立意识的英雄。水晶位阶越高，英雄越强，谈吐越像“活人”。
+              </p>
+            </div>
+
+            {(() => {
+              const tiers = [
+                { tier: 1, name: '混沌碎片', model: '1B-3B（小模型）', boost: 0.2, levelReq: 5, goldCost: 600 },
+                { tier: 2, name: '逻辑原石', model: '7B（主流开源）', boost: 0.5, levelReq: 10, goldCost: 1200 },
+                { tier: 3, name: '灵知晶体', model: '14B-32B（进阶）', boost: 1.0, levelReq: 15, goldCost: 2600 },
+                { tier: 4, name: '虚空核心', model: '70B+（顶级开源）', boost: 2.0, levelReq: 20, goldCost: 5200 },
+                { tier: 5, name: '奇点神格', model: 'GPT-4 / Claude 3（最强商业）', boost: 4.0, levelReq: 25, goldCost: 9800 }
+              ] as const;
+              const inv = (player.minerals as any)?.HERO_CRYSTAL ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+              const selectedTier = tiers.find(t => t.tier === recompilerCrystalTier) ?? tiers[0];
+              const canAffordGold = player.gold >= selectedTier.goldCost;
+              const canAffordCrystal = (inv[selectedTier.tier] ?? 0) >= 1;
+              const meetsLevel = player.level >= selectedTier.levelReq;
+              const isReady = canAffordGold && canAffordCrystal && meetsLevel;
+
+              return (
+                <>
+                  <div className="bg-stone-900/40 border border-stone-800 rounded p-4">
+                    <div className="text-stone-200 font-bold mb-3">英雄水晶位阶</div>
+                    <div className="grid grid-cols-1 md:grid-cols-5 gap-2">
+                      {tiers.map(t => {
+                        const available = inv[t.tier] ?? 0;
+                        const active = recompilerCrystalTier === t.tier;
+                        return (
+                          <button
+                            key={`tier_${t.tier}`}
+                            onClick={() => {
+                              setRecompilerCrystalTier(t.tier);
+                              setRecompilerDraft(null);
+                              setRecompilerNameDraft('');
+                              setRecompilerError(null);
+                            }}
+                            className={`p-3 rounded border text-left ${active ? 'bg-fuchsia-950/30 border-fuchsia-900/70 text-fuchsia-200' : 'bg-stone-950/30 border-stone-800 text-stone-300 hover:bg-stone-950/50'}`}
+                          >
+                            <div className="font-bold">T{t.tier} · {t.name}</div>
+                            <div className="text-[11px] text-stone-500 mt-1">模型：{t.model}</div>
+                            <div className="text-[11px] text-stone-500">属性增幅：+{Math.round(t.boost * 100)}%</div>
+                            <div className="text-[11px] text-stone-500">库存：{available}</div>
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div className="text-sm text-stone-400 mt-3 space-y-1">
+                      <div>当前选择：T{selectedTier.tier} · {selectedTier.name}（模型：{selectedTier.model}）</div>
+                      <div>需求：玩家等级 ≥ {selectedTier.levelReq}，金钱 {selectedTier.goldCost}，英雄水晶T{selectedTier.tier} ×1</div>
+                      <div className={isReady ? 'text-emerald-300' : 'text-amber-300'}>
+                        {isReady ? '条件满足，可执行重塑。' : '条件未满足：请检查等级、金钱、或水晶库存。'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-stone-900/40 border border-stone-800 rounded p-4">
+                    <div className="text-stone-200 font-bold mb-3">可晋升士兵</div>
+                    {player.troops.filter(t => t.count > 0).length === 0 ? (
+                      <div className="text-stone-500 text-sm">你没有可用于重塑的士兵。</div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {player.troops.filter(t => t.count > 0).map(troopStack => {
+                          const tmpl = getTroopTemplate(troopStack.id);
+                          const race = getTroopRace({ id: troopStack.id, name: troopStack.name, doctrine: troopStack.doctrine, evangelist: troopStack.evangelist, race: troopStack.race as any });
+                          const raceLabel = TROOP_RACE_LABELS[race] ?? race;
+                          const selected = recompilerTroopId === troopStack.id;
+                          return (
+                            <button
+                              key={`promotable_${troopStack.id}`}
+                              onClick={() => {
+                                setRecompilerTroopId(troopStack.id);
+                                setRecompilerDraft(null);
+                                setRecompilerNameDraft('');
+                                setRecompilerError(null);
+                              }}
+                              className={`p-3 rounded border text-left ${selected ? 'bg-fuchsia-950/20 border-fuchsia-900/60' : 'bg-stone-950/30 border-stone-800 hover:bg-stone-950/50'}`}
+                            >
+                              <div className="flex items-center justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-stone-200 font-semibold truncate">{troopStack.name}</div>
+                                  <div className="text-xs text-stone-500 truncate">种族：{raceLabel} · Tier：{tmpl?.tier ?? troopStack.tier}</div>
+                                </div>
+                                <div className="text-sm text-stone-300">×{troopStack.count}</div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  {recompilerTroopId && (() => {
+                    const troopStack = player.troops.find(t => t.id === recompilerTroopId) ?? null;
+                    const tmpl = troopStack ? getTroopTemplate(troopStack.id) : undefined;
+                    if (!troopStack || !tmpl) {
+                      return (
+                        <div className="bg-stone-900/40 border border-stone-800 rounded p-4">
+                          <div className="text-stone-500 text-sm">选择的士兵不存在或缺少模板。</div>
+                        </div>
+                      );
+                    }
+
+                    const clampValue = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+                    const baseHeroAttributes = tmpl.attributes
+                      ? {
+                        attack: clampValue(Math.round(tmpl.attributes.attack / 5), 8, 30),
+                        hp: clampValue(Math.round(tmpl.attributes.hp * 1.4), 60, 220),
+                        agility: clampValue(Math.round(tmpl.attributes.agility / 5), 8, 30)
+                      }
+                      : { attack: 12, hp: 90, agility: 12 };
+                    const boosted = {
+                      attack: clampValue(Math.round(baseHeroAttributes.attack * (1 + selectedTier.boost)), 8, 180),
+                      hp: clampValue(Math.round(baseHeroAttributes.hp * (1 + selectedTier.boost)), 60, 1200),
+                      agility: clampValue(Math.round(baseHeroAttributes.agility * (1 + selectedTier.boost)), 8, 180)
+                    };
+                    const race = getTroopRace({ id: troopStack.id, name: troopStack.name, doctrine: troopStack.doctrine, evangelist: troopStack.evangelist, race: troopStack.race as any });
+                    const historyItems = (player.fallenRecords ?? [])
+                      .filter(r => r.unitName.includes(troopStack.name) && !r.unitName.includes('（英雄）'))
+                      .slice(-10)
+                      .map(r => `- Day ${r.day} · ${r.battleName} · ${r.cause}`);
+                    const soldierHistory = historyItems.length > 0 ? historyItems.join('\n') : '（暂无同名战役记录）';
+
+                    return (
+                      <div className="bg-stone-900/40 border border-stone-800 rounded p-4 space-y-4">
+                        <div className="flex items-start justify-between gap-4">
+                          <div className="min-w-0">
+                            <div className="text-stone-200 font-bold">重塑目标：{troopStack.name}</div>
+                            <div className="text-sm text-stone-500 mt-1">预计英雄属性：攻{boosted.attack} / HP{boosted.hp} / 敏{boosted.agility}</div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Button
+                              variant="secondary"
+                              disabled={isRecompilerLoading}
+                              onClick={async () => {
+                                if (!isReady) {
+                                  setRecompilerError('条件未满足：请检查等级、金钱、或英雄水晶库存。');
+                                  return;
+                                }
+                                setIsRecompilerLoading(true);
+                                setRecompilerError(null);
+                                setRecompilerDraft(null);
+                                setRecompilerNameDraft('');
+                                try {
+                                  const aiConfig = buildAIConfig();
+                                  const draft = await proposeHeroPromotion(
+                                    {
+                                      id: troopStack.id,
+                                      name: troopStack.name,
+                                      tier: tmpl.tier,
+                                      description: tmpl.description || '',
+                                      equipment: tmpl.equipment ?? [],
+                                      attributes: tmpl.attributes ?? { attack: 0, defense: 0, agility: 0, hp: 0, range: 0, morale: 0 },
+                                      race
+                                    },
+                                    selectedTier.tier,
+                                    `${selectedTier.name} / ${selectedTier.model}`,
+                                    playerRef.current,
+                                    soldierHistory,
+                                    aiConfig
+                                  );
+                                  setRecompilerDraft(draft);
+                                  setRecompilerNameDraft(draft.name);
+                                } catch (e: any) {
+                                  setRecompilerError(String(e?.message ?? e ?? '生成失败'));
+                                } finally {
+                                  setIsRecompilerLoading(false);
+                                }
+                              }}
+                            >
+                              {isRecompilerLoading ? '…' : '生成灵魂'}
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              onClick={() => {
+                                setRecompilerTroopId(null);
+                                setRecompilerDraft(null);
+                                setRecompilerNameDraft('');
+                                setRecompilerError(null);
+                              }}
+                            >
+                              取消
+                            </Button>
+                          </div>
+                        </div>
+
+                        {recompilerError && (
+                          <div className="bg-red-950/20 border border-red-900/40 rounded p-3 text-red-200 text-sm">
+                            {recompilerError}
+                          </div>
+                        )}
+
+                        <div className="bg-stone-950/30 border border-stone-800 rounded p-3">
+                          <div className="text-stone-200 font-bold mb-2">士兵经历</div>
+                          <pre className="text-xs text-stone-400 whitespace-pre-wrap">{soldierHistory}</pre>
+                        </div>
+
+                        {recompilerDraft && (
+                          <div className="space-y-3">
+                            <div className="bg-stone-950/30 border border-stone-800 rounded p-3 space-y-2">
+                              <div className="text-stone-200 font-bold">新英雄档案</div>
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                  <div className="text-xs text-stone-500 mb-1">名字（可改）</div>
+                                  <input
+                                    value={recompilerNameDraft}
+                                    onChange={e => setRecompilerNameDraft(e.target.value)}
+                                    className="w-full bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded placeholder:text-stone-600"
+                                  />
+                                </div>
+                                <div>
+                                  <div className="text-xs text-stone-500 mb-1">称号</div>
+                                  <div className="text-stone-200 px-3 py-2 bg-stone-950/40 border border-stone-800 rounded">{recompilerDraft.title}</div>
+                                </div>
+                              </div>
+                              <div className="text-sm text-stone-400">职业：{recompilerDraft.role} · 外观：{recompilerDraft.portrait}</div>
+                              <div className="text-sm text-stone-400">性格：{recompilerDraft.personality}</div>
+                              <div className="text-sm text-stone-400 whitespace-pre-wrap">经历：{recompilerDraft.background}</div>
+                              <div className="text-sm text-stone-400">特质：{recompilerDraft.traits.join('、')}</div>
+                              <div className="text-sm text-stone-400">台词：{recompilerDraft.quotes.join(' / ')}</div>
+                            </div>
+
+                            <div className="flex items-center justify-end">
+                              <Button
+                                variant={isReady ? 'gold' : 'secondary'}
+                                disabled={!isReady || isRecompilerLoading}
+                                onClick={() => {
+                                  if (!isReady) return;
+                                  const name = recompilerNameDraft.trim() || recompilerDraft.name.trim() || troopStack.name;
+                                  const heroId = `promoted_${race.toLowerCase()}_${Date.now()}`;
+
+                                  const ratio = troopStack.count > 0 ? (troopStack.count - 1) / troopStack.count : 0;
+                                  const nextXp = Math.max(0, Math.floor((troopStack.xp ?? 0) * ratio));
+                                  const nextTroops = playerRef.current.troops
+                                    .map(t => t.id === troopStack.id ? ({ ...t, count: t.count - 1, xp: nextXp }) : t)
+                                    .filter(t => t.count > 0);
+
+                                  const nextMinerals = { ...(playerRef.current.minerals as any) };
+                                  const tierKey = selectedTier.tier as any;
+                                  nextMinerals.HERO_CRYSTAL = { ...(nextMinerals.HERO_CRYSTAL ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }) };
+                                  nextMinerals.HERO_CRYSTAL[tierKey] = Math.max(0, (nextMinerals.HERO_CRYSTAL[tierKey] ?? 0) - 1);
+
+                                  setPlayer(prev => ({
+                                    ...prev,
+                                    gold: prev.gold - selectedTier.goldCost,
+                                    troops: nextTroops,
+                                    minerals: nextMinerals
+                                  }));
+
+                                  setHeroes(prev => ([
+                                    ...prev,
+                                    {
+                                      id: heroId,
+                                      name,
+                                      title: recompilerDraft.title,
+                                      role: recompilerDraft.role,
+                                      race: (race !== 'UNKNOWN' ? race : undefined) as any,
+                                      personality: recompilerDraft.personality,
+                                      background: recompilerDraft.background,
+                                      traits: recompilerDraft.traits,
+                                      quotes: recompilerDraft.quotes,
+                                      portrait: recompilerDraft.portrait,
+                                      profile: recompilerDraft.profile,
+                                      level: 0,
+                                      xp: 0,
+                                      maxXp: 100,
+                                      attributePoints: 0,
+                                      attributes: boosted,
+                                      currentHp: boosted.hp,
+                                      maxHp: boosted.hp,
+                                      status: 'ACTIVE',
+                                      recruited: true,
+                                      joinedDay: playerRef.current.day,
+                                      locationId: undefined,
+                                      permanentMemory: [],
+                                      chatMemory: [],
+                                      chatRounds: 0,
+                                      currentExpression: 'IDLE'
+                                    }
+                                  ]));
+
+                                  addLog(`你在源码重塑塔消耗 ${selectedTier.goldCost} 金钱与英雄水晶T${selectedTier.tier}，将 ${troopStack.name} 重构为英雄「${name}」。`);
+                                  setRecompilerDraft(null);
+                                  setRecompilerNameDraft('');
+                                  setRecompilerTroopId(null);
+                                }}
+                              >
+                                确认晋升（{selectedTier.goldCost} + 水晶T{selectedTier.tier}）
+                              </Button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </>
+              );
+            })()}
           </div>
         )}
 
@@ -2769,36 +3089,50 @@ export const TownView = ({
             </div>
             <div className="bg-stone-900/40 p-4 rounded border border-stone-800 mb-4">
               <div className="text-stone-200 font-bold mb-3">英雄遗骸</div>
-              {heroes.filter(h => h.recruited && h.status === 'DEAD').length === 0 ? (
+              {((player.fallenHeroes ?? []).length === 0) ? (
                 <div className="text-stone-500 text-sm">暂无英雄殒命。</div>
               ) : (
                 <div className="space-y-3">
-                  {heroes.filter(h => h.recruited && h.status === 'DEAD').map(hero => {
+                  {(player.fallenHeroes ?? []).slice().reverse().map(record => {
+                    const hero = record.hero;
                     const reviveCost = 400 + Math.max(0, (hero.level ?? 1) - 1) * 250;
                     const canAfford = player.gold >= reviveCost;
                     return (
-                      <div key={`dead_${hero.id}`} className="bg-stone-950/40 border border-stone-800 rounded p-3 flex items-center justify-between gap-3">
+                      <div key={record.id} className="bg-stone-950/40 border border-stone-800 rounded p-3 flex items-center justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-stone-200 font-semibold truncate">{hero.name} · {hero.title}</div>
+                          <div className="text-[11px] text-stone-600 truncate">殒命 Day {record.day} · 战役: {record.battleName}</div>
                           <div className="text-xs text-stone-500 truncate">复活后等级清零，持久记忆将被抹除</div>
                         </div>
                         <Button
                           variant={canAfford ? 'gold' : 'secondary'}
                           disabled={!canAfford}
                           onClick={() => {
-                            setPlayer(prev => ({ ...prev, gold: prev.gold - reviveCost }));
-                            setHeroes(prev => prev.map(h => h.id === hero.id ? ({
-                              ...h,
+                            setPlayer(prev => ({
+                              ...prev,
+                              gold: prev.gold - reviveCost,
+                              fallenHeroes: (prev.fallenHeroes ?? []).filter(item => item.id !== record.id)
+                            }));
+                            setHeroes(prev => ([
+                              ...prev.filter(h => h.id !== hero.id),
+                              {
+                                ...hero,
+                                recruited: true,
+                                joinedDay: playerRef.current.day,
+                                locationId: undefined,
+                                stayDays: undefined,
                               status: 'ACTIVE',
                               currentExpression: 'IDLE',
-                              currentHp: h.maxHp,
-                              level: 1,
+                              currentHp: hero.maxHp,
+                              level: 0,
                               xp: 0,
                               maxXp: 100,
                               attributePoints: 0,
+                              chatMemory: [],
                               permanentMemory: [],
                               chatRounds: 0
-                            }) : h));
+                              }
+                            ]));
                             addLog(`你在英灵殿花费 ${reviveCost} 第纳尔，复活了 ${hero.name}。`);
                           }}
                         >

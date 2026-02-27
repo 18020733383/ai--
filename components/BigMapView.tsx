@@ -423,9 +423,11 @@ export const BigMapView = ({
                   loc.type === 'MYSTERIOUS_CAVE' ? <Scroll className="text-indigo-400" size={20} /> :
                   loc.type === 'WORLD_BOARD' ? <History className="text-slate-300" size={20} /> :
                   loc.type === 'VOID_BUFFER_MINE' || loc.type === 'MEMORY_OVERFLOW_MINE' || loc.type === 'LOGIC_PARADOX_MINE' ? <Mountain className="text-emerald-400" size={20} /> :
+                  loc.type === 'HERO_CRYSTAL_MINE' ? <Mountain className="text-purple-300" size={20} /> :
                   loc.type === 'BLACKSMITH' ? <Hammer className="text-orange-400" size={20} /> :
                   loc.type === 'ALTAR' ? <span className="text-[20px] leading-none">🛐</span> :
                   loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={20} /> :
+                  loc.type === 'SOURCE_RECOMPILER' ? <Brain className="text-fuchsia-300" size={20} /> :
                   <Tent className="text-green-500" size={16} />}
                 {loc.factionId && loc.owner !== 'PLAYER' && (
                   <span

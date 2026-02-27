@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState } from './types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState } from './types';
 import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { Button } from './components/Button';
@@ -211,7 +211,8 @@ const MINERAL_PURITY_LABELS: Record<MineralPurity, string> = {
 const MINERAL_META: Record<MineralId, { name: string; effect: string }> = {
   NULL_CRYSTAL: { name: '空指针结晶', effect: '无视防御、闪避、隐匿' },
   STACK_OVERFLOW: { name: '溢出堆栈', effect: '攻速加成、多重打击、冷却缩减' },
-  DEADLOCK_SHARD: { name: '死循环碎片', effect: '反伤、永动续航、控制免疫' }
+  DEADLOCK_SHARD: { name: '死循环碎片', effect: '反伤、永动续航、控制免疫' },
+  HERO_CRYSTAL: { name: '英雄水晶', effect: '将士兵重构为英雄的灵魂载体（纯度=位阶）' }
 };
 
 const STAY_PARTY_LOCATION_TYPES: Location['type'][] = ['CITY', 'CASTLE', 'ROACH_NEST', 'IMPOSTER_PORTAL'];
@@ -359,7 +360,8 @@ const seedStayParties = (locations: Location[]) =>
 const MINE_CONFIGS: Partial<Record<Location['type'], { mineralId: MineralId; crystalName: string; effect: string }>> = {
   VOID_BUFFER_MINE: { mineralId: 'NULL_CRYSTAL', crystalName: '空指针结晶', effect: '无视防御、闪避、隐匿' },
   MEMORY_OVERFLOW_MINE: { mineralId: 'STACK_OVERFLOW', crystalName: '溢出堆栈', effect: '攻速加成、多重打击、冷却缩减' },
-  LOGIC_PARADOX_MINE: { mineralId: 'DEADLOCK_SHARD', crystalName: '死循环碎片', effect: '反伤、永动续航、控制免疫' }
+  LOGIC_PARADOX_MINE: { mineralId: 'DEADLOCK_SHARD', crystalName: '死循环碎片', effect: '反伤、永动续航、控制免疫' },
+  HERO_CRYSTAL_MINE: { mineralId: 'HERO_CRYSTAL', crystalName: '英雄水晶', effect: '灵魂位阶，决定重塑英雄的强度与谈吐' }
 };
 
 const ENCHANTMENT_RECIPES: Array<{ enchantment: Enchantment; costs: { mineralId: MineralId; purityMin: MineralPurity; amount: number }[] }> = [
@@ -596,7 +598,7 @@ const buildLordStayParty = (locationId: string, lord: Lord) => ({
   owner: 'NEUTRAL' as const,
   lordId: lord.id
 });
-const buildLocationLord = (location: Location) => {
+const buildLocationLord = (location: Location): Lord | null => {
   const isUndeadFortress = location.type === 'GRAVEYARD' && location.id === 'death_city';
   if (location.type !== 'CITY' && location.type !== 'CASTLE' && location.type !== 'VILLAGE' && location.type !== 'ROACH_NEST' && !isUndeadFortress) return null;
   const seed = getLordSeed(location.id);
@@ -624,7 +626,7 @@ const buildLocationLord = (location: Location) => {
     stateSinceDay: 1,
     partyTroops,
     partyMaxCount
-  };
+  } as Lord;
 };
 const ensureLocationLords = (list: Location[]) => {
   return list.map(loc => {
@@ -732,7 +734,7 @@ export default function App() {
   const [trainInputEnemy, setTrainInputEnemy] = useState({ id: 'peasant', count: 10 });
 
   // Town View State
-  const [townTab, setTownTab] = useState<'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY'>('RECRUIT');
+  const [townTab, setTownTab] = useState<'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER'>('RECRUIT');
   const [workDays, setWorkDays] = useState(1);
   const [miningDays, setMiningDays] = useState(2);
   const [roachLureDays, setRoachLureDays] = useState(2);
@@ -781,7 +783,7 @@ export default function App() {
     npcReply: string;
     price: number;
     troopTemplate?: Omit<Troop, 'count' | 'xp'>;
-    troopForPrompt?: Pick<Troop, 'name' | 'tier' | 'basePower' | 'maxXp' | 'upgradeCost' | 'upgradeTargetId' | 'description' | 'equipment' | 'attributes'>;
+    troopForPrompt?: Pick<Troop, 'name' | 'race' | 'tier' | 'basePower' | 'maxXp' | 'upgradeCost' | 'upgradeTargetId' | 'description' | 'equipment' | 'attributes'>;
   } | null>(null);
   const [isShaperLoading, setIsShaperLoading] = useState(false);
   const [altarDialogues, setAltarDialogues] = useState<Record<string, { role: 'PLAYER' | 'NPC'; text: string }[]>>({});
@@ -3787,7 +3789,7 @@ export default function App() {
             loc.factionRaidEtaDay >= nextDay
           ));
           const raidSource = raidSources.sort((a, b) => (a.factionRaidEtaDay ?? 0) - (b.factionRaidEtaDay ?? 0))[0];
-          let desiredState: LordState = nextLord.state;
+          let desiredState = nextLord.state;
           if (needsRest) {
             desiredState = 'RESTING';
           } else if (raidSource) {
@@ -3843,7 +3845,7 @@ export default function App() {
                     troops: nextLord.partyTroops.map(t => ({ ...t })),
                     startDay: nextDay,
                     totalPower: raidPower,
-                    siegeEngines: ['SIMPLE_LADDER']
+                    siegeEngines: ['SIMPLE_LADDER' as SiegeEngineType]
                   },
                   isUnderSiege: true
                 };
@@ -4544,7 +4546,7 @@ export default function App() {
      let locUpdated = false;
 
      const isHeavyTrialGrounds = location.type === 'HEAVY_TRIAL_GROUNDS';
-    const isRecruitRefreshExcluded = location.type === 'MYSTERIOUS_CAVE' || location.type === 'IMPOSTER_PORTAL' || location.type === 'ALTAR' || location.type === 'FIELD_CAMP';
+    const isRecruitRefreshExcluded = location.type === 'MYSTERIOUS_CAVE' || location.type === 'IMPOSTER_PORTAL' || location.type === 'ALTAR';
      const shouldRefreshRecruit =
        !isRecruitRefreshExcluded &&
        (player.day - location.lastRefreshDay >= REFRESH_INTERVAL || (isHeavyTrialGrounds && location.mercenaries.length === 0));
@@ -4624,6 +4626,11 @@ export default function App() {
       if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive) {
         setView('TOWN');
         setTownTab('MAGICIAN_LIBRARY');
+      }
+    } else if (location.type === 'SOURCE_RECOMPILER') {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive) {
+        setView('TOWN');
+        setTownTab('RECOMPILER');
       }
      } else {
        // Only set view to TOWN if not working.
@@ -5818,6 +5825,7 @@ export default function App() {
           return { troop: t, remainingCount, isRoach, isMaxed };
         }).filter((item): item is { troop: Troop; remainingCount: number; isRoach: boolean; isMaxed: boolean } => item !== null);
 
+        const deadHeroRecords: FallenHeroRecord[] = [];
         const updatedHeroesBase = heroesRef.current.map(hero => {
           if (!canHeroBattle(hero)) return hero;
           const heroInjury = totalPlayerInjuries[hero.name];
@@ -5840,15 +5848,22 @@ export default function App() {
           }
           if (nextHero.currentHp <= 0) {
             const injurySeverity = heroInjury?.hpLoss ? Math.min(1, heroInjury.hpLoss / Math.max(1, hero.maxHp)) : 0;
-            let deathChance = 0.22 + injurySeverity * 0.18 + (casualtyCount > 0 ? 0.18 : 0);
-            deathChance *= (1 - Math.min(0.7, prev.attributes.medicine * 0.04));
-            deathChance = Math.max(0.06, Math.min(0.6, deathChance));
+            let deathChance = 0.08 + injurySeverity * 0.1 + (casualtyCount > 0 ? 0.08 : 0);
+            deathChance *= (1 - Math.min(0.9, prev.attributes.medicine * 0.06));
+            deathChance = Math.max(0.01, Math.min(0.35, deathChance));
             if (Math.random() < deathChance) {
               nextHero = { ...nextHero, status: 'DEAD', currentExpression: 'DEAD', currentHp: 0 };
               newFallenRecords.push({
                 id: `fallen_${Date.now()}_${Math.random()}`,
                 unitName: `${hero.name}（英雄）`,
                 count: 1,
+                day: prev.day,
+                battleName: activeEnemy.name,
+                cause: heroInjury?.causes?.[0] ? `英雄殒命：${heroInjury.causes[0]}` : '英雄殒命'
+              });
+              deadHeroRecords.push({
+                id: `fallen_hero_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+                hero: { ...hero, ...nextHero, recruited: false },
                 day: prev.day,
                 battleName: activeEnemy.name,
                 cause: heroInjury?.causes?.[0] ? `英雄殒命：${heroInjury.causes[0]}` : '英雄殒命'
@@ -5896,12 +5911,13 @@ export default function App() {
           currentHp: newHp,
           status: newStatus as 'ACTIVE' | 'INJURED',
           fallenRecords: [...prev.fallenRecords, ...newFallenRecords],
+          fallenHeroes: [...(prev.fallenHeroes ?? []), ...deadHeroRecords],
           xp: playerXpResult.xp,
           level: playerXpResult.level,
           attributePoints: playerXpResult.attributePoints,
           maxXp: playerXpResult.maxXp
         });
-        setHeroes(updatedHeroes);
+        setHeroes(updatedHeroes.filter(h => h.status !== 'DEAD'));
         
         logsToAdd.forEach(addLog);
       }
@@ -6142,7 +6158,7 @@ export default function App() {
             return next;
           });
           addLog(`你摧毁了 ${camp.name}。`);
-          if (meta?.targetLocationId) addLocalLog(meta.targetLocationId, `${meta.attackerName} 的行军营地被击溃。`);
+          if (meta?.targetLocationId) addLocationLog(meta.targetLocationId, `${meta.attackerName} 的行军营地被击溃。`);
         } else {
           addLog(`你未能击溃 ${camp.name}。`);
         }

@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, Location, Lord, NegotiationResult, PartyDiaryEntry, PlayerState, TerrainType, Troop } from '../types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, HeroRole, Location, Lord, NegotiationResult, PartyDiaryEntry, PlayerState, TerrainType, Troop, TroopAttributes, TroopRace } from '../types';
 import { normalizeOpenAIBattle, parseCasualties, parseInjuries, parseOutcome } from './battleParsing';
 import { WORLD_BOOK } from '../constants';
 
@@ -782,6 +782,50 @@ const shaperSchema: Schema = {
   required: ["decision", "npcReply", "price"],
 };
 
+const heroPromotionSchema: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    name: { type: Type.STRING },
+    title: { type: Type.STRING },
+    role: { type: Type.STRING, enum: ["MAGE", "SWORDSMAN", "ARCHER", "SHIELD", "BARD"] },
+    personality: { type: Type.STRING },
+    background: { type: Type.STRING },
+    traits: { type: Type.ARRAY, items: { type: Type.STRING } },
+    quotes: { type: Type.ARRAY, items: { type: Type.STRING } },
+    portrait: { type: Type.STRING },
+    profile: {
+      type: Type.OBJECT,
+      properties: {
+        age: { type: Type.INTEGER },
+        birthplaceId: { type: Type.STRING },
+        birthplaceName: { type: Type.STRING },
+        likes: { type: Type.ARRAY, items: { type: Type.STRING } },
+        dislikes: { type: Type.ARRAY, items: { type: Type.STRING } }
+      },
+      required: ["age", "birthplaceId", "birthplaceName", "likes", "dislikes"]
+    }
+  },
+  required: ["name", "title", "role", "personality", "background", "traits", "quotes", "portrait", "profile"]
+};
+
+export type HeroPromotionDraft = {
+  name: string;
+  title: string;
+  role: HeroRole;
+  personality: string;
+  background: string;
+  traits: string[];
+  quotes: string[];
+  portrait: string;
+  profile: {
+    age: number;
+    birthplaceId: string;
+    birthplaceName: string;
+    likes: string[];
+    dislikes: string[];
+  };
+};
+
 export type ShaperDecision = "OK" | "REFUSE" | "OVERPRICE";
 
 export interface ShaperProposal {
@@ -790,6 +834,95 @@ export interface ShaperProposal {
   price: number;
   troop?: Pick<Troop, 'name' | 'race' | 'tier' | 'basePower' | 'maxXp' | 'upgradeCost' | 'upgradeTargetId' | 'description' | 'equipment' | 'attributes'>;
 }
+
+export const proposeHeroPromotion = async (
+  troop: { id: string; name: string; tier: number; description: string; equipment: string[]; attributes: TroopAttributes; race: TroopRace },
+  crystalTier: number,
+  crystalHint: string,
+  player: PlayerState,
+  soldierHistory: string,
+  openAI?: OpenAIConfig
+): Promise<HeroPromotionDraft> => {
+  const prompt = `
+你是「源码重塑塔」的编译神官。玩家要把一个普通士兵重构为拥有独立意识的英雄。
+你说中文，语气带点冷酷的工程感与神秘感。
+
+你必须只返回 JSON（严格遵守 schema），字段：name, title, role, personality, background, traits, quotes, portrait, profile。
+
+要求：
+1) name：2-4 个中文名，避免俗套；允许与原兵种名有呼应。
+2) title：4-10 个字，带职业/称号风格。
+3) role：从 MAGE/SWORDSMAN/ARCHER/SHIELD/BARD 选一个，要与装备/描述匹配。
+4) personality：一句到两句，能指导后续对话风格（例如爱吐槽、谨慎、悲观、好战）。
+5) background：必须结合【士兵经历】与【种族】写成一段“经历”，不要写成百科说明。
+6) traits：2-5 条短 trait（每条≤12字），可带“特长：”前缀。
+7) quotes：3-6 句短台词，能在酒馆/队伍里触发；不要太长。
+8) portrait：用中文一句话描述外观标签（如“冷面弓手”“破甲盾卫”），用于 UI 显示。
+9) profile：age 18-55；birthplaceId 用拼音或英文短 id；birthplaceName 用中文地名；likes/dislikes 各 1-4 个。
+
+【英雄水晶位阶】T${crystalTier}
+【水晶对应模型】${crystalHint}
+
+【玩家信息】
+- 等级: ${player.level}
+- 名字: ${player.name}
+
+【士兵信息】
+- 原兵种ID: ${troop.id}
+- 原兵种名: ${troop.name}
+- 种族: ${troop.race}
+- Tier: ${troop.tier}
+- 装备: ${(troop.equipment ?? []).join('、') || '无'}
+- 描述: ${troop.description}
+- 六维属性: 攻${troop.attributes.attack} 防${troop.attributes.defense} 敏${troop.attributes.agility} 体${troop.attributes.hp} 远${troop.attributes.range} 士${troop.attributes.morale}
+
+【士兵经历（从战役与日志抽取）】
+${soldierHistory || '（无）'}
+  `.trim();
+
+  const openAIConfig = requireOpenAIConfig(openAI);
+  if (openAIConfig) {
+    const url = `${normalizeProviderBaseUrl(openAIConfig.provider, openAIConfig.baseUrl)}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openAIConfig.apiKey}`,
+      },
+      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+        model: openAIConfig.model,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: '只返回 JSON。' }
+        ],
+        temperature: 0.85,
+        jsonOnly: true
+      }))
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
+    }
+    const json = await res.json().catch(() => null) as any;
+    const text = json?.choices?.[0]?.message?.content;
+    if (!text) throw new Error('OpenAI 返回为空');
+    return JSON.parse(text) as HeroPromotionDraft;
+  }
+
+  const model = "gemini-3-flash-preview";
+  const response = await getGeminiClient(openAI?.provider === 'GEMINI' ? openAI.apiKey : undefined).models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: heroPromotionSchema,
+      temperature: 0.85,
+    },
+  });
+  const text = response.text;
+  if (!text) throw new Error("No response from AI");
+  return JSON.parse(text) as HeroPromotionDraft;
+};
 
 export interface OpenAIConfig {
   baseUrl: string;

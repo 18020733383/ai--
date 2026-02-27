@@ -9,7 +9,7 @@ export enum TroopTier {
 
 export type AIProvider = 'CUSTOM' | 'GPT' | 'GEMINI' | 'DOUBAO';
 
-export type MineralId = 'NULL_CRYSTAL' | 'STACK_OVERFLOW' | 'DEADLOCK_SHARD';
+export type MineralId = 'NULL_CRYSTAL' | 'STACK_OVERFLOW' | 'DEADLOCK_SHARD' | 'HERO_CRYSTAL';
 export type MineralPurity = 1 | 2 | 3 | 4 | 5;
 export type MineralInventory = Record<MineralId, Record<MineralPurity, number>>;
 export type AnomalyInventory = Record<string, number>;
@@ -135,6 +135,14 @@ export interface FallenRecord {
   cause: string;
 }
 
+export type FallenHeroRecord = {
+  id: string;
+  hero: Hero;
+  day: number;
+  battleName: string;
+  cause: string;
+};
+
 export type HeroRole = 'MAGE' | 'SWORDSMAN' | 'ARCHER' | 'SHIELD' | 'BARD';
 
 export interface HeroAttributes {
@@ -195,6 +203,7 @@ export interface PlayerState {
   troops: Troop[];
   parrots: Parrot[];
   fallenRecords: FallenRecord[]; // Record of dead soldiers
+  fallenHeroes?: FallenHeroRecord[];
   day: number;
   name: string;
   level: number;
@@ -400,7 +409,7 @@ export type FieldCampMeta = {
 export interface Location {
   id: string;
   name: string;
-  type: 'VILLAGE' | 'CASTLE' | 'CITY' | 'RUINS' | 'TRAINING_GROUNDS' | 'ASYLUM' | 'GRAVEYARD' | 'MARKET' | 'HOTPOT_RESTAURANT' | 'BANDIT_CAMP' | 'MYSTERIOUS_CAVE' | 'COFFEE' | 'IMPOSTER_PORTAL' | 'WORLD_BOARD' | 'VOID_BUFFER_MINE' | 'MEMORY_OVERFLOW_MINE' | 'LOGIC_PARADOX_MINE' | 'BLACKSMITH' | 'ROACH_NEST' | 'HEAVY_TRIAL_GROUNDS' | 'ALTAR' | 'MAGICIAN_LIBRARY' | 'FIELD_CAMP';
+  type: 'VILLAGE' | 'CASTLE' | 'CITY' | 'RUINS' | 'TRAINING_GROUNDS' | 'ASYLUM' | 'GRAVEYARD' | 'MARKET' | 'HOTPOT_RESTAURANT' | 'BANDIT_CAMP' | 'MYSTERIOUS_CAVE' | 'COFFEE' | 'IMPOSTER_PORTAL' | 'WORLD_BOARD' | 'VOID_BUFFER_MINE' | 'MEMORY_OVERFLOW_MINE' | 'LOGIC_PARADOX_MINE' | 'HERO_CRYSTAL_MINE' | 'BLACKSMITH' | 'ROACH_NEST' | 'HEAVY_TRIAL_GROUNDS' | 'ALTAR' | 'MAGICIAN_LIBRARY' | 'SOURCE_RECOMPILER' | 'FIELD_CAMP';
   description: string;
   coordinates: { x: number; y: number };
   terrain: TerrainType;
