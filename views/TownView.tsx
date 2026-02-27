@@ -267,6 +267,18 @@ export const TownView = ({
           : townTab;
 
   const recruitLabel = isGraveyard ? "挖掘尸体" : isHotpot ? "点菜 (招募)" : isCoffee ? "招募亡灵" : isHeavyTrialGrounds ? "采购重型单位" : "征募志愿兵";
+
+  const coffeeGiftItems = [
+    { id: 'coffee_black', name: '黑咖啡', price: 30, itemType: 'COFFEE' as const },
+    { id: 'coffee_milk', name: '奶咖', price: 60, itemType: 'COFFEE' as const },
+    { id: 'coffee_sigil', name: '符文浓缩咖啡', price: 120, itemType: 'COFFEE' as const },
+    { id: 'cake_bone', name: '骨粉小蛋糕', price: 80, itemType: 'FOOD' as const },
+    { id: 'stew_midnight', name: '午夜炖肉', price: 160, itemType: 'FOOD' as const }
+  ];
+  const giftableHeroes = heroes.filter(h => h.recruited && h.status !== 'DEAD');
+  const [coffeeGiftHeroId, setCoffeeGiftHeroId] = React.useState<string>(() => giftableHeroes[0]?.id ?? '');
+  const [coffeeGiftItemId, setCoffeeGiftItemId] = React.useState<string>(() => coffeeGiftItems[0].id);
+  const [coffeeGiftError, setCoffeeGiftError] = React.useState<string | null>(null);
   const tavernLabel = "前往酒馆";
 
   const currentTroopCount = player.troops.reduce((a, b) => a + b.count, 0);
@@ -1670,6 +1682,93 @@ export const TownView = ({
             <div className="bg-stone-900/40 p-4 rounded border border-stone-800 text-sm text-stone-400 flex items-center justify-between gap-3">
               <div>亡灵们会记得你最近的经历，也会盯着你的队伍阵容评头论足。</div>
               <div className="text-xs text-stone-600 whitespace-nowrap">Enter 发送</div>
+            </div>
+
+            <div className="bg-stone-900/40 p-4 rounded border border-stone-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="text-stone-200 font-bold">咖啡与点心</div>
+                <div className="text-xs text-stone-500">赠礼会被记录进英雄对话</div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                <div className="md:col-span-1">
+                  <div className="text-xs text-stone-500 mb-1">选择英雄</div>
+                  <select
+                    value={coffeeGiftHeroId}
+                    onChange={e => {
+                      setCoffeeGiftHeroId(e.target.value);
+                      setCoffeeGiftError(null);
+                    }}
+                    className="w-full bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded"
+                  >
+                    {giftableHeroes.length === 0 ? (
+                      <option value="">（暂无可赠送英雄）</option>
+                    ) : (
+                      giftableHeroes.map(h => (
+                        <option key={`gift_hero_${h.id}`} value={h.id}>{h.name}</option>
+                      ))
+                    )}
+                  </select>
+                </div>
+                <div className="md:col-span-1">
+                  <div className="text-xs text-stone-500 mb-1">选择礼物</div>
+                  <select
+                    value={coffeeGiftItemId}
+                    onChange={e => {
+                      setCoffeeGiftItemId(e.target.value);
+                      setCoffeeGiftError(null);
+                    }}
+                    className="w-full bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded"
+                  >
+                    {coffeeGiftItems.map(item => (
+                      <option key={`gift_item_${item.id}`} value={item.id}>
+                        {item.name}（{item.price}）
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <div className="md:col-span-1 flex items-end gap-2">
+                  <Button
+                    variant="gold"
+                    disabled={giftableHeroes.length === 0}
+                    onClick={() => {
+                      const hero = heroes.find(h => h.id === coffeeGiftHeroId);
+                      const item = coffeeGiftItems.find(i => i.id === coffeeGiftItemId);
+                      if (!hero || !item) {
+                        setCoffeeGiftError('请选择英雄与礼物。');
+                        return;
+                      }
+                      if (player.gold < item.price) {
+                        setCoffeeGiftError('金钱不足。');
+                        return;
+                      }
+                      const record = {
+                        id: `gift_${Date.now()}`,
+                        day: player.day,
+                        heroId: hero.id,
+                        heroName: hero.name,
+                        itemName: item.name,
+                        itemType: item.itemType,
+                        price: item.price,
+                        sourceLocationName: currentLocation.name
+                      };
+                      setPlayer(prev => ({
+                        ...prev,
+                        gold: prev.gold - item.price,
+                        giftRecords: [...(prev.giftRecords ?? []), record]
+                      }));
+                      addLog(`你在${currentLocation.name}花费 ${item.price} 第纳尔，送给 ${hero.name} 一份「${item.name}」。`);
+                      setCoffeeGiftError(null);
+                    }}
+                  >
+                    购买并赠送
+                  </Button>
+                </div>
+              </div>
+              {coffeeGiftError && (
+                <div className="text-sm text-red-300 bg-red-950/20 border border-red-900/40 rounded px-3 py-2">
+                  {coffeeGiftError}
+                </div>
+              )}
             </div>
 
             <div

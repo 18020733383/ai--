@@ -144,6 +144,17 @@ export type FallenHeroRecord = {
   cause: string;
 };
 
+export type HeroGiftRecord = {
+  id: string;
+  day: number;
+  heroId: string;
+  heroName: string;
+  itemName: string;
+  itemType: 'COFFEE' | 'FOOD';
+  price: number;
+  sourceLocationName?: string;
+};
+
 export type HeroRole = 'MAGE' | 'SWORDSMAN' | 'ARCHER' | 'SHIELD' | 'BARD';
 
 export interface HeroAttributes {
@@ -205,6 +216,7 @@ export interface PlayerState {
   parrots: Parrot[];
   fallenRecords: FallenRecord[]; // Record of dead soldiers
   fallenHeroes?: FallenHeroRecord[];
+  giftRecords: HeroGiftRecord[];
   day: number;
   name: string;
   level: number;

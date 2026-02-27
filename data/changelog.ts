@@ -6,6 +6,16 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.20',
+    date: '2026-02-27',
+    items: [
+      '世界公告栏新增“全地图部队列表”，可筛选并查看兵种构成',
+      '亡灵咖啡馆新增咖啡与点心购买，可赠送给指定英雄',
+      '英雄对话提示词新增近期收礼记录（近 3 天可能致谢）',
+      '程序演算战斗加入随机捉对厮杀，弱者存在极小爆冷概率'
+    ]
+  },
+  {
     version: '0.3.19',
     date: '2026-02-27',
     items: [

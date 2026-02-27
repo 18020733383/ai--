@@ -3470,6 +3470,7 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
   parrots: [],
   fallenRecords: [], // Initialize empty graveyard
   fallenHeroes: [],
+  giftRecords: [],
   day: 1,
   name: '流浪领主',
   level: 1,

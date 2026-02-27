@@ -57,6 +57,15 @@ type WorldBoardViewProps = {
     villages: number;
     soldiers: number;
   }>;
+  worldForces: Array<{
+    id: string;
+    kind: string;
+    name: string;
+    locationName: string;
+    troopCount: number;
+    power: number;
+    troops: Array<{ name: string; count: number; tier?: number }>;
+  }>;
   onOpenTroopArchive: () => void;
   onBackToMap: () => void;
   onExportMarkdown: () => void;
@@ -72,6 +81,7 @@ export const WorldBoardView = ({
   siegeEngineArchive,
   defenseArchive,
   factionSnapshots,
+  worldForces,
   onOpenTroopArchive,
   onBackToMap,
   onExportMarkdown
@@ -93,6 +103,9 @@ export const WorldBoardView = ({
     CAVALRY: '骑兵'
   };
   const [expandedBattleId, setExpandedBattleId] = React.useState<string | null>(null);
+  const [forceQuery, setForceQuery] = React.useState('');
+  const [forceKind, setForceKind] = React.useState<'ALL' | string>('ALL');
+  const [expandedForceId, setExpandedForceId] = React.useState<string | null>(null);
   const formatTroops = (troops: Array<{ id: string; name?: string; count: number }>) => {
     if (!troops || troops.length === 0) return '无';
     return troops.filter(t => t.count > 0).map(t => `${t.name ?? t.id}x${t.count}`).join('，') || '无';
@@ -111,6 +124,17 @@ export const WorldBoardView = ({
       return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
     }).join(' ');
   };
+
+  const forceKinds = Array.from(new Set(worldForces.map(item => item.kind))).sort((a, b) => a.localeCompare(b));
+  const filteredForces = worldForces
+    .filter(item => forceKind === 'ALL' ? true : item.kind === forceKind)
+    .filter(item => {
+      const q = forceQuery.trim().toLowerCase();
+      if (!q) return true;
+      const hay = `${item.name} ${item.locationName} ${item.kind}`.toLowerCase();
+      return hay.includes(q);
+    })
+    .sort((a, b) => (b.power - a.power) || (b.troopCount - a.troopCount) || a.name.localeCompare(b.name));
 
   return (
     <div className="min-h-[80vh] p-4 pt-6">
@@ -202,6 +226,83 @@ export const WorldBoardView = ({
               </div>
             )}
           </div>
+        </div>
+
+        <div className="bg-stone-900/70 border border-stone-700 rounded p-4 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-stone-200 font-semibold">全地图部队列表</div>
+            <div className="text-xs text-stone-500">共 {filteredForces.length} 支</div>
+          </div>
+          <div className="flex flex-col md:flex-row gap-2 mb-3">
+            <input
+              value={forceQuery}
+              onChange={e => setForceQuery(e.target.value)}
+              placeholder="搜索：名称 / 地点 / 类型"
+              className="flex-1 bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded placeholder:text-stone-600"
+            />
+            <select
+              value={forceKind}
+              onChange={e => setForceKind(e.target.value)}
+              className="bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded"
+            >
+              <option value="ALL">全部类型</option>
+              {forceKinds.map(kind => (
+                <option key={`force_kind_${kind}`} value={kind}>{kind}</option>
+              ))}
+            </select>
+          </div>
+          {filteredForces.length === 0 ? (
+            <div className="text-sm text-stone-500">暂无部队。</div>
+          ) : (
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto scrollbar-hide pr-1">
+              {filteredForces.map(force => {
+                const expanded = expandedForceId === force.id;
+                return (
+                  <div key={force.id} className="bg-stone-950/60 border border-stone-800 rounded">
+                    <button
+                      className="w-full text-left px-3 py-2 hover:bg-stone-950/80"
+                      onClick={() => setExpandedForceId(expanded ? null : force.id)}
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-stone-200 font-semibold truncate">{force.name}</div>
+                          <div className="text-xs text-stone-500 truncate">{force.kind} · {force.locationName}</div>
+                        </div>
+                        <div className="text-right whitespace-nowrap">
+                          <div className="text-sm text-stone-200">兵力 {force.troopCount}</div>
+                          <div className="text-xs text-stone-500">战力 {Math.round(force.power)}</div>
+                        </div>
+                      </div>
+                    </button>
+                    {expanded && (
+                      <div className="px-3 pb-3">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                          {force.troops
+                            .filter(t => t.count > 0)
+                            .sort((a, b) => (b.tier ?? 0) - (a.tier ?? 0) || b.count - a.count)
+                            .slice(0, 24)
+                            .map(t => (
+                              <div
+                                key={`${force.id}_${t.name}`}
+                                className="flex items-center justify-between text-sm bg-stone-900/30 border border-stone-800 rounded px-2 py-1"
+                              >
+                                <div className="text-stone-300 truncate">
+                                  {t.name}{typeof t.tier === 'number' ? ` (T${t.tier})` : ''}
+                                </div>
+                                <div className="text-stone-200">×{t.count}</div>
+                              </div>
+                            ))}
+                        </div>
+                        {force.troops.length > 24 && (
+                          <div className="text-xs text-stone-600 mt-2">仅展示前 24 条兵种。</div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-4 gap-4">

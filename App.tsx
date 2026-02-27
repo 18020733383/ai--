@@ -5170,8 +5170,30 @@ export default function App() {
       if (isHeavyUnit(troop)) return 'heavy';
       return 'melee';
     };
-    const buildActionQueue = (side: 'A' | 'B', troops: Troop[]) => {
-      return troops.filter(t => t.count > 0).map(troop => {
+    const isCavalryUnit = (troop: Troop) => {
+      const text = `${troop.id} ${troop.name}`.toLowerCase();
+      return /cavalry|knight|horse|rider|骑|马/.test(text);
+    };
+    const rollBinomial = (n: number, p: number) => {
+      if (n <= 0) return 0;
+      if (p <= 0) return 0;
+      if (p >= 1) return n;
+      let k = 0;
+      for (let i = 0; i < n; i++) if (Math.random() < p) k++;
+      return k;
+    };
+    const buildActionQueue = (side: 'A' | 'B', troops: Troop[], width: number) => {
+      const result: Array<{
+        side: 'A' | 'B';
+        troop: Troop;
+        groupCount: number;
+        nextAct: number;
+        interval: number;
+        rangedFirst: boolean;
+        agility: number;
+        range: number;
+      }> = [];
+      troops.filter(t => t.count > 0).forEach(troop => {
         const attrs = troop.attributes ?? fallbackAttributes((troop.tier ?? TroopTier.TIER_1) as TroopTier);
         const agility = Math.max(20, attrs.agility);
         const range = attrs.range ?? 0;
@@ -5179,44 +5201,55 @@ export default function App() {
         const speed = clamp(agility / 100, 0.5, 2.4);
         const interval = 100 / speed;
         const initBoost = (rangedFirst ? 18 : 0) + Math.min(12, range / 20);
-        return {
-          side,
-          troop,
-          nextAct: Math.max(1, interval - initBoost),
-          interval,
-          rangedFirst,
-          agility,
-          range
-        };
+        const groups = Math.max(1, Math.min(60, Math.ceil(Math.max(1, troop.count) / Math.max(1, width))));
+        for (let i = 0; i < groups; i++) {
+          const jitter = Math.random() * 10 + i * 1.5;
+          result.push({
+            side,
+            troop,
+            groupCount: Math.max(1, Math.min(width, troop.count)),
+            nextAct: Math.max(1, interval - initBoost + jitter),
+            interval,
+            rangedFirst,
+            agility,
+            range
+          });
+        }
       });
+      return result;
     };
-    const computeLoss = (attacker: Troop[], defender: Troop[], phase: string, mods: { hit: number; damage: number }, cap: number) => {
-      const attCount = countTroops(attacker);
+    const computeLoss = (attacker: Troop, attackerCount: number, defender: Troop[], phase: string, mods: { hit: number; damage: number }, cap: number) => {
       const defCount = countTroops(defender);
-      if (attCount <= 0 || defCount <= 0) return 0;
-      const attAvg = avgAttrs(attacker);
+      if (attackerCount <= 0 || defCount <= 0) return 0;
+      const att = attacker.attributes ?? fallbackAttributes((attacker.tier ?? TroopTier.TIER_1) as TroopTier);
       const defAvg = avgAttrs(defender);
-      const phaseBaseHit = phase === 'ranged' ? 0.5 : phase === 'heavy' ? 0.55 : phase === 'pursuit' ? 0.65 : 0.6;
+      const phaseBase = phase === 'ranged' ? 0.042 : phase === 'heavy' ? 0.06 : phase === 'pursuit' ? 0.04 : 0.055;
       const hit = clamp(
-        phaseBaseHit + (attAvg.agility - defAvg.agility) * 0.004 + mods.hit + (phase === 'ranged' ? (attAvg.range - defAvg.range) * 0.002 : 0),
-        0.1,
+        0.55 + (att.agility - defAvg.agility) * 0.003 + mods.hit + (phase === 'ranged' ? (att.range - defAvg.range) * 0.0015 : 0),
+        0.08,
         0.9
       );
-      const moraleFactor = 1 + (attAvg.morale - defAvg.morale) * 0.003;
-      const phasePower = phase === 'ranged' ? 0.9 : phase === 'heavy' ? 1.15 : phase === 'pursuit' ? 0.75 : 1.0;
-      const randomFactor = 0.85 + Math.random() * 0.3;
-      const defenseFactor = 1 / (1 + defAvg.defense / 120 + defAvg.hp / 160);
-      const totalDamage = attAvg.attack * attCount * hit * moraleFactor * phasePower * randomFactor * (1 + mods.damage) * defenseFactor;
-      const unitEhp = Math.max(18, defAvg.hp * 6 + defAvg.defense * 2);
-      return Math.min(defCount, Math.floor(totalDamage / unitEhp), cap);
+      const moraleFactor = 1 + (att.morale - defAvg.morale) * 0.0025;
+      const cavFactor = isCavalryUnit(attacker) ? 1.1 : 1.0;
+      const phaseFactor = phase === 'ranged' ? 0.95 : phase === 'heavy' ? 1.05 : phase === 'pursuit' ? 0.9 : 1.0;
+      const attScore = (att.attack * 1.0 + att.range * 0.2) * cavFactor * phaseFactor;
+      const defScore = defAvg.defense * 1.1 + defAvg.hp * 0.9;
+      const ratio = attScore / Math.max(1, attScore + defScore);
+      const randomFactor = 0.75 + Math.random() * 0.6;
+      const rawP = phaseBase * (0.35 + ratio * 1.25) * hit * moraleFactor * (1 + mods.damage) * randomFactor;
+      const minP = 0.0006 + ratio * 0.002;
+      const maxP = 0.6;
+      const pKill = Math.max(minP, Math.min(maxP, rawP));
+      const kills = rollBinomial(attackerCount, pKill);
+      return Math.min(defCount, kills, cap);
     };
-    const keyUnitsA = battleTroops.filter(t => t.id === 'player_main' || t.id.startsWith('hero_')).map(normalizeTroop);
-    const enemyLeader = enemyForce.troops.map(normalizeTroop).sort((a, b) => (b.basePower ?? 0) - (a.basePower ?? 0))[0];
     let troopsA = battleTroops.map(normalizeTroop);
     let troopsB = enemyForce.troops.map(normalizeTroop);
     const totalCount = countTroops(troopsA) + countTroops(troopsB);
     const battleWidth = Math.max(4, Math.min(20, Math.floor(6 + Math.sqrt(Math.max(1, totalCount)) / 2.5)));
     const engagementCap = Math.max(8, Math.floor(Math.min(totalCount, battleWidth * 2)));
+    const keyUnitsA = battleTroops.filter(t => t.id === 'player_main' || t.id.startsWith('hero_')).map(normalizeTroop);
+    const enemyLeader = enemyForce.troops.map(normalizeTroop).sort((a, b) => (b.basePower ?? 0) - (a.basePower ?? 0))[0];
     const terrainMods = getTerrainMods(terrain);
     const siegeTarget = battleInfo?.targetLocationId ? locations.find(l => l.id === battleInfo.targetLocationId) ?? null : null;
     const defenderSide: 'A' | 'B' | null = battleInfo?.mode === 'SIEGE' ? 'B' : battleInfo?.mode === 'DEFENSE_AID' ? 'A' : null;
@@ -5310,8 +5343,8 @@ export default function App() {
         defenseHp = Math.max(0, defenseHp - siegeDamage);
       }
       const actionQueue = [
-        ...buildActionQueue('A', troopsA),
-        ...buildActionQueue('B', troopsB)
+        ...buildActionQueue('A', troopsA, battleWidth),
+        ...buildActionQueue('B', troopsB, battleWidth)
       ].sort((a, b) => {
         if (a.nextAct !== b.nextAct) return a.nextAct - b.nextAct;
         if (a.rangedFirst !== b.rangedFirst) return a.rangedFirst ? -1 : 1;
@@ -5322,7 +5355,7 @@ export default function App() {
         name: item.troop.name,
         side: item.side
       }));
-      const actionBudget = Math.max(10, Math.floor(battleWidth * 2 + 6));
+      const actionBudget = Math.min(90, Math.max(16, Math.floor(battleWidth * 3 + 8)));
       for (let step = 0; step < actionBudget; step++) {
         if (countTroops(troopsA) <= 0 || countTroops(troopsB) <= 0) break;
         const actor = actionQueue.shift();
@@ -5333,9 +5366,9 @@ export default function App() {
         if (countTroops(defenders) <= 0) break;
         const actionPhase = getActionPhase(actor.troop);
         const mods = getPhaseMods(actor.side, actionPhase, defenseActive);
-        const actionStrength = Math.min(actor.troop.count, battleWidth);
+        const actionStrength = Math.min(actor.troop.count, actor.groupCount, battleWidth);
         const attackCount = Math.max(1, Math.floor(actionStrength));
-        const loss = computeLoss([{ ...actor.troop, count: attackCount }], defenders, actionPhase, mods, attackCount);
+        const loss = computeLoss(actor.troop, attackCount, defenders, actionPhase, mods, attackCount);
         if (loss > 0) {
           if (defenderSide === 'A') roundCasualtiesA.push(...applyLosses(troopsA, loss, actionPhase, 'A'));
           else roundCasualtiesB.push(...applyLosses(troopsB, loss, actionPhase, 'B'));
@@ -5371,7 +5404,7 @@ export default function App() {
           siegeDamage > 0 ? `城防受损${siegeDamage}` : ''
         ].filter(Boolean).join('，')
         : '';
-      const phaseSummary = `战场宽度${battleWidth}（每方同时接战人数），每回合行动步数${actionBudget}。行动按敏捷轮转，远程单位优先出手。${siegeReport ? ` ${siegeReport}。` : ''}`;
+      const phaseSummary = `战场宽度${battleWidth}（每方同时接战人数），随机捉对厮杀，每回合行动步数${actionBudget}。行动按敏捷轮转，远程单位优先出手。${siegeReport ? ` ${siegeReport}。` : ''}`;
       rounds.push({
         roundNumber: rounds.length + 1,
         description: phaseSummary,
@@ -7176,6 +7209,7 @@ export default function App() {
           ...INITIAL_PLAYER_STATE.attributes,
           ...(nextPlayer.attributes ?? {})
         },
+        giftRecords: Array.isArray((nextPlayer as any)?.giftRecords) ? (nextPlayer as any).giftRecords : [],
         minerals: nextPlayer.minerals ?? INITIAL_PLAYER_STATE.minerals,
         relationMatrix: normalizeRelationMatrix((nextPlayer as any)?.relationMatrix),
         relationEvents: Array.isArray((nextPlayer as any)?.relationEvents) ? (nextPlayer as any).relationEvents : []
@@ -7720,6 +7754,103 @@ export default function App() {
         meleeDamageReduction: number;
         mechanisms: { name: string; description: string }[];
       }>;
+    const countTroopNumber = (troops: Array<{ count?: number }>) => troops.reduce((sum, t) => sum + (t.count ?? 0), 0);
+    const coordLabel = (loc: Location) => `野外(${Math.round(loc.coordinates.x)},${Math.round(loc.coordinates.y)})`;
+    const getLocationName = (id?: string) => {
+      if (!id) return '未知';
+      const loc = locations.find(l => l.id === id);
+      return loc?.name ?? id;
+    };
+    const formatTroopsForForce = (troops: Troop[]) => troops
+      .filter(t => (t.count ?? 0) > 0)
+      .map(t => ({ name: t.name, count: t.count ?? 0, tier: t.tier }));
+    const worldForces = [
+      {
+        id: 'force_player_party',
+        kind: '玩家队伍',
+        name: '玩家队伍',
+        locationName: currentLocation?.name ?? '野外',
+        troopCount: countTroopNumber(playerRef.current.troops),
+        power: calculatePower(playerRef.current.troops),
+        troops: formatTroopsForForce(playerRef.current.troops)
+      },
+      ...lords.map(lord => ({
+        id: `force_lord_${lord.id}`,
+        kind: '领主',
+        name: `${lord.title}${lord.name}`,
+        locationName: getLocationName(lord.currentLocationId),
+        troopCount: countTroopNumber(lord.partyTroops),
+        power: calculatePower(lord.partyTroops),
+        troops: formatTroopsForForce(lord.partyTroops)
+      })),
+      ...locations.flatMap(loc => {
+        const rows: Array<{
+          id: string;
+          kind: string;
+          name: string;
+          locationName: string;
+          troopCount: number;
+          power: number;
+          troops: Array<{ name: string; count: number; tier?: number }>;
+        }> = [];
+        (loc.stayParties ?? []).forEach(party => {
+          rows.push({
+            id: `force_stay_${loc.id}_${party.id}`,
+            kind: party.owner === 'PLAYER' ? '驻扎（我方）' : party.owner === 'ENEMY' ? '驻扎（敌方）' : '驻扎（中立）',
+            name: party.name,
+            locationName: loc.name,
+            troopCount: countTroopNumber(party.troops),
+            power: calculatePower(party.troops),
+            troops: formatTroopsForForce(party.troops)
+          });
+        });
+        (loc.stationedArmies ?? []).forEach(army => {
+          rows.push({
+            id: `force_army_${loc.id}_${army.id}`,
+            kind: '驻军',
+            name: army.name,
+            locationName: loc.name,
+            troopCount: countTroopNumber(army.troops),
+            power: calculatePower(army.troops),
+            troops: formatTroopsForForce(army.troops)
+          });
+        });
+        if (loc.activeSiege) {
+          rows.push({
+            id: `force_siege_${loc.id}_${loc.activeSiege.attackerName}`,
+            kind: '攻城军',
+            name: loc.activeSiege.attackerName,
+            locationName: loc.name,
+            troopCount: countTroopNumber(loc.activeSiege.troops),
+            power: calculatePower(loc.activeSiege.troops),
+            troops: formatTroopsForForce(loc.activeSiege.troops)
+          });
+        }
+        if (loc.type === 'FIELD_CAMP' && loc.owner === 'ENEMY' && loc.garrison && loc.garrison.length > 0) {
+          rows.push({
+            id: `force_field_${loc.id}`,
+            kind: loc.camp?.kind === 'CARAVAN' ? '商队' : '行军营地',
+            name: loc.name,
+            locationName: coordLabel(loc),
+            troopCount: countTroopNumber(loc.garrison),
+            power: calculatePower(loc.garrison),
+            troops: formatTroopsForForce(loc.garrison)
+          });
+        }
+        if (loc.factionRaidTroops && loc.factionRaidTroops.length > 0) {
+          rows.push({
+            id: `force_raid_${loc.id}`,
+            kind: '袭掠队',
+            name: loc.factionRaidAttackerName ?? '未知袭掠队',
+            locationName: `${loc.name} → ${getLocationName(loc.factionRaidTargetId)} (ETA ${loc.factionRaidEtaDay ?? '?'})`,
+            troopCount: countTroopNumber(loc.factionRaidTroops),
+            power: calculatePower(loc.factionRaidTroops),
+            troops: formatTroopsForForce(loc.factionRaidTroops)
+          });
+        }
+        return rows;
+      })
+    ].filter(f => f.troopCount > 0);
     return (
       <WorldBoardView
         currentLocation={currentLocation}
@@ -7731,6 +7862,7 @@ export default function App() {
         factionSnapshots={factionSnapshots}
         siegeEngineArchive={siegeEngineArchive}
         defenseArchive={defenseArchive}
+        worldForces={worldForces}
         onOpenTroopArchive={() => setView('TROOP_ARCHIVE')}
         onBackToMap={() => setView('MAP')}
         onExportMarkdown={exportWorldBoardMarkdown}

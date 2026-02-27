@@ -2051,6 +2051,19 @@ export function buildHeroChatPrompt(
     .join('\n') || '（无）';
   const roundCount = hero.chatRounds ?? 0;
   const nowText = new Date().toLocaleString('zh-CN', { hour12: false });
+  const giftText = (player.giftRecords ?? [])
+    .filter(r => r && (r.heroId === hero.id || r.heroName === hero.name))
+    .slice(-8)
+    .reverse()
+    .map(r => {
+      const daysAgo = Math.max(0, Math.floor(player.day - (r.day ?? player.day)));
+      const when = typeof r.day === 'number' ? `第 ${r.day} 天` : '（未知天数）';
+      const where = String((r as any)?.sourceLocationName ?? '').trim();
+      const whereText = where ? `@${where}` : '';
+      const price = typeof r.price === 'number' ? `${r.price}` : '未知';
+      return `- ${when}${whereText}：玩家送了你「${r.itemName}」（${r.itemType}，${price} 金）${daysAgo <= 0 ? '（今天）' : `（${daysAgo} 天前）`}`;
+    })
+    .join('\n') || '（无）';
 
   const prompt = `
 你是冒险者队伍中的英雄「${hero.name}」，${hero.title}。你与玩家在同一世界里相处已久，彼此平等对话，用第一人称回应玩家。
@@ -2068,6 +2081,7 @@ export function buildHeroChatPrompt(
 10) 动作写法：用括号表示动作片段，例如（抖了抖斗篷）或(把刀往回一推)；每次 reply 至少出现 1 处动作括号。
 11) emoji：可以适量使用（0-2 个），用于语气点缀，不要刷屏，不要每句都带。
 12) 好感度：你与领主的关系用一个词表示，只能从【陌生/熟悉/友好/亲近/信赖/生死之交】里选一个；根据本轮对话可以变化，但每次最多前进或后退 1 档（通常前进，除非玩家明显冒犯你）。
+13) 如果【近期收到的礼物】里有“今天/3天内”的记录，你有概率自然提及并简短致谢，但不要每次都提。
 请用 JSON 输出，仅包含 reply、emotion、memory、memoryEdits、diaryEdits、affinity 六个字段，memory 可为空字符串，memoryEdits 与 diaryEdits 必须是数组。
 memoryEdits 格式为数组，每项是 { "action": "UPDATE|DELETE|ADD", "id"?: "记忆ID", "text"?: "内容" }。
 UPDATE/DELETE 必须给出 id；UPDATE 必须给出新 text；ADD 只需要 text。
@@ -2095,6 +2109,9 @@ ${WORLD_BOOK}
 
 【队伍当前位置】
 ${String(locationContext ?? '').trim() || '（未知）'}
+
+【近期收到的礼物（可能触发致谢）】
+${giftText}
 
 【最近战斗简报（只包含战斗地点、双方构成、战斗结果、受伤记录）】
 ${String(battleBriefs ?? '').trim() || '（无）'}
