@@ -1,8 +1,8 @@
 
 import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, ParrotVariant, Hero, RaceId, TroopRace, BugSummonRecipe, MineralId, Anomaly } from './types';
 
-export const MAP_WIDTH = 400;
-export const MAP_HEIGHT = 400;
+export const MAP_WIDTH = 480;
+export const MAP_HEIGHT = 480;
 
 export const WORLD_BOOK = [
   '词条：附加规则效果，影响命中、伤害、控制或属性。',

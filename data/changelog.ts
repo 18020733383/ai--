@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.26',
+    date: '2026-02-28',
+    items: [
+      '栖息地驻军改为野兽兵种混编',
+      '世界士兵统计新增野兽筛选',
+      '地图尺寸扩大 1.2 倍（据点坐标不变）'
+    ]
+  },
+  {
     version: '0.3.25',
     date: '2026-02-28',
     items: [

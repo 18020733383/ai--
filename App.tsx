@@ -4295,6 +4295,50 @@ export default function App() {
         { troopId: 'skeleton_warrior', count: 28 }
       ];
     }
+    if (location.type === 'HABITAT') {
+      return [
+        { troopId: 'beast_primate_juvenile_chimp', count: 12 },
+        { troopId: 'beast_primate_adult_gorilla', count: 6 },
+        { troopId: 'beast_primate_silverback', count: 2 },
+        { troopId: 'beast_primate_giant_legacy', count: 1 },
+
+        { troopId: 'beast_rhino_calf', count: 6 },
+        { troopId: 'beast_rhino_black_subadult', count: 3 },
+        { troopId: 'beast_rhino_white_warrior', count: 1 },
+
+        { troopId: 'beast_hippo_calf', count: 6 },
+        { troopId: 'beast_hippo_swamp', count: 3 },
+        { troopId: 'beast_hippo_raging_bull', count: 1 },
+
+        { troopId: 'beast_elephant_calf', count: 4 },
+        { troopId: 'beast_elephant_bush', count: 2 },
+        { troopId: 'beast_elephant_musth_bull', count: 1 },
+
+        { troopId: 'beast_lion_cub', count: 6 },
+        { troopId: 'beast_lion_wanderer', count: 3 },
+        { troopId: 'beast_lion_pride_king', count: 1 },
+
+        { troopId: 'beast_tiger_cub', count: 5 },
+        { troopId: 'beast_tiger_jungle_hunter', count: 2 },
+        { troopId: 'beast_tiger_siberian', count: 1 },
+
+        { troopId: 'beast_bear_cub', count: 6 },
+        { troopId: 'beast_bear_grizzly', count: 3 },
+        { troopId: 'beast_bear_kodiak', count: 1 },
+
+        { troopId: 'beast_wolf_grey', count: 10 },
+        { troopId: 'beast_wolf_king', count: 4 },
+        { troopId: 'beast_wolf_tundra_giant', count: 2 },
+
+        { troopId: 'beast_croc_nile_juvenile', count: 6 },
+        { troopId: 'beast_croc_wetland_giant', count: 3 },
+        { troopId: 'beast_croc_saltwater', count: 1 },
+
+        { troopId: 'beast_bison_calf', count: 6 },
+        { troopId: 'beast_bison_african_buffalo', count: 3 },
+        { troopId: 'beast_bison_rabid_king', count: 1 }
+      ];
+    }
     if (location.type === 'RUINS') {
       return [
         { troopId: 'zealot', count: 70 },
