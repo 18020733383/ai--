@@ -6,6 +6,16 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.27',
+    date: '2026-02-28',
+    items: [
+      '栖息地快进天数上限提升至 1000',
+      '新增更多亡灵兵种与重型亡灵单位',
+      '新增 3 个亡灵堡垒据点',
+      '领主与成建制部队随规模携带 1-3 个重型单位'
+    ]
+  },
+  {
     version: '0.3.26',
     date: '2026-02-28',
     items: [

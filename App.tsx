@@ -217,16 +217,45 @@ const MINERAL_META: Record<MineralId, { name: string; effect: string }> = {
 
 const STAY_PARTY_LOCATION_TYPES: Location['type'][] = ['CITY', 'CASTLE', 'ROACH_NEST', 'IMPOSTER_PORTAL'];
 
-const isUndeadFortressLocation = (location: Location) => location.type === 'GRAVEYARD' && location.id === 'death_city';
+const isUndeadFortressLocation = (location: Location) => location.type === 'GRAVEYARD' && location.id.startsWith('death_');
 const isCastleLikeLocation = (location: Location) => location.type === 'CASTLE' || isUndeadFortressLocation(location);
 
-const buildStayPartyTroops = (entries: Array<{ id: string; count: number }>) =>
-  entries
+const buildStayPartyTroops = (location: Location, seed: number, entries: Array<{ id: string; count: number }>) => {
+  const heavyOptions = location.type === 'ROACH_NEST'
+    ? ['roach_egg_thrower']
+    : location.type === 'IMPOSTER_PORTAL'
+      ? ['imposter_flux_mortar']
+      : (location.type === 'CITY' || location.type === 'CASTLE')
+        ? ['heavy_ballista', 'heavy_fire_cannon', 'heavy_catapult', 'heavy_light_tank']
+        : [];
+  const baseTroops = entries
     .map(entry => {
       const template = TROOP_TEMPLATES[entry.id];
       return template ? { ...template, count: entry.count, xp: 0 } : null;
     })
     .filter(Boolean) as Troop[];
+  if (heavyOptions.length === 0) return baseTroops;
+  const totalCount = baseTroops.reduce((sum, t) => sum + t.count, 0);
+  const desiredHeavy = Math.max(1, Math.min(3, 1 + Math.floor(totalCount / 280)));
+  const existingHeavy = baseTroops
+    .filter(t => t.category === 'HEAVY')
+    .reduce((sum, t) => sum + t.count, 0);
+  let remaining = Math.max(0, desiredHeavy - existingHeavy);
+  if (remaining <= 0) return baseTroops;
+  const next = [...baseTroops];
+  for (let i = 0; i < remaining; i++) {
+    const heavyId = heavyOptions[(seed + i) % heavyOptions.length];
+    const template = TROOP_TEMPLATES[heavyId];
+    if (!template) continue;
+    const existing = next.find(t => t.id === heavyId);
+    if (existing) {
+      existing.count += 1;
+    } else {
+      next.push({ ...template, count: 1, xp: 0 });
+    }
+  }
+  return next;
+};
 
 const buildStayPartiesForLocation = (location: Location): StayParty[] => {
   const seed = location.id.split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
@@ -247,7 +276,7 @@ const buildStayPartiesForLocation = (location: Location): StayParty[] => {
       {
         id: `${location.id}_legion_${firstIndex}`,
         name: `${factionLabel}·${location.name}${titleA}`,
-        troops: buildStayPartyTroops([
+        troops: buildStayPartyTroops(location, seed + firstIndex, [
           { id: 'imperial_swordsman', count: 240 },
           { id: 'imperial_shieldbearer', count: 180 },
           { id: 'imperial_crossbowman', count: 140 },
@@ -258,7 +287,7 @@ const buildStayPartiesForLocation = (location: Location): StayParty[] => {
       {
         id: `${location.id}_legion_${secondIndex}`,
         name: `${factionLabel}·${location.name}${titleB}`,
-        troops: buildStayPartyTroops([
+        troops: buildStayPartyTroops(location, seed + secondIndex, [
           { id: 'footman', count: 200 },
           { id: 'imperial_shieldbearer', count: 160 },
           { id: 'imperial_crossbowman', count: 120 },
@@ -274,7 +303,7 @@ const buildStayPartiesForLocation = (location: Location): StayParty[] => {
       {
         id: `${location.id}_legion_${firstIndex}`,
         name: `${factionLabel}·${location.name}${title}`,
-        troops: buildStayPartyTroops([
+        troops: buildStayPartyTroops(location, seed + firstIndex, [
           { id: 'footman', count: 160 },
           { id: 'imperial_shieldbearer', count: 120 },
           { id: 'imperial_crossbowman', count: 90 },
@@ -291,7 +320,7 @@ const buildStayPartiesForLocation = (location: Location): StayParty[] => {
       {
         id: `${location.id}_swarm_${firstIndex}`,
         name: `蟑螂${titleA}`,
-        troops: buildStayPartyTroops([
+        troops: buildStayPartyTroops(location, seed + firstIndex, [
           { id: 'roach_brawler', count: 260 },
           { id: 'roach_pikeman', count: 260 },
           { id: 'roach_slinger', count: 180 },
@@ -303,7 +332,7 @@ const buildStayPartiesForLocation = (location: Location): StayParty[] => {
       {
         id: `${location.id}_swarm_${secondIndex}`,
         name: `蟑螂${titleB}`,
-        troops: buildStayPartyTroops([
+        troops: buildStayPartyTroops(location, seed + secondIndex, [
           { id: 'roach_aerial_lancer', count: 80 },
           { id: 'roach_aerial_harrier', count: 80 },
           { id: 'roach_aerial_guard', count: 80 },
@@ -321,7 +350,7 @@ const buildStayPartiesForLocation = (location: Location): StayParty[] => {
       {
         id: `${location.id}_legion_${firstIndex}`,
         name: `伪人${titleA}`,
-        troops: buildStayPartyTroops([
+        troops: buildStayPartyTroops(location, seed + firstIndex, [
           { id: 'void_larva', count: 380 },
           { id: 'glitch_pawn', count: 380 },
           { id: 'static_noise_walker', count: 260 },
@@ -334,7 +363,7 @@ const buildStayPartiesForLocation = (location: Location): StayParty[] => {
       {
         id: `${location.id}_legion_${secondIndex}`,
         name: `伪人${titleB}`,
-        troops: buildStayPartyTroops([
+        troops: buildStayPartyTroops(location, seed + secondIndex, [
           { id: 'imposter_spearman', count: 260 },
           { id: 'imposter_slinger', count: 240 },
           { id: 'entropy_acolyte', count: 140 },
@@ -563,10 +592,12 @@ const buildLordPartyTroops = (location: Location) => {
     return template ? { ...template, count, xp: 0 } : null;
   };
   if (location.type === 'CITY') {
-    return [pickTroop('militia', 120), pickTroop('footman', 80), pickTroop('hunter', 50)].filter(Boolean) as Troop[];
+    const base = [pickTroop('militia', 120), pickTroop('footman', 80), pickTroop('hunter', 50), pickTroop('heavy_fire_cannon', 1)].filter(Boolean) as Troop[];
+    return base;
   }
   if (location.type === 'CASTLE') {
-    return [pickTroop('footman', 60), pickTroop('hunter', 30)].filter(Boolean) as Troop[];
+    const base = [pickTroop('footman', 60), pickTroop('hunter', 30), pickTroop('heavy_ballista', 1)].filter(Boolean) as Troop[];
+    return base;
   }
   if (location.type === 'GRAVEYARD') {
     return [
@@ -574,18 +605,21 @@ const buildLordPartyTroops = (location: Location) => {
       pickTroop('undead_bone_javelin', 70),
       pickTroop('undead_grave_arbalist', 60),
       pickTroop('specter', 40),
-      pickTroop('undead_musician', 30)
+      pickTroop('undead_musician', 30),
+      pickTroop('undead_soul_obelisk', 1)
     ].filter(Boolean) as Troop[];
   }
   if (location.type === 'VILLAGE') {
-    return [pickTroop('peasant', 30), pickTroop('hunter', 15)].filter(Boolean) as Troop[];
+    const base = [pickTroop('peasant', 30), pickTroop('hunter', 15), pickTroop('heavy_ballista', 1)].filter(Boolean) as Troop[];
+    return base;
   }
   if (location.type === 'ROACH_NEST') {
     return [
       pickTroop('roach_brawler', 80),
       pickTroop('roach_pikeman', 70),
       pickTroop('roach_slinger', 60),
-      pickTroop('roach_shieldling', 50)
+      pickTroop('roach_shieldling', 50),
+      pickTroop('roach_egg_thrower', 1)
     ].filter(Boolean) as Troop[];
   }
   return [];
@@ -599,7 +633,7 @@ const buildLordStayParty = (locationId: string, lord: Lord) => ({
   lordId: lord.id
 });
 const buildLocationLord = (location: Location): Lord | null => {
-  const isUndeadFortress = location.type === 'GRAVEYARD' && location.id === 'death_city';
+  const isUndeadFortress = isUndeadFortressLocation(location);
   if (location.type !== 'CITY' && location.type !== 'CASTLE' && location.type !== 'VILLAGE' && location.type !== 'ROACH_NEST' && !isUndeadFortress) return null;
   const seed = getLordSeed(location.id);
   const traitA = pickLordValue(lordTraits, seed, 5);
@@ -630,7 +664,7 @@ const buildLocationLord = (location: Location): Lord | null => {
 };
 const ensureLocationLords = (list: Location[]) => {
   return list.map(loc => {
-    const isUndeadFortress = loc.type === 'GRAVEYARD' && loc.id === 'death_city';
+    const isUndeadFortress = isUndeadFortressLocation(loc);
     if (loc.type !== 'CITY' && loc.type !== 'CASTLE' && loc.type !== 'VILLAGE' && loc.type !== 'ROACH_NEST' && !isUndeadFortress) return loc;
     const currentLord = loc.lord && loc.lord.factionId === loc.factionId && loc.lord.fiefId === loc.id ? loc.lord : null;
     const lord = currentLord ?? buildLocationLord(loc);
@@ -2919,6 +2953,35 @@ export default function App() {
       };
       const applyRecruitment = (troops: Troop[], loc: Location, amount: number) => {
         if (amount <= 0) return troops;
+        const heavyOptions = isUndeadFortressLocation(loc)
+          ? ['undead_soul_obelisk', 'undead_bone_mortar', 'undead_grave_bastion']
+          : (loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE')
+            ? ['heavy_ballista', 'heavy_fire_cannon', 'heavy_catapult', 'heavy_light_tank']
+            : loc.type === 'ROACH_NEST'
+              ? ['roach_egg_thrower']
+              : [];
+        let remaining = amount;
+        const updated = [...troops];
+        if (heavyOptions.length > 0) {
+          const totalCount = updated.reduce((sum, t) => sum + t.count, 0);
+          const desiredHeavy = Math.max(1, Math.min(3, 1 + Math.floor(totalCount / 280)));
+          const existingHeavy = updated.filter(t => t.category === 'HEAVY').reduce((sum, t) => sum + t.count, 0);
+          const heavyToAdd = Math.max(0, Math.min(desiredHeavy - existingHeavy, Math.min(3, remaining)));
+          for (let i = 0; i < heavyToAdd; i++) {
+            const heavyId = heavyOptions[Math.floor(Math.random() * heavyOptions.length)];
+            const heavyTemplate = getTroopTemplate(heavyId);
+            if (!heavyTemplate) continue;
+            const idx = updated.findIndex(t => t.id === heavyTemplate.id);
+            if (idx >= 0) {
+              updated[idx] = { ...updated[idx], count: updated[idx].count + 1 };
+            } else {
+              updated.push({ ...heavyTemplate, count: 1, xp: 0 });
+            }
+            remaining -= 1;
+            if (remaining <= 0) break;
+          }
+        }
+        if (remaining <= 0) return updated;
         const recruitId = loc.type === 'CITY'
           ? 'militia'
           : isUndeadFortressLocation(loc)
@@ -2927,13 +2990,12 @@ export default function App() {
               ? 'footman'
               : 'peasant';
         const template = getTroopTemplate(recruitId);
-        if (!template) return troops;
-        const updated = [...troops];
+        if (!template) return updated;
         const index = updated.findIndex(t => t.id === template.id);
         if (index >= 0) {
-          updated[index] = { ...updated[index], count: updated[index].count + amount };
+          updated[index] = { ...updated[index], count: updated[index].count + remaining };
         } else {
-          updated.push({ ...template, count: amount, xp: 0 });
+          updated.push({ ...template, count: remaining, xp: 0 });
         }
         return updated;
       };
@@ -4459,14 +4521,26 @@ export default function App() {
         ];
         details.flavorText = "想要攻下这里，先得问问厨师长答不答应。";
     } else if (location.type === 'GRAVEYARD') {
-        details.wallLevel = 2;
-        details.wallName = "白骨围栏";
-        details.wallDesc = "由不知名生物的骸骨堆砌而成的围墙。";
-        details.mechanisms = [
-          { name: "亡灵哨塔", description: "由骷髅弓箭手驻守的哨塔，永不疲倦。" },
-          { name: "灵魂枷锁", description: "看不见的幽灵触手，会减缓敌人的移动速度。" }
-        ];
-        details.flavorText = "生者勿进。";
+        if (isUndeadFortressLocation(location)) {
+          details.wallLevel = 3;
+          details.wallName = "冥火城墙";
+          details.wallDesc = "由白骨与冥火凝成的堡垒外壳，攻城器械靠近会被灼烧。";
+          details.mechanisms = [
+            { name: "冥火箭塔", description: "燃着幽焰的箭塔，火力稳定且不知疲倦。" },
+            { name: "骨爆地雷", description: "埋在泥土里的骨爆装置，能撕裂密集冲锋队列。" },
+            { name: "灵魂枷锁", description: "看不见的幽灵触手，会减缓敌人的移动速度。" }
+          ];
+          details.flavorText = "这里像一座活着的坟墓。";
+        } else {
+          details.wallLevel = 2;
+          details.wallName = "白骨围栏";
+          details.wallDesc = "由不知名生物的骸骨堆砌而成的围墙。";
+          details.mechanisms = [
+            { name: "亡灵哨塔", description: "由骷髅弓箭手驻守的哨塔，永不疲倦。" },
+            { name: "灵魂枷锁", description: "看不见的幽灵触手，会减缓敌人的移动速度。" }
+          ];
+          details.flavorText = "生者勿进。";
+        }
     } else if (location.type === 'RUINS') {
         details.wallLevel = 1;
         details.wallName = "残垣断壁";
@@ -4852,7 +4926,25 @@ export default function App() {
     }
      if (type === 'GRAVEYARD') {
         if (mode === 'VOLUNTEER') return ['zombie', 'undead_grave_thrall', 'undead_rot_scout', 'undead_mire_digger', 'undead_bone_crawler', 'undead_ashen_runner', 'undead_coffin_bearer'];
-        return ['skeleton_warrior', 'specter', 'skeleton_archer', 'undead_musician', 'undead_bone_javelin', 'undead_grave_arbalist', 'undead_bone_slinger', 'undead_tomb_guard', 'undead_plague_bearer'];
+        return [
+          'skeleton_warrior',
+          'specter',
+          'skeleton_archer',
+          'undead_musician',
+          'undead_bone_javelin',
+          'undead_grave_arbalist',
+          'undead_bone_slinger',
+          'undead_tomb_guard',
+          'undead_plague_bearer',
+          'undead_bone_rider',
+          'undead_bone_hussar',
+          'undead_wight_knight',
+          'undead_grave_alchemist',
+          'undead_plague_doctor',
+          'undead_pestilence_lord',
+          'undead_bone_mortar',
+          'undead_grave_bastion'
+        ];
      }
      if (type === 'HOTPOT_RESTAURANT') {
         // Special Hotpot Units

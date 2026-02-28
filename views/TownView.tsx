@@ -246,7 +246,7 @@ export const TownView = ({
   const isVillage = currentLocation.type === 'VILLAGE';
   const isRoachNest = currentLocation.type === 'ROACH_NEST';
   const isGraveyard = currentLocation.type === 'GRAVEYARD';
-  const isUndeadFortress = isGraveyard && currentLocation.id === 'death_city';
+  const isUndeadFortress = isGraveyard && currentLocation.id.startsWith('death_');
   const isSiegeTarget = isCity || isCastle || isVillage || isRoachNest || isUndeadFortress;
   const isHotpot = currentLocation.type === 'HOTPOT_RESTAURANT';
   const isCoffee = currentLocation.type === 'COFFEE';
@@ -1783,11 +1783,11 @@ export const TownView = ({
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
                 <div className="md:col-span-2">
-                  <div className="text-xs text-stone-500 mb-1">天数（1-365）</div>
+                  <div className="text-xs text-stone-500 mb-1">天数（1-1000）</div>
                   <input
                     type="number"
                     min={1}
-                    max={365}
+                    max={1000}
                     value={habitatStayDays}
                     onChange={e => setHabitatStayDays(Number(e.target.value))}
                     className="w-full bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded"
@@ -1797,7 +1797,7 @@ export const TownView = ({
                   variant="secondary"
                   disabled={habitatStayState?.isActive}
                   onClick={() => {
-                    const days = Math.max(1, Math.min(365, Math.floor(habitatStayDays || 1)));
+                    const days = Math.max(1, Math.min(1000, Math.floor(habitatStayDays || 1)));
                     setHabitatStayDays(days);
                     setHabitatStayState({
                       isActive: true,
