@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.29',
+    date: '2026-02-28',
+    items: [
+      '新增空军体系：空军/陆空兵种与空艇、猛禽、石像鬼',
+      '围城自动结算加入空空/空地/地空轮转与占领判定',
+      '兵种卡片与战斗列表新增空军标识'
+    ]
+  },
+  {
     version: '0.3.28',
     date: '2026-02-28',
     items: [

@@ -2,7 +2,7 @@
 import React from 'react';
 import { Troop } from '../types';
 import { getTroopRace, TROOP_RACE_LABELS } from '../constants';
-import { Shield, Users, Sword, ChevronUp, Hammer, ShieldAlert, Star } from 'lucide-react';
+import { Bird, Shield, Users, Sword, ChevronUp, Hammer, ShieldAlert, Star } from 'lucide-react';
 
 interface TroopCardProps {
   troop: Troop;
@@ -41,6 +41,9 @@ export const TroopCard: React.FC<TroopCardProps> = ({
   const xpPercentage = Math.min(100, (troop.xp / (troop.maxXp * (troop.count || 1))) * 100);
   const isReadyToUpgrade = canUpgrade && troop.xp >= troop.maxXp; // At least one unit can upgrade
   const isHeavy = troop.category === 'HEAVY';
+  const domain = troop.combatDomain ?? 'GROUND';
+  const isAir = domain === 'AIR';
+  const isHybrid = domain === 'HYBRID';
   const normalizedId = troop.id.startsWith('garrison_') ? troop.id.slice('garrison_'.length) : troop.id;
   const doctrineLabel = troop.doctrine?.trim();
   const isEvangelist = troop.evangelist || normalizedId.startsWith('altar_') || !!doctrineLabel;
@@ -70,6 +73,11 @@ export const TroopCard: React.FC<TroopCardProps> = ({
                {isHeavy && (
                  <span className="bg-emerald-900/40 text-emerald-200 px-1 rounded border border-emerald-700/60 inline-flex items-center gap-1">
                    <ShieldAlert className="w-3 h-3" /> 重型
+                 </span>
+               )}
+               {(isAir || isHybrid) && (
+                 <span className="bg-sky-900/35 text-sky-200 px-1 rounded border border-sky-800/60 inline-flex items-center gap-1">
+                   <Bird className="w-3 h-3" /> {isAir ? '空军' : '陆空'}
                  </span>
                )}
                {isEvangelist && (

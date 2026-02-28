@@ -228,30 +228,51 @@ const buildStayPartyTroops = (location: Location, seed: number, entries: Array<{
       : (location.type === 'CITY' || location.type === 'CASTLE')
         ? ['heavy_ballista', 'heavy_fire_cannon', 'heavy_catapult', 'heavy_light_tank']
         : [];
+  const airOptions = (location.type === 'CITY' || location.type === 'CASTLE')
+    ? ['arcane_glider', 'arcane_biplane', 'arcane_airship']
+    : [];
   const baseTroops = entries
     .map(entry => {
       const template = TROOP_TEMPLATES[entry.id];
       return template ? { ...template, count: entry.count, xp: 0 } : null;
     })
     .filter(Boolean) as Troop[];
-  if (heavyOptions.length === 0) return baseTroops;
   const totalCount = baseTroops.reduce((sum, t) => sum + t.count, 0);
-  const desiredHeavy = Math.max(1, Math.min(3, 1 + Math.floor(totalCount / 280)));
-  const existingHeavy = baseTroops
-    .filter(t => t.category === 'HEAVY')
-    .reduce((sum, t) => sum + t.count, 0);
-  let remaining = Math.max(0, desiredHeavy - existingHeavy);
-  if (remaining <= 0) return baseTroops;
   const next = [...baseTroops];
-  for (let i = 0; i < remaining; i++) {
-    const heavyId = heavyOptions[(seed + i) % heavyOptions.length];
-    const template = TROOP_TEMPLATES[heavyId];
-    if (!template) continue;
-    const existing = next.find(t => t.id === heavyId);
-    if (existing) {
-      existing.count += 1;
-    } else {
-      next.push({ ...template, count: 1, xp: 0 });
+  if (heavyOptions.length > 0) {
+    const desiredHeavy = Math.max(1, Math.min(3, 1 + Math.floor(totalCount / 280)));
+    const existingHeavy = baseTroops
+      .filter(t => t.category === 'HEAVY')
+      .reduce((sum, t) => sum + t.count, 0);
+    const remainingHeavy = Math.max(0, desiredHeavy - existingHeavy);
+    for (let i = 0; i < remainingHeavy; i++) {
+      const heavyId = heavyOptions[(seed + i) % heavyOptions.length];
+      const template = TROOP_TEMPLATES[heavyId];
+      if (!template) continue;
+      const existing = next.find(t => t.id === heavyId);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        next.push({ ...template, count: 1, xp: 0 });
+      }
+    }
+  }
+  if (airOptions.length > 0) {
+    const desiredAir = Math.max(1, Math.min(3, 1 + Math.floor(totalCount / 360)));
+    const existingAir = baseTroops
+      .filter(t => (t.combatDomain ?? 'GROUND') !== 'GROUND')
+      .reduce((sum, t) => sum + t.count, 0);
+    const remainingAir = Math.max(0, desiredAir - existingAir);
+    for (let i = 0; i < remainingAir; i++) {
+      const airId = airOptions[(seed + 31 + i) % airOptions.length];
+      const template = TROOP_TEMPLATES[airId];
+      if (!template) continue;
+      const existing = next.find(t => t.id === airId);
+      if (existing) {
+        existing.count += 1;
+      } else {
+        next.push({ ...template, count: 1, xp: 0 });
+      }
     }
   }
   return next;
@@ -592,11 +613,11 @@ const buildLordPartyTroops = (location: Location) => {
     return template ? { ...template, count, xp: 0 } : null;
   };
   if (location.type === 'CITY') {
-    const base = [pickTroop('militia', 120), pickTroop('footman', 80), pickTroop('hunter', 50), pickTroop('heavy_fire_cannon', 1)].filter(Boolean) as Troop[];
+    const base = [pickTroop('militia', 120), pickTroop('footman', 80), pickTroop('hunter', 50), pickTroop('heavy_fire_cannon', 1), pickTroop('arcane_glider', 1)].filter(Boolean) as Troop[];
     return base;
   }
   if (location.type === 'CASTLE') {
-    const base = [pickTroop('footman', 60), pickTroop('hunter', 30), pickTroop('heavy_ballista', 1)].filter(Boolean) as Troop[];
+    const base = [pickTroop('footman', 60), pickTroop('hunter', 30), pickTroop('heavy_ballista', 1), pickTroop('arcane_glider', 1)].filter(Boolean) as Troop[];
     return base;
   }
   if (location.type === 'GRAVEYARD') {
@@ -606,7 +627,8 @@ const buildLordPartyTroops = (location: Location) => {
       pickTroop('undead_grave_arbalist', 60),
       pickTroop('specter', 40),
       pickTroop('undead_musician', 30),
-      pickTroop('undead_soul_obelisk', 1)
+      pickTroop('undead_soul_obelisk', 1),
+      pickTroop('undead_gargoyle', 1)
     ].filter(Boolean) as Troop[];
   }
   if (location.type === 'VILLAGE') {
@@ -2960,6 +2982,13 @@ export default function App() {
             : loc.type === 'ROACH_NEST'
               ? ['roach_egg_thrower']
               : [];
+        const airOptions = isUndeadFortressLocation(loc)
+          ? ['undead_gargoyle', 'undead_gargoyle_ancient']
+          : (loc.type === 'CITY' || loc.type === 'CASTLE')
+            ? ['arcane_glider', 'arcane_biplane', 'arcane_airship']
+            : loc.type === 'HABITAT'
+              ? ['beast_roc_hatchling', 'beast_roc', 'beast_roc_alpha']
+              : [];
         let remaining = amount;
         const updated = [...troops];
         if (heavyOptions.length > 0) {
@@ -2976,6 +3005,25 @@ export default function App() {
               updated[idx] = { ...updated[idx], count: updated[idx].count + 1 };
             } else {
               updated.push({ ...heavyTemplate, count: 1, xp: 0 });
+            }
+            remaining -= 1;
+            if (remaining <= 0) break;
+          }
+        }
+        if (remaining > 0 && airOptions.length > 0) {
+          const totalCount = updated.reduce((sum, t) => sum + t.count, 0);
+          const desiredAir = Math.max(1, Math.min(3, 1 + Math.floor(totalCount / 360)));
+          const existingAir = updated.filter(t => (t.combatDomain ?? 'GROUND') !== 'GROUND').reduce((sum, t) => sum + t.count, 0);
+          const airToAdd = Math.max(0, Math.min(desiredAir - existingAir, Math.min(3, remaining)));
+          for (let i = 0; i < airToAdd; i++) {
+            const airId = airOptions[Math.floor(Math.random() * airOptions.length)];
+            const airTemplate = getTroopTemplate(airId);
+            if (!airTemplate) continue;
+            const idx = updated.findIndex(t => t.id === airTemplate.id);
+            if (idx >= 0) {
+              updated[idx] = { ...updated[idx], count: updated[idx].count + 1 };
+            } else {
+              updated.push({ ...airTemplate, count: 1, xp: 0 });
             }
             remaining -= 1;
             if (remaining <= 0) break;
@@ -3376,40 +3424,125 @@ export default function App() {
          }));
          let attackers = [...siege.troops];
          
-         const attackerPower = calculatePower(attackers);
-         const defenderPower = calculatePower([
+         const defense = getLocationDefenseDetails(loc);
+         const wallBonus = 1 + (defense.wallLevel * 0.2);
+         const getProfile = (troop: Troop) => {
+           const tmpl = getTroopTemplate(troop.id);
+           const domain = (tmpl?.combatDomain ?? troop.combatDomain ?? 'GROUND') as 'GROUND' | 'AIR' | 'HYBRID';
+           const range = tmpl?.attributes?.range ?? troop.attributes?.range ?? 0;
+           const attackVsAir = typeof (tmpl?.attackVsAir ?? troop.attackVsAir) === 'number'
+             ? (tmpl?.attackVsAir ?? troop.attackVsAir) as number
+             : Math.min(1.05, 0.25 + (Math.max(0, range) / 160));
+           const attackVsGround = typeof (tmpl?.attackVsGround ?? troop.attackVsGround) === 'number'
+             ? (tmpl?.attackVsGround ?? troop.attackVsGround) as number
+             : (domain === 'AIR' ? 0.9 : 1.0);
+           const canCapture = typeof (tmpl?.canCapture ?? troop.canCapture) === 'boolean'
+             ? (tmpl?.canCapture ?? troop.canCapture) as boolean
+             : domain !== 'AIR';
+           return { domain, attackVsAir, attackVsGround, canCapture };
+         };
+         const isAirCapable = (t: Troop) => {
+           const d = getProfile(t).domain;
+           return d === 'AIR' || d === 'HYBRID';
+         };
+         const isGroundCapable = (t: Troop) => {
+           const d = getProfile(t).domain;
+           return d === 'GROUND' || d === 'HYBRID';
+         };
+         const calcAttackPower = (troops: Troop[], target: 'AIR' | 'GROUND') => troops.reduce((acc, t) => {
+           const bonusRatio = (t.enchantments ?? []).reduce((sum, e) => sum + e.powerBonus, 0);
+           const profile = getProfile(t);
+           const weight = target === 'AIR' ? profile.attackVsAir : profile.attackVsGround;
+           if (t.id === 'player_main' || t.id.startsWith('hero_')) return acc + t.basePower * (1 + bonusRatio) * weight;
+           return acc + t.count * t.tier * 10 * (1 + bonusRatio) * weight;
+         }, 0);
+         const applyLossSelective = (troops: Troop[], rate: number, predicate: (t: Troop) => boolean) => {
+           if (rate <= 0) return troops;
+           return troops
+             .map(t => {
+               if (!predicate(t)) return t;
+               return { ...t, count: Math.max(0, Math.floor(t.count * (1 - rate))) };
+             })
+             .filter(t => t.count > 0);
+         };
+
+         const defendersAll = [
            ...garrison,
            ...stayParties.flatMap(party => party.troops),
            ...stationedArmies.flatMap(army => army.troops)
-         ]);
-         const defense = getLocationDefenseDetails(loc);
-         const wallBonus = 1 + (defense.wallLevel * 0.2);
-         const effectiveDefenderPower = defenderPower * wallBonus;
-         
-         // Casualties (Simplified auto-resolve)
-         // Base daily loss is 5-10%, modified by power ratio
-         const baseLoss = 0.05 + (Math.random() * 0.05);
-         const powerRatio = effectiveDefenderPower > 0 ? attackerPower / effectiveDefenderPower : 10;
-         
-         const defenderLossRate = Math.min(0.5, baseLoss * powerRatio);
-         const attackerLossRate = Math.min(0.5, baseLoss * (1 / powerRatio));
-         
-         // Apply losses
-         const applyLoss = (troops: Troop[], rate: number) => {
-             return troops.map(t => ({
-                 ...t,
-                 count: Math.max(0, Math.floor(t.count * (1 - rate)))
-             })).filter(t => t.count > 0);
-         };
-         
-         garrison = applyLoss(garrison, defenderLossRate);
-         const nextStayParties = stayParties
-           .map(party => ({ ...party, troops: applyLoss(party.troops, defenderLossRate) }))
+         ];
+         const attackersAir = attackers.filter(isAirCapable);
+         const attackersGround = attackers.filter(isGroundCapable);
+         const defendersAir = defendersAll.filter(isAirCapable);
+         const defendersGround = defendersAll.filter(isGroundCapable);
+
+         const phaseLoss = () => 0.03 + (Math.random() * 0.03);
+         const clampRate = (n: number, max: number) => Math.max(0, Math.min(max, n));
+
+         const aaLoss = phaseLoss();
+         const airAirAP = calcAttackPower(attackersAir, 'AIR');
+         const airAirDP = calcAttackPower(defendersAir, 'AIR');
+         const airAirRatio = airAirDP > 0 ? airAirAP / airAirDP : airAirAP > 0 ? 10 : 0;
+         const defenderAirLossRate = airAirRatio > 0 ? clampRate(aaLoss * airAirRatio, 0.35) : 0;
+         const attackerAirLossRate = airAirRatio > 0 ? clampRate(aaLoss * (1 / airAirRatio), 0.35) : 0;
+
+         garrison = applyLossSelective(garrison, defenderAirLossRate, isAirCapable);
+         const nextStayPartiesAir = stayParties
+           .map(party => ({ ...party, troops: applyLossSelective(party.troops, defenderAirLossRate, isAirCapable) }))
            .filter(party => party.troops.length > 0);
-         const nextStationedArmies = stationedArmies
-           .map(army => ({ ...army, troops: applyLoss(army.troops, defenderLossRate) }))
+         const nextStationedArmiesAir = stationedArmies
+           .map(army => ({ ...army, troops: applyLossSelective(army.troops, defenderAirLossRate, isAirCapable) }))
            .filter(army => army.troops.length > 0);
-         attackers = applyLoss(attackers, attackerLossRate);
+         attackers = applyLossSelective(attackers, attackerAirLossRate, isAirCapable);
+
+         const defendersAllAfterAir = [
+           ...garrison,
+           ...nextStayPartiesAir.flatMap(party => party.troops),
+           ...nextStationedArmiesAir.flatMap(army => army.troops)
+         ];
+         const defendersGroundAfterAir = defendersAllAfterAir.filter(isGroundCapable);
+
+         const agLoss = 0.035 + (Math.random() * 0.035);
+         const airToGroundAP = calcAttackPower(attackers.filter(isAirCapable), 'GROUND');
+         const defenderGroundPower = calculatePower(defendersGroundAfterAir) * wallBonus;
+         const airToGroundRatio = defenderGroundPower > 0 ? airToGroundAP / defenderGroundPower : airToGroundAP > 0 ? 10 : 0;
+         const defenderGroundLossRate = airToGroundRatio > 0 ? clampRate(agLoss * airToGroundRatio, 0.4) : 0;
+
+         garrison = applyLossSelective(garrison, defenderGroundLossRate, isGroundCapable);
+         const nextStayPartiesGround = nextStayPartiesAir
+           .map(party => ({ ...party, troops: applyLossSelective(party.troops, defenderGroundLossRate, isGroundCapable) }))
+           .filter(party => party.troops.length > 0);
+         const nextStationedArmiesGround = nextStationedArmiesAir
+           .map(army => ({ ...army, troops: applyLossSelective(army.troops, defenderGroundLossRate, isGroundCapable) }))
+           .filter(army => army.troops.length > 0);
+
+         const gaLoss = 0.035 + (Math.random() * 0.035);
+         const groundToAirDP = calcAttackPower(defendersGroundAfterAir, 'AIR');
+         const attackerAirPower = calculatePower(attackers.filter(isAirCapable));
+         const groundToAirRatio = attackerAirPower > 0 ? groundToAirDP / attackerAirPower : groundToAirDP > 0 ? 10 : 0;
+         const attackerAirLossRate2 = groundToAirRatio > 0 ? clampRate(gaLoss * groundToAirRatio, 0.4) : 0;
+         attackers = applyLossSelective(attackers, attackerAirLossRate2, isAirCapable);
+
+         const groundLoss = 0.04 + (Math.random() * 0.04);
+         const attackerGroundPower = calculatePower(attackers.filter(isGroundCapable)) + calcAttackPower(attackers.filter(isAirCapable), 'GROUND') * 0.35;
+         const defendersAllAfterAG = [
+           ...garrison,
+           ...nextStayPartiesGround.flatMap(party => party.troops),
+           ...nextStationedArmiesGround.flatMap(army => army.troops)
+         ];
+         const defenderGroundPower2 = (calculatePower(defendersAllAfterAG.filter(isGroundCapable)) + calcAttackPower(defendersAllAfterAG.filter(isAirCapable), 'GROUND') * 0.15) * wallBonus;
+         const groundRatio = defenderGroundPower2 > 0 ? attackerGroundPower / defenderGroundPower2 : attackerGroundPower > 0 ? 10 : 0;
+         const defenderGroundLossRate2 = clampRate(groundLoss * groundRatio, 0.5);
+         const attackerGroundLossRate2 = clampRate(groundLoss * (groundRatio > 0 ? (1 / groundRatio) : 1), 0.5);
+
+         garrison = applyLossSelective(garrison, defenderGroundLossRate2, isGroundCapable);
+         const nextStayParties = nextStayPartiesGround
+           .map(party => ({ ...party, troops: applyLossSelective(party.troops, defenderGroundLossRate2, isGroundCapable) }))
+           .filter(party => party.troops.length > 0);
+         const nextStationedArmies = nextStationedArmiesGround
+           .map(army => ({ ...army, troops: applyLossSelective(army.troops, defenderGroundLossRate2, isGroundCapable) }))
+           .filter(army => army.troops.length > 0);
+         attackers = applyLossSelective(attackers, attackerGroundLossRate2, isGroundCapable);
          
          siege.troops = attackers;
          
@@ -3419,12 +3552,30 @@ export default function App() {
            ...nextStationedArmies.flatMap(army => army.troops)
          ]);
          const attackerCount = getGarrisonCount(attackers);
+         const defenderHoldCount = getGarrisonCount([
+           ...garrison.filter(t => getProfile(t).canCapture),
+           ...nextStayParties.flatMap(party => party.troops).filter(t => getProfile(t).canCapture),
+           ...nextStationedArmies.flatMap(army => army.troops).filter(t => getProfile(t).canCapture)
+         ]);
+         const attackerHoldCount = getGarrisonCount(attackers.filter(t => getProfile(t).canCapture));
 
         if ((nextDay - siege.startDay) % 2 === 0) {
           addLocalLog(loc.id, `围攻仍在继续：攻${attackerCount} 守${garrisonCount}。`);
         }
          
-         if (garrisonCount <= 0) {
+         if (defenderHoldCount <= 0) {
+            if (attackerHoldCount <= 0) {
+              logsToAdd.push(`【围攻解除】${loc.name} 的地面守军已溃散，但 ${siegeFactionName} 无法占领据点，选择撤离。`);
+              addLocalLog(loc.id, `地面守军溃散，围城方撤离。`);
+              return {
+                ...loc,
+                garrison: [],
+                stayParties: [],
+                stationedArmies: [],
+                activeSiege: undefined,
+                isUnderSiege: false
+              };
+            }
              logsToAdd.push(`【据点陷落】${loc.name} 的守军全军覆没，据点被 ${siegeFactionName} 占领！`);
              addLocalLog(loc.id, `${loc.name} 守军覆灭，城池陷落。`);
              if (attackerFactionId && defenderFactionId && attackerFactionId !== defenderFactionId) {
@@ -3455,11 +3606,15 @@ export default function App() {
             };
          }
          
-        if (attackerCount <= 0) {
-             // Attackers wiped - Siege Broken
-             logsToAdd.push(`【围攻解除】${loc.name} 的守军击溃了 ${siegeFactionName} 的进攻部队！`);
-             addLocalLog(loc.id, `围攻被击溃，守军守住城池。`);
-             return {
+        if (attackerCount <= 0 || attackerHoldCount <= 0) {
+            if (attackerCount > 0 && attackerHoldCount <= 0) {
+              logsToAdd.push(`【围攻解除】${siegeFactionName} 在 ${loc.name} 的地面部队已崩溃，无法继续围城。`);
+              addLocalLog(loc.id, `围城方地面部队崩溃，围攻解除。`);
+            } else {
+              logsToAdd.push(`【围攻解除】${loc.name} 的守军击溃了 ${siegeFactionName} 的进攻部队！`);
+              addLocalLog(loc.id, `围攻被击溃，守军守住城池。`);
+            }
+            return {
                  ...loc,
                  garrison: garrison,
                  stayParties: nextStayParties,
@@ -4287,7 +4442,10 @@ export default function App() {
           { troopId: 'imperial_crossbowman', count: 420 },
           { troopId: 'hunter', count: 320 },
           { troopId: 'verdant_scout_archer', count: 280 },
-          { troopId: 'verdant_skybow', count: 120 }
+          { troopId: 'verdant_skybow', count: 120 },
+          { troopId: 'arcane_glider', count: 14 },
+          { troopId: 'arcane_biplane', count: 4 },
+          { troopId: 'arcane_airship', count: 1 }
         ];
       }
       if (isFrost) {
@@ -4297,7 +4455,10 @@ export default function App() {
           { troopId: 'imperial_swordsman', count: 380 },
           { troopId: 'frost_oath_halberdier', count: 280 },
           { troopId: 'frost_oath_bladeguard', count: 140 },
-          { troopId: 'imperial_crossbowman', count: 200 }
+          { troopId: 'imperial_crossbowman', count: 200 },
+          { troopId: 'arcane_glider', count: 10 },
+          { troopId: 'arcane_biplane', count: 3 },
+          { troopId: 'arcane_airship', count: 1 }
         ];
       }
       if (isRedDune) {
@@ -4309,14 +4470,20 @@ export default function App() {
           { troopId: 'imperial_horse_archer', count: 280 },
           { troopId: 'imperial_shieldbearer', count: 240 },
           { troopId: 'imperial_crossbowman', count: 200 },
-          { troopId: 'footman', count: 180 }
+          { troopId: 'footman', count: 180 },
+          { troopId: 'arcane_glider', count: 12 },
+          { troopId: 'arcane_biplane', count: 3 },
+          { troopId: 'arcane_airship', count: 1 }
         ];
       }
       return [
         { troopId: 'imperial_swordsman', count: 820 },
         { troopId: 'imperial_shieldbearer', count: 620 },
         { troopId: 'imperial_crossbowman', count: 320 },
-        { troopId: 'knight', count: 180 }
+        { troopId: 'knight', count: 180 },
+        { troopId: 'arcane_glider', count: 12 },
+        { troopId: 'arcane_biplane', count: 3 },
+        { troopId: 'arcane_airship', count: 1 }
       ];
     }
     if (location.type === 'CASTLE') {
@@ -4327,7 +4494,9 @@ export default function App() {
           { troopId: 'verdant_scout_archer', count: 120 },
           { troopId: 'hunter', count: 90 },
           { troopId: 'footman', count: 90 },
-          { troopId: 'verdant_skybow', count: 30 }
+          { troopId: 'verdant_skybow', count: 30 },
+          { troopId: 'arcane_glider', count: 6 },
+          { troopId: 'arcane_biplane', count: 2 }
         ];
       }
       if (isFrost) {
@@ -4337,7 +4506,9 @@ export default function App() {
           { troopId: 'frost_oath_halberdier', count: 120 },
           { troopId: 'imperial_crossbowman', count: 80 },
           { troopId: 'frost_oath_bladeguard', count: 40 },
-          { troopId: 'imperial_swordsman', count: 30 }
+          { troopId: 'imperial_swordsman', count: 30 },
+          { troopId: 'arcane_glider', count: 5 },
+          { troopId: 'arcane_biplane', count: 1 }
         ];
       }
       if (isRedDune) {
@@ -4347,14 +4518,18 @@ export default function App() {
           { troopId: 'imperial_horse_archer', count: 120 },
           { troopId: 'red_dune_cataphract', count: 40 },
           { troopId: 'footman', count: 70 },
-          { troopId: 'imperial_shieldbearer', count: 70 }
+          { troopId: 'imperial_shieldbearer', count: 70 },
+          { troopId: 'arcane_glider', count: 5 },
+          { troopId: 'arcane_biplane', count: 1 }
         ];
       }
       return [
         { troopId: 'footman', count: 240 },
         { troopId: 'imperial_shieldbearer', count: 180 },
         { troopId: 'imperial_crossbowman', count: 120 },
-        { troopId: 'knight', count: 60 }
+        { troopId: 'knight', count: 60 },
+        { troopId: 'arcane_glider', count: 5 },
+        { troopId: 'arcane_biplane', count: 1 }
       ];
     }
     if (location.type === 'VILLAGE') {
@@ -4406,6 +4581,9 @@ export default function App() {
     }
     if (location.type === 'HABITAT') {
       return [
+        { troopId: 'beast_roc_hatchling', count: 14 },
+        { troopId: 'beast_roc', count: 6 },
+        { troopId: 'beast_roc_alpha', count: 1 },
         { troopId: 'beast_primate_juvenile_chimp', count: 12 },
         { troopId: 'beast_primate_adult_gorilla', count: 6 },
         { troopId: 'beast_primate_silverback', count: 2 },
@@ -4989,6 +5167,8 @@ export default function App() {
           'undead_grave_alchemist',
           'undead_plague_doctor',
           'undead_pestilence_lord',
+          'undead_gargoyle',
+          'undead_gargoyle_ancient',
           'undead_bone_mortar',
           'undead_grave_bastion'
         ];
@@ -5004,6 +5184,7 @@ export default function App() {
     if (type === 'HABITAT') {
       if (mode === 'VOLUNTEER') {
         return [
+          'beast_roc_hatchling',
           'beast_primate_juvenile_chimp',
           'beast_rhino_calf',
           'beast_hippo_calf',
@@ -5017,6 +5198,8 @@ export default function App() {
         ];
       }
       return [
+        'beast_roc',
+        'beast_roc_alpha',
         'beast_primate_adult_gorilla',
         'beast_rhino_black_subadult',
         'beast_hippo_swamp',
@@ -5052,7 +5235,10 @@ export default function App() {
      } else {
         const basePool = ['footman', 'archer', 'wolf_rider', 'alchemist', 'flagellant'];
         if (location.type === 'CITY' || location.type === 'CASTLE' || location.type === 'VILLAGE') {
-          return [...basePool, ...factionMercs];
+          const airPool = location.type === 'CITY' || location.type === 'CASTLE'
+            ? ['arcane_glider', 'arcane_biplane', 'arcane_airship']
+            : [];
+          return [...basePool, ...factionMercs, ...airPool];
         }
         return basePool;
      }

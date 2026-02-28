@@ -43,6 +43,7 @@ export type TroopAttributes = {
 
 export type TroopCategory = 'NORMAL' | 'HEAVY';
 export type HeavySupportRole = 'ARTILLERY' | 'TANK' | 'RADAR' | 'OTHER';
+export type CombatDomain = 'GROUND' | 'AIR' | 'HYBRID';
 
 export interface Troop {
   id: string;
@@ -65,6 +66,10 @@ export interface Troop {
   ammoPerUnit?: number;
   supportRole?: HeavySupportRole;
   supportRules?: string;
+  combatDomain?: CombatDomain;
+  attackVsAir?: number;
+  attackVsGround?: number;
+  canCapture?: boolean;
   doctrine?: string;
   evangelist?: boolean;
 }

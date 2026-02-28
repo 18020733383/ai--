@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Flag, Hammer, Info, Lock, MessageCircle, Shield, ShieldAlert, Skull, Swords, User } from 'lucide-react';
+import { AlertTriangle, Bird, Flag, Hammer, Info, Lock, MessageCircle, Shield, ShieldAlert, Skull, Swords, User } from 'lucide-react';
 import { BattleResult, EnemyForce, Hero, Location, NegotiationResult, PlayerState, SiegeEngineType, Troop } from '../types';
 import { Button } from './Button';
 
@@ -235,6 +235,9 @@ export const BattleView = ({
         const hoverTroop = buildHoverTroop(t);
         const template = getTroopTemplate(t.id);
         const isHeavy = (template?.category ?? t.category) === 'HEAVY';
+        const domain = template?.combatDomain ?? t.combatDomain ?? 'GROUND';
+        const isAir = domain === 'AIR';
+        const isHybrid = domain === 'HYBRID';
         return (
           <div
             key={`${t.id}-${i}`}
@@ -244,6 +247,7 @@ export const BattleView = ({
           >
             <span className="flex items-center gap-1">
               {isHeavy && <ShieldAlert size={10} className="text-emerald-400" />}
+              {(isAir || isHybrid) && <Bird size={10} className="text-sky-300" />}
               {t.name}
               {isLocked && <Shield size={10} className="text-stone-500" />}
             </span>
