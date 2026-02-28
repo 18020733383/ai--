@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.33',
+    date: '2026-02-28',
+    items: [
+      '序章打字机动画增加闪烁光标',
+      '修复序章“开始”按钮点击被遮挡与启用延迟'
+    ]
+  },
+  {
     version: '0.3.32',
     date: '2026-02-28',
     items: [
