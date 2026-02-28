@@ -84,7 +84,7 @@ export const WorldTroopStatsModal = ({
     tier,
     count: filtered.filter(entry => entry.tier === tier).reduce((sum, entry) => sum + entry.count, 0)
   }));
-  const raceOrder: TroopRace[] = ['HUMAN', 'ROACH', 'UNDEAD', 'IMPOSTER', 'BANDIT', 'AUTOMATON', 'VOID', 'MADNESS', 'BEAST', 'UNKNOWN'];
+  const raceOrder: TroopRace[] = ['HUMAN', 'ROACH', 'UNDEAD', 'IMPOSTER', 'BANDIT', 'AUTOMATON', 'VOID', 'MADNESS', 'BEAST', 'GOBLIN', 'UNKNOWN'];
 
   return (
     <div

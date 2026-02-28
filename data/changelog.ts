@@ -6,6 +6,21 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.31',
+    date: '2026-02-28',
+    items: [
+      '新增 4 个哥布林营地据点，并生成哥布林遭遇部队'
+    ]
+  },
+  {
+    version: '0.3.30',
+    date: '2026-02-28',
+    items: [
+      '新增哥布林种族与 33 个 T1-T4 兵种升级树',
+      '兵种档案新增“升级树”视图'
+    ]
+  },
+  {
     version: '0.3.29',
     date: '2026-02-28',
     items: [

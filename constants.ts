@@ -22,7 +22,8 @@ export const RACE_LABELS: Record<RaceId, string> = {
   AUTOMATON: '失控机兵',
   VOID: '深渊势力',
   MADNESS: '疯人群体',
-  BEAST: '野兽族群'
+  BEAST: '野兽族群',
+  GOBLIN: '哥布林部落'
 };
 
 export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
@@ -35,7 +36,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     AUTOMATON: -30,
     VOID: -60,
     MADNESS: -40,
-    BEAST: -10
+    BEAST: -10,
+    GOBLIN: -35
   },
   ROACH: {
     HUMAN: -35,
@@ -46,7 +48,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     AUTOMATON: -15,
     VOID: -45,
     MADNESS: -25,
-    BEAST: -25
+    BEAST: -25,
+    GOBLIN: -15
   },
   UNDEAD: {
     HUMAN: -25,
@@ -57,7 +60,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     AUTOMATON: -20,
     VOID: -40,
     MADNESS: -15,
-    BEAST: -5
+    BEAST: -5,
+    GOBLIN: -10
   },
   IMPOSTER: {
     HUMAN: -80,
@@ -68,7 +72,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     AUTOMATON: -40,
     VOID: -70,
     MADNESS: -50,
-    BEAST: -55
+    BEAST: -55,
+    GOBLIN: -55
   },
   BANDIT: {
     HUMAN: -50,
@@ -79,7 +84,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     AUTOMATON: -25,
     VOID: -35,
     MADNESS: -15,
-    BEAST: -20
+    BEAST: -20,
+    GOBLIN: -15
   },
   AUTOMATON: {
     HUMAN: -30,
@@ -90,7 +96,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     AUTOMATON: 0,
     VOID: -45,
     MADNESS: -25,
-    BEAST: -18
+    BEAST: -18,
+    GOBLIN: -20
   },
   VOID: {
     HUMAN: -60,
@@ -101,7 +108,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     AUTOMATON: -45,
     VOID: 0,
     MADNESS: -30,
-    BEAST: -40
+    BEAST: -40,
+    GOBLIN: -45
   },
   MADNESS: {
     HUMAN: -40,
@@ -112,7 +120,8 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     AUTOMATON: -25,
     VOID: -30,
     MADNESS: 0,
-    BEAST: -8
+    BEAST: -8,
+    GOBLIN: -20
   },
   BEAST: {
     HUMAN: -10,
@@ -123,7 +132,20 @@ export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
     AUTOMATON: -18,
     VOID: -40,
     MADNESS: -8,
-    BEAST: 0
+    BEAST: 0,
+    GOBLIN: -10
+  },
+  GOBLIN: {
+    HUMAN: -35,
+    ROACH: -15,
+    UNDEAD: -10,
+    IMPOSTER: -55,
+    BANDIT: -15,
+    AUTOMATON: -20,
+    VOID: -45,
+    MADNESS: -20,
+    BEAST: -10,
+    GOBLIN: 0
   }
 };
 
@@ -1435,6 +1457,459 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     attackVsAir: 0.8,
     attackVsGround: 1.25,
     canCapture: false
+  },
+  goblin_scavenger: {
+    id: 'goblin_scavenger',
+    name: '哥布林拾荒者',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_1,
+    basePower: 7,
+    cost: 16,
+    upgradeCost: 30,
+    maxXp: 28,
+    upgradeTargetId: 'goblin_raider',
+    description: '在废墟里捡出武器的矮小掠夺者。【技能：趁乱搜刮】战斗获利略有提升。',
+    equipment: ['钉板短刀', '破布兜帽', '碎铁护片'],
+    attributes: troopAttr(40, 25, 60, 40, 5, 45)
+  },
+  goblin_spear_urchin: {
+    id: 'goblin_spear_urchin',
+    name: '哥布林矛童',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_1,
+    basePower: 7,
+    cost: 16,
+    upgradeCost: 32,
+    maxXp: 30,
+    upgradeTargetId: 'goblin_pikeman',
+    description: '用短矛与胆量堆起来的前排。',
+    equipment: ['短矛', '木扣盾', '皮布背心'],
+    attributes: troopAttr(45, 30, 55, 45, 10, 50)
+  },
+  goblin_slinger: {
+    id: 'goblin_slinger',
+    name: '哥布林投石手',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_1,
+    basePower: 7,
+    cost: 18,
+    upgradeCost: 35,
+    maxXp: 32,
+    upgradeTargetId: 'goblin_sling_leader',
+    description: '投石比弓更省钱，更吵。',
+    equipment: ['粗布投石索', '石子袋', '皮帽'],
+    attributes: troopAttr(35, 20, 60, 35, 75, 40)
+  },
+  goblin_bomber: {
+    id: 'goblin_bomber',
+    name: '哥布林爆竹兵',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_1,
+    basePower: 8,
+    cost: 20,
+    upgradeCost: 40,
+    maxXp: 34,
+    upgradeTargetId: 'goblin_grenadier',
+    description: '把危险当成娱乐的疯小子。',
+    equipment: ['爆竹筒', '火石', '防烫手套'],
+    attributes: troopAttr(45, 25, 50, 40, 35, 40)
+  },
+  goblin_sneak: {
+    id: 'goblin_sneak',
+    name: '哥布林潜行者',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_1,
+    basePower: 8,
+    cost: 18,
+    upgradeCost: 38,
+    maxXp: 34,
+    upgradeTargetId: 'goblin_cutthroat',
+    description: '阴影里总有小眼睛盯着你。',
+    equipment: ['匕首', '烟尘粉', '软底靴'],
+    attributes: troopAttr(50, 20, 75, 35, 5, 40)
+  },
+  goblin_wolf_pup_rider: {
+    id: 'goblin_wolf_pup_rider',
+    name: '幼狼骑手',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_1,
+    basePower: 8,
+    cost: 22,
+    upgradeCost: 45,
+    maxXp: 36,
+    upgradeTargetId: 'goblin_wolf_rider',
+    description: '骑着还没长开的狼崽子，冲起来更像打滑。',
+    equipment: ['短弯刀', '幼狼', '皮鞍'],
+    attributes: troopAttr(55, 30, 80, 55, 10, 60)
+  },
+  goblin_scrap_shield: {
+    id: 'goblin_scrap_shield',
+    name: '破铜盾兵',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_1,
+    basePower: 7,
+    cost: 18,
+    upgradeCost: 36,
+    maxXp: 32,
+    upgradeTargetId: 'goblin_tower_shield',
+    description: '把锅盖当盾牌的勇者。',
+    equipment: ['锅盖盾', '短棍', '补丁皮甲'],
+    attributes: troopAttr(35, 65, 40, 65, 5, 70)
+  },
+  goblin_hex_apprentice: {
+    id: 'goblin_hex_apprentice',
+    name: '诅咒学徒',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_1,
+    basePower: 7,
+    cost: 18,
+    upgradeCost: 40,
+    maxXp: 34,
+    upgradeTargetId: 'goblin_hexer',
+    description: '背着一袋乱七八糟的护符，嘴里念叨着不吉利的话。',
+    equipment: ['骨符', '小木杖', '护符串'],
+    attributes: troopAttr(40, 25, 50, 40, 70, 45)
+  },
+  goblin_fungal_picker: {
+    id: 'goblin_fungal_picker',
+    name: '菌菇采集者',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_1,
+    basePower: 7,
+    cost: 16,
+    upgradeCost: 34,
+    maxXp: 30,
+    upgradeTargetId: 'goblin_fungus_medic',
+    description: '挑最怪的蘑菇，熬最臭的汤。',
+    equipment: ['菌菇篮', '酸汤袋', '小刀'],
+    attributes: troopAttr(30, 30, 45, 50, 40, 55)
+  },
+  goblin_raider: {
+    id: 'goblin_raider',
+    name: '哥布林掠夺者',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_2,
+    basePower: 18,
+    cost: 70,
+    upgradeCost: 110,
+    maxXp: 85,
+    upgradeTargetId: 'goblin_chain_reaver',
+    description: '更懂得怎么把混乱变成胜利。',
+    equipment: ['短斧', '皮甲', '掠夺袋'],
+    attributes: troopAttr(75, 55, 70, 70, 10, 70)
+  },
+  goblin_pikeman: {
+    id: 'goblin_pikeman',
+    name: '哥布林长枪兵',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_2,
+    basePower: 20,
+    cost: 78,
+    upgradeCost: 120,
+    maxXp: 95,
+    upgradeTargetId: 'goblin_hob_spear',
+    description: '把木杆削得更长，胆子也更大。',
+    equipment: ['长枪', '皮盾', '硬皮甲'],
+    attributes: troopAttr(90, 70, 60, 85, 20, 80)
+  },
+  goblin_sling_leader: {
+    id: 'goblin_sling_leader',
+    name: '投石队长',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_2,
+    basePower: 18,
+    cost: 75,
+    upgradeCost: 120,
+    maxXp: 90,
+    upgradeTargetId: 'goblin_stone_harrier',
+    description: '更会挑石头，也更会挑目标。',
+    equipment: ['加重投石索', '圆石袋', '护臂'],
+    attributes: troopAttr(70, 45, 70, 65, 105, 70)
+  },
+  goblin_grenadier: {
+    id: 'goblin_grenadier',
+    name: '哥布林掷弹兵',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_2,
+    basePower: 20,
+    cost: 90,
+    upgradeCost: 140,
+    maxXp: 110,
+    upgradeTargetId: 'goblin_sapper',
+    description: '把瓶瓶罐罐扔出去，剩下的交给命运。',
+    equipment: ['陶罐炸弹', '火绳', '皮背心'],
+    attributes: troopAttr(85, 50, 60, 70, 65, 65)
+  },
+  goblin_cutthroat: {
+    id: 'goblin_cutthroat',
+    name: '哥布林割喉者',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_2,
+    basePower: 22,
+    cost: 95,
+    upgradeCost: 150,
+    maxXp: 120,
+    upgradeTargetId: 'goblin_nightblade',
+    description: '不讲武德，但很有效。',
+    equipment: ['弯匕', '飞刀', '兜帽'],
+    attributes: troopAttr(105, 45, 90, 65, 10, 65)
+  },
+  goblin_wolf_rider: {
+    id: 'goblin_wolf_rider',
+    name: '狼骑兵',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_2,
+    basePower: 24,
+    cost: 110,
+    upgradeCost: 170,
+    maxXp: 140,
+    upgradeTargetId: 'goblin_warg_rider',
+    description: '狼更大，牙更利，冲锋也更稳。',
+    equipment: ['弯刀', '战狼', '皮甲'],
+    attributes: troopAttr(110, 75, 100, 95, 15, 85)
+  },
+  goblin_tower_shield: {
+    id: 'goblin_tower_shield',
+    name: '塔盾兵',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_2,
+    basePower: 20,
+    cost: 90,
+    upgradeCost: 150,
+    maxXp: 120,
+    upgradeTargetId: 'goblin_scrap_guard',
+    description: '把盾做得像门一样大。',
+    equipment: ['塔盾', '短矛', '铁片甲'],
+    attributes: troopAttr(70, 125, 55, 125, 5, 110)
+  },
+  goblin_hexer: {
+    id: 'goblin_hexer',
+    name: '哥布林咒术师',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_2,
+    basePower: 20,
+    cost: 95,
+    upgradeCost: 160,
+    maxXp: 130,
+    upgradeTargetId: 'goblin_witch_doctor',
+    description: '把诅咒念得更准、更快。',
+    equipment: ['咒符束', '骨杖', '破袍'],
+    attributes: troopAttr(90, 55, 60, 75, 110, 80)
+  },
+  goblin_fungus_medic: {
+    id: 'goblin_fungus_medic',
+    name: '菌菇医师',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_2,
+    basePower: 18,
+    cost: 85,
+    upgradeCost: 150,
+    maxXp: 125,
+    upgradeTargetId: 'goblin_plague_shaman',
+    description: '药效不稳定，但总能让人“有反应”。',
+    equipment: ['菌汤壶', '绷带', '药粉囊'],
+    attributes: troopAttr(65, 70, 55, 95, 75, 90)
+  },
+  goblin_chain_reaver: {
+    id: 'goblin_chain_reaver',
+    name: '锁链屠夫',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_3,
+    basePower: 46,
+    cost: 240,
+    upgradeCost: 420,
+    maxXp: 260,
+    upgradeTargetId: 'goblin_warlord',
+    description: '把铁链当作武器与绞索。',
+    equipment: ['锯齿铁链', '短斧', '链甲'],
+    attributes: troopAttr(150, 100, 85, 130, 15, 95)
+  },
+  goblin_hob_spear: {
+    id: 'goblin_hob_spear',
+    name: '霍布长矛手',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_3,
+    basePower: 50,
+    cost: 260,
+    upgradeCost: 450,
+    maxXp: 280,
+    upgradeTargetId: 'goblin_spear_chief',
+    description: '更高更壮的哥布林战士，用长矛撑住阵线。',
+    equipment: ['重型长矛', '铁盾', '钉板甲'],
+    attributes: troopAttr(155, 125, 75, 150, 25, 110)
+  },
+  goblin_stone_harrier: {
+    id: 'goblin_stone_harrier',
+    name: '碎石骚扰者',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_3,
+    basePower: 45,
+    cost: 240,
+    upgradeCost: 0,
+    maxXp: 600,
+    description: '用碎石持续骚扰敌军阵线，专打头盔缝。',
+    equipment: ['硬皮投石索', '碎石袋', '护目镜'],
+    attributes: troopAttr(135, 85, 95, 120, 145, 95)
+  },
+  goblin_sapper: {
+    id: 'goblin_sapper',
+    name: '地雷工兵',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_3,
+    basePower: 48,
+    cost: 260,
+    upgradeCost: 480,
+    maxXp: 300,
+    upgradeTargetId: 'goblin_bombardier',
+    description: '更懂得怎么把地面变成陷阱。',
+    equipment: ['地雷包', '撬棍', '火药带'],
+    attributes: troopAttr(145, 95, 85, 125, 120, 85)
+  },
+  goblin_nightblade: {
+    id: 'goblin_nightblade',
+    name: '夜刃',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_3,
+    basePower: 52,
+    cost: 300,
+    upgradeCost: 520,
+    maxXp: 320,
+    upgradeTargetId: 'goblin_shadow_lord',
+    description: '在黑暗里收割，像一阵风。',
+    equipment: ['双匕', '毒针', '黑斗篷'],
+    attributes: troopAttr(180, 85, 130, 120, 15, 95)
+  },
+  goblin_warg_rider: {
+    id: 'goblin_warg_rider',
+    name: '座狼骑士',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_3,
+    basePower: 58,
+    cost: 340,
+    upgradeCost: 580,
+    maxXp: 360,
+    upgradeTargetId: 'goblin_warg_alpha',
+    description: '座狼比马更凶，冲阵更像灾害。',
+    equipment: ['长弯刀', '座狼', '加固皮甲'],
+    attributes: troopAttr(175, 120, 140, 175, 20, 125)
+  },
+  goblin_scrap_guard: {
+    id: 'goblin_scrap_guard',
+    name: '废铁近卫',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_3,
+    basePower: 52,
+    cost: 300,
+    upgradeCost: 0,
+    maxXp: 700,
+    description: '把废铁焊成一身甲，像一堵移动的墙。',
+    equipment: ['废铁巨盾', '重棍', '拼装铁甲'],
+    attributes: troopAttr(130, 195, 70, 210, 5, 135)
+  },
+  goblin_witch_doctor: {
+    id: 'goblin_witch_doctor',
+    name: '巫医',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_3,
+    basePower: 54,
+    cost: 320,
+    upgradeCost: 560,
+    maxXp: 340,
+    upgradeTargetId: 'goblin_witch_king',
+    description: '把诅咒、药粉与鼓点混在一起。',
+    equipment: ['巫医骨杖', '药粉袋', '面具'],
+    attributes: troopAttr(150, 105, 95, 150, 150, 135)
+  },
+  goblin_plague_shaman: {
+    id: 'goblin_plague_shaman',
+    name: '疫病萨满',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_3,
+    basePower: 52,
+    cost: 300,
+    upgradeCost: 0,
+    maxXp: 700,
+    description: '用蘑菇孢子污染战场，让敌军喘不过气。',
+    equipment: ['孢子袋', '腐木法杖', '瘟布披风'],
+    attributes: troopAttr(130, 120, 80, 175, 135, 130)
+  },
+  goblin_warlord: {
+    id: 'goblin_warlord',
+    name: '哥布林军阀',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_4,
+    basePower: 120,
+    cost: 950,
+    upgradeCost: 0,
+    maxXp: 1600,
+    description: '靠威胁、金币与胜利维持统治。',
+    equipment: ['断头斧', '军阀披风', '铁链护肩'],
+    attributes: troopAttr(225, 165, 120, 200, 25, 170)
+  },
+  goblin_spear_chief: {
+    id: 'goblin_spear_chief',
+    name: '长矛酋长',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_4,
+    basePower: 130,
+    cost: 980,
+    upgradeCost: 0,
+    maxXp: 1700,
+    description: '把长矛当作部落的旗帜。',
+    equipment: ['重型战矛', '厚铁盾', '酋长甲'],
+    attributes: troopAttr(235, 195, 105, 245, 35, 180)
+  },
+  goblin_bombardier: {
+    id: 'goblin_bombardier',
+    name: '爆破统领',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_4,
+    basePower: 125,
+    cost: 980,
+    upgradeCost: 0,
+    maxXp: 1700,
+    description: '用爆炸宣告胜利，用爆炸收尾。',
+    equipment: ['掷爆弹', '爆破背包', '防爆面罩'],
+    attributes: troopAttr(215, 155, 110, 205, 170, 160)
+  },
+  goblin_shadow_lord: {
+    id: 'goblin_shadow_lord',
+    name: '影主',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_4,
+    basePower: 125,
+    cost: 990,
+    upgradeCost: 0,
+    maxXp: 1700,
+    description: '影子里有一座小王座。',
+    equipment: ['黑刃', '毒雾瓶', '影纹披风'],
+    attributes: troopAttr(245, 140, 190, 175, 30, 165)
+  },
+  goblin_warg_alpha: {
+    id: 'goblin_warg_alpha',
+    name: '座狼王',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_4,
+    basePower: 140,
+    cost: 1100,
+    upgradeCost: 0,
+    maxXp: 1900,
+    description: '以嗥叫号令骑兵，以獠牙撕开阵线。',
+    equipment: ['王刃', '座狼王', '骨甲'],
+    attributes: troopAttr(245, 185, 170, 250, 25, 195)
+  },
+  goblin_witch_king: {
+    id: 'goblin_witch_king',
+    name: '巫王',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_4,
+    basePower: 135,
+    cost: 1050,
+    upgradeCost: 0,
+    maxXp: 1900,
+    description: '把部落的恐惧变成咒语。',
+    equipment: ['巫王权杖', '面具王冠', '仪式甲'],
+    attributes: troopAttr(220, 175, 135, 240, 190, 195)
   },
 
   // --- ASYLUM TROOPS (Mental Hospital Theme) ---
@@ -3960,6 +4435,7 @@ export const TROOP_RACE_LABELS: Record<TroopRace, string> = {
   VOID: '深渊',
   MADNESS: '疯人',
   BEAST: '野兽',
+  GOBLIN: '哥布林',
   UNKNOWN: '未知'
 };
 
@@ -3980,6 +4456,7 @@ export const getTroopRace = (
   if (normalizedId.startsWith('void_')) return 'VOID';
   if (normalizedId.startsWith('mad_') || normalizedId.includes('patient')) return 'MADNESS';
   if (normalizedId.startsWith('beast_')) return 'BEAST';
+  if (normalizedId.startsWith('goblin_')) return 'GOBLIN';
   if (normalizedId.includes('bandit') || normalizedId.includes('raider') || normalizedId.includes('thief')) return 'BANDIT';
   const name = String(troop.name ?? '');
   if (name.includes('匪') || name.includes('盗') || name.includes('强盗') || name.includes('劫匪')) return 'BANDIT';
@@ -4510,7 +4987,8 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
       AUTOMATON: 0,
       VOID: 0,
       MADNESS: 0,
-      BEAST: -10
+      BEAST: -10,
+      GOBLIN: -20
     }
   },
   relationEvents: [],
@@ -5543,6 +6021,54 @@ export const LOCATIONS: Location[] = [
     type: 'BANDIT_CAMP',
     description: '岩谷深处的劫掠营地。',
     coordinates: { x: 360, y: 210 },
+    terrain: 'BANDIT_CAMP',
+    lastRefreshDay: 0,
+    banditSpawnDay: 1,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'goblin_camp_mossden',
+    name: '哥布林营地·苔穴',
+    type: 'BANDIT_CAMP',
+    description: '苔藓覆盖的矮棚与破锅堆成的营地，空气里是蘑菇与油烟。',
+    coordinates: { x: 110, y: 95 },
+    terrain: 'BANDIT_CAMP',
+    lastRefreshDay: 0,
+    banditSpawnDay: 1,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'goblin_camp_scrapyard',
+    name: '哥布林营地·废铁丘',
+    type: 'BANDIT_CAMP',
+    description: '到处是捡来的铁片与木板，哨塔上挂着奇怪的旗子。',
+    coordinates: { x: 430, y: 120 },
+    terrain: 'BANDIT_CAMP',
+    lastRefreshDay: 0,
+    banditSpawnDay: 1,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'goblin_camp_sinkhole',
+    name: '哥布林营地·陷坑',
+    type: 'BANDIT_CAMP',
+    description: '塌陷地里挖出的地下窝棚，四周布满简陋的陷阱与地雷。',
+    coordinates: { x: 360, y: 410 },
+    terrain: 'BANDIT_CAMP',
+    lastRefreshDay: 0,
+    banditSpawnDay: 1,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'goblin_camp_ridgefire',
+    name: '哥布林营地·脊火台',
+    type: 'BANDIT_CAMP',
+    description: '山脊上的火堆从不熄灭，投石声与狼嗥在夜里回荡。',
+    coordinates: { x: 70, y: 440 },
     terrain: 'BANDIT_CAMP',
     lastRefreshDay: 0,
     banditSpawnDay: 1,

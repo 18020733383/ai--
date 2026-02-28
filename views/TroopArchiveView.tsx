@@ -3,7 +3,7 @@ import { Scroll } from 'lucide-react';
 import { Troop, TroopTier } from '../types';
 import { Button } from '../components/Button';
 
-type TroopArchiveFactionFilter = 'ALL' | 'HUMAN' | 'ROACH' | 'IMPOSTER' | 'ASYLUM' | 'UNDEAD' | 'HOTPOT' | 'CUSTOM';
+type TroopArchiveFactionFilter = 'ALL' | 'HUMAN' | 'ROACH' | 'IMPOSTER' | 'ASYLUM' | 'UNDEAD' | 'HOTPOT' | 'GOBLIN' | 'CUSTOM';
 type TroopArchiveCategoryFilter = 'ALL' | 'NORMAL' | 'HEAVY';
 type TroopArchiveSort = 'TIER' | 'NAME' | 'TOTAL' | 'ATTACK' | 'DEFENSE' | 'AGILITY' | 'HP' | 'RANGE' | 'MORALE';
 
@@ -48,6 +48,7 @@ export const TroopArchiveView = ({
   onBackToWorldBoard,
   onBackToMap
 }: TroopArchiveViewProps) => {
+  const [archiveViewMode, setArchiveViewMode] = React.useState<'LIST' | 'TREE'>('LIST');
   const templateMap = { ...troopTemplates, ...customTroopTemplates };
   const allTroops = Object.values(templateMap);
 
@@ -56,6 +57,7 @@ export const TroopArchiveView = ({
   const guessFaction = (id: string): TroopArchiveFactionFilter => {
     if (isCustomTemplate(id)) return 'CUSTOM';
     if (id.startsWith('roach_')) return 'ROACH';
+    if (id.startsWith('goblin_')) return 'GOBLIN';
     if (
       id.startsWith('imposter_') ||
       id.startsWith('void_') ||
@@ -110,6 +112,7 @@ export const TroopArchiveView = ({
     ASYLUM: '疯人院',
     UNDEAD: '亡灵',
     HOTPOT: '食府',
+    GOBLIN: '哥布林',
     CUSTOM: '自定义'
   };
   const categoryLabel: Record<TroopArchiveCategoryFilter, string> = {
@@ -121,6 +124,11 @@ export const TroopArchiveView = ({
   const tierLabel = (tier: TroopTier) => `T${tier}`;
 
   const query = troopArchiveQuery.trim().toLowerCase();
+  const matchQuery = (t: Omit<Troop, 'count' | 'xp'>) => {
+    if (!query) return true;
+    const text = `${t.id} ${t.name} ${(t.equipment ?? []).join(' ')} ${String(t.description ?? '')}`.toLowerCase();
+    return text.includes(query);
+  };
   const filtered = allTroops
     .filter(t => {
       if (troopArchiveTierFilter !== 'ALL' && t.tier !== troopArchiveTierFilter) return false;
@@ -128,9 +136,7 @@ export const TroopArchiveView = ({
       if (troopArchiveFactionFilter !== 'ALL' && faction !== troopArchiveFactionFilter) return false;
       const category = t.category ?? 'NORMAL';
       if (troopArchiveCategoryFilter !== 'ALL' && category !== troopArchiveCategoryFilter) return false;
-      if (!query) return true;
-      const text = `${t.id} ${t.name} ${(t.equipment ?? []).join(' ')} ${String(t.description ?? '')}`.toLowerCase();
-      return text.includes(query);
+      return matchQuery(t);
     })
     .sort((a, b) => {
       const byName = () => a.name.localeCompare(b.name, 'zh-CN');
@@ -155,6 +161,47 @@ export const TroopArchiveView = ({
       const tierCmp = a.tier - b.tier;
       if (tierCmp !== 0) return tierCmp;
       return byName();
+    });
+
+  const treeCandidates = allTroops.filter(t => {
+    const faction = guessFaction(t.id);
+    if (troopArchiveFactionFilter !== 'ALL' && faction !== troopArchiveFactionFilter) return false;
+    const category = t.category ?? 'NORMAL';
+    if (troopArchiveCategoryFilter !== 'ALL' && category !== troopArchiveCategoryFilter) return false;
+    return true;
+  });
+  const treeMatchIds = query ? new Set(treeCandidates.filter(matchQuery).map(t => t.id)) : null;
+  const treeMap = treeCandidates.reduce((acc, t) => {
+    acc.set(t.id, t);
+    return acc;
+  }, new Map<string, Omit<Troop, 'count' | 'xp'>>());
+  const treeTargets = treeCandidates.reduce((acc, t) => {
+    if (t.upgradeTargetId) acc.add(t.upgradeTargetId);
+    return acc;
+  }, new Set<string>());
+  const treeRoots = treeCandidates
+    .filter(t => !treeTargets.has(t.id))
+    .sort((a, b) => (a.tier - b.tier) || a.name.localeCompare(b.name, 'zh-CN'));
+  const buildTreePath = (root: Omit<Troop, 'count' | 'xp'>) => {
+    const path: Array<Omit<Troop, 'count' | 'xp'>> = [];
+    const visited = new Set<string>();
+    let current: Omit<Troop, 'count' | 'xp'> | undefined = root;
+    while (current && !visited.has(current.id)) {
+      visited.add(current.id);
+      path.push(current);
+      const nextId = current.upgradeTargetId;
+      if (!nextId) break;
+      current = treeMap.get(nextId);
+    }
+    return path;
+  };
+  const treePaths = treeRoots
+    .map(buildTreePath)
+    .filter(path => {
+      const matchTier = troopArchiveTierFilter === 'ALL' ? true : path.some(t => t.tier === troopArchiveTierFilter);
+      if (!matchTier) return false;
+      if (!treeMatchIds) return true;
+      return path.some(t => treeMatchIds.has(t.id));
     });
 
   const attrOrder = [
@@ -296,7 +343,7 @@ export const TroopArchiveView = ({
   };
 
   const tierOptions: Array<TroopTier | 'ALL'> = ['ALL', TroopTier.TIER_1, TroopTier.TIER_2, TroopTier.TIER_3, TroopTier.TIER_4, TroopTier.TIER_5];
-  const factionOptions: Array<TroopArchiveFactionFilter> = ['ALL', 'HUMAN', 'ROACH', 'IMPOSTER', 'ASYLUM', 'UNDEAD', 'HOTPOT', 'CUSTOM'];
+  const factionOptions: Array<TroopArchiveFactionFilter> = ['ALL', 'HUMAN', 'ROACH', 'IMPOSTER', 'ASYLUM', 'UNDEAD', 'HOTPOT', 'GOBLIN', 'CUSTOM'];
   const categoryOptions: Array<TroopArchiveCategoryFilter> = ['ALL', 'NORMAL', 'HEAVY'];
 
   const sortOptions: Array<{ value: TroopArchiveSort; label: string }> = [
@@ -398,7 +445,7 @@ export const TroopArchiveView = ({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <div>
               <label className="block text-xs text-stone-500 mb-1">排序</label>
               <select
@@ -412,6 +459,20 @@ export const TroopArchiveView = ({
                 {sortOptions.map(opt => (
                   <option key={opt.value} value={opt.value}>{opt.label}</option>
                 ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-stone-500 mb-1">显示</label>
+              <select
+                value={archiveViewMode}
+                onChange={(e) => {
+                  setArchiveViewMode(e.target.value as 'LIST' | 'TREE');
+                  setTroopArchivePage(1);
+                }}
+                className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-amber-700"
+              >
+                <option value="LIST">列表</option>
+                <option value="TREE">升级树</option>
               </select>
             </div>
             <div className="md:col-span-3 flex items-end justify-between gap-3">
@@ -474,6 +535,7 @@ export const TroopArchiveView = ({
           )}
         </div>
 
+        {archiveViewMode === 'LIST' && (
         <div className="bg-stone-900/70 border border-stone-700 rounded p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
           <div className="text-xs text-stone-400">
             显示 {totalItems === 0 ? 0 : (pageStart + 1)}-{pageEnd} / {totalItems}
@@ -513,7 +575,9 @@ export const TroopArchiveView = ({
             </Button>
           </div>
         </div>
+        )}
 
+        {archiveViewMode === 'LIST' ? (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-3">
           {paged.map(t => (
             <div key={t.id} className="bg-stone-900/70 border border-stone-700 rounded p-3 space-y-3">
@@ -539,6 +603,41 @@ export const TroopArchiveView = ({
             </div>
           ))}
         </div>
+        ) : (
+        <div className="space-y-3">
+          {treePaths.map((path, idx) => (
+            <div key={`${path[0]?.id ?? 'tree'}_${idx}`} className="bg-stone-900/70 border border-stone-700 rounded p-3 overflow-x-auto">
+              <div className="flex items-center gap-2 min-w-max">
+                {path.map((node, i) => {
+                  const isMatch = treeMatchIds ? treeMatchIds.has(node.id) : false;
+                  return (
+                    <React.Fragment key={node.id}>
+                      <div className={`bg-stone-950/60 border rounded p-2 w-64 shrink-0 ${isMatch ? 'border-amber-600' : 'border-stone-800'}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="text-sm text-stone-200 font-semibold truncate">{node.name}</div>
+                          <div className="text-xs text-stone-500">T{node.tier}</div>
+                        </div>
+                        <div className="text-xs text-stone-500 mt-1">{node.id}</div>
+                        <div className="text-xs text-stone-300 mt-2">
+                          {attrOrder.map(a => `${a.label}${node.attributes[a.key]}`).join(' ')}
+                        </div>
+                      </div>
+                      {i < path.length - 1 && (
+                        <div className="text-stone-500 px-1">→</div>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          {treePaths.length === 0 && (
+            <div className="text-stone-500 text-sm text-center py-12 border border-dashed border-stone-800 rounded">
+              没找到符合条件的升级树
+            </div>
+          )}
+        </div>
+        )}
       </div>
     </div>
   );

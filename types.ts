@@ -273,7 +273,7 @@ export type LordFocus = 'WAR' | 'TRADE' | 'DEFENSE' | 'DIPLOMACY';
 
 export type LordState = 'PATROLLING' | 'BESIEGING' | 'MARSHALLING' | 'FEASTING' | 'RESTING';
 
-export type RaceId = 'HUMAN' | 'ROACH' | 'UNDEAD' | 'IMPOSTER' | 'BANDIT' | 'AUTOMATON' | 'VOID' | 'MADNESS' | 'BEAST';
+export type RaceId = 'HUMAN' | 'ROACH' | 'UNDEAD' | 'IMPOSTER' | 'BANDIT' | 'AUTOMATON' | 'VOID' | 'MADNESS' | 'BEAST' | 'GOBLIN';
 
 export type TroopRace = RaceId | 'UNKNOWN';
 

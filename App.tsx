@@ -886,7 +886,7 @@ export default function App() {
   const [worldTroopTierFilter, setWorldTroopTierFilter] = useState<TroopTier | 'ALL'>('ALL');
   const [worldTroopIdFilter, setWorldTroopIdFilter] = useState('ALL');
   const [troopArchiveQuery, setTroopArchiveQuery] = useState('');
-  const [troopArchiveFactionFilter, setTroopArchiveFactionFilter] = useState<'ALL' | 'HUMAN' | 'ROACH' | 'IMPOSTER' | 'ASYLUM' | 'UNDEAD' | 'HOTPOT' | 'CUSTOM'>('ALL');
+  const [troopArchiveFactionFilter, setTroopArchiveFactionFilter] = useState<'ALL' | 'HUMAN' | 'ROACH' | 'IMPOSTER' | 'ASYLUM' | 'UNDEAD' | 'HOTPOT' | 'GOBLIN' | 'CUSTOM'>('ALL');
   const [troopArchiveTierFilter, setTroopArchiveTierFilter] = useState<TroopTier | 'ALL'>('ALL');
   const [troopArchiveCategoryFilter, setTroopArchiveCategoryFilter] = useState<'ALL' | 'NORMAL' | 'HEAVY'>('ALL');
   const [troopArchiveSort, setTroopArchiveSort] = useState<'TIER' | 'NAME' | 'TOTAL' | 'ATTACK' | 'DEFENSE' | 'AGILITY' | 'HP' | 'RANGE' | 'MORALE'>('TIER');
@@ -1309,7 +1309,8 @@ export default function App() {
       AUTOMATON: matrix?.races?.AUTOMATON ?? INITIAL_PLAYER_STATE.relationMatrix.races.AUTOMATON,
       VOID: matrix?.races?.VOID ?? INITIAL_PLAYER_STATE.relationMatrix.races.VOID,
       MADNESS: matrix?.races?.MADNESS ?? INITIAL_PLAYER_STATE.relationMatrix.races.MADNESS,
-      BEAST: (matrix as any)?.races?.BEAST ?? (INITIAL_PLAYER_STATE as any).relationMatrix.races.BEAST ?? -10
+      BEAST: (matrix as any)?.races?.BEAST ?? (INITIAL_PLAYER_STATE as any).relationMatrix.races.BEAST ?? -10,
+      GOBLIN: (matrix as any)?.races?.GOBLIN ?? (INITIAL_PLAYER_STATE as any).relationMatrix.races.GOBLIN ?? -20
     }
   });
 
@@ -1318,7 +1319,7 @@ export default function App() {
     if (location.type === 'ROACH_NEST') return 'ROACH';
     if (location.type === 'GRAVEYARD' || location.type === 'COFFEE') return 'UNDEAD';
     if (location.type === 'IMPOSTER_PORTAL') return 'IMPOSTER';
-    if (location.type === 'BANDIT_CAMP') return 'BANDIT';
+    if (location.type === 'BANDIT_CAMP') return location.id.startsWith('goblin_camp_') ? 'GOBLIN' : 'BANDIT';
     if (location.type === 'MYSTERIOUS_CAVE') return 'VOID';
     if (location.type === 'ASYLUM') return 'MADNESS';
     return null;
@@ -1356,6 +1357,7 @@ export default function App() {
     if (baseId.startsWith('automaton') || baseId.startsWith('ai_')) return 'AUTOMATON';
     if (baseId.startsWith('void_')) return 'VOID';
     if (baseId.startsWith('mad_') || baseId.includes('patient')) return 'MADNESS';
+    if (baseId.startsWith('goblin_')) return 'GOBLIN';
     const name = String(enemy.name ?? '');
     if (name.includes('匪') || name.includes('盗') || name.includes('强盗') || name.includes('劫匪')) return 'BANDIT';
     return null;
@@ -1968,9 +1970,53 @@ export default function App() {
   };
 
   const buildBanditTroops = () => {
+    const isGoblinCamp = !!currentLocation && currentLocation.type === 'BANDIT_CAMP' && currentLocation.id.startsWith('goblin_camp_');
     const daysAlive = getBanditCampAge(currentLocation ?? undefined);
     const growth = Math.floor(daysAlive / 3);
     const troops: Troop[] = [];
+    if (isGoblinCamp) {
+      const goblinGrowth = Math.floor(daysAlive / 2);
+      const t1Count = randomInt(14, 22) + goblinGrowth;
+      const t1Pool = ['goblin_scavenger', 'goblin_spear_urchin', 'goblin_slinger', 'goblin_bomber', 'goblin_sneak', 'goblin_wolf_pup_rider', 'goblin_scrap_shield', 'goblin_hex_apprentice', 'goblin_fungal_picker'];
+      for (let i = 0; i < Math.max(3, Math.min(6, Math.floor(t1Count / 6))); i++) {
+        const id = t1Pool[(randomInt(0, 999) + i) % t1Pool.length];
+        troops.push({ ...TROOP_TEMPLATES[id], count: Math.max(2, Math.floor(t1Count / (i + 3))), xp: 0 });
+      }
+      const t2Chance = Math.min(0.55 + daysAlive * 0.012, 0.92);
+      if (Math.random() < t2Chance) {
+        const t2Pool = ['goblin_raider', 'goblin_pikeman', 'goblin_sling_leader', 'goblin_grenadier', 'goblin_cutthroat', 'goblin_wolf_rider', 'goblin_tower_shield', 'goblin_hexer', 'goblin_fungus_medic'];
+        const t2Count = randomInt(6, 12) + Math.floor(goblinGrowth / 2);
+        const picks = Math.max(2, Math.min(4, Math.floor(t2Count / 6)));
+        for (let i = 0; i < picks; i++) {
+          const id = t2Pool[(randomInt(0, 999) + i) % t2Pool.length];
+          troops.push({ ...TROOP_TEMPLATES[id], count: Math.max(1, Math.floor(t2Count / (i + 2))), xp: 0 });
+        }
+      }
+      const t3Chance = Math.min(0.2 + daysAlive * 0.012, 0.65);
+      if (Math.random() < t3Chance) {
+        const t3Pool = ['goblin_chain_reaver', 'goblin_hob_spear', 'goblin_stone_harrier', 'goblin_sapper', 'goblin_nightblade', 'goblin_warg_rider', 'goblin_scrap_guard', 'goblin_witch_doctor', 'goblin_plague_shaman'];
+        const t3Count = randomInt(2, 5) + Math.floor(goblinGrowth / 4);
+        const picks = Math.max(1, Math.min(3, t3Count));
+        for (let i = 0; i < picks; i++) {
+          const id = t3Pool[(randomInt(0, 999) + i) % t3Pool.length];
+          troops.push({ ...TROOP_TEMPLATES[id], count: 1 + Math.floor(t3Count / (i + 2)), xp: 0 });
+        }
+      }
+      const t4Chance = Math.min(0.07 + daysAlive * 0.006, 0.25);
+      if (Math.random() < t4Chance) {
+        const t4Pool = ['goblin_warlord', 'goblin_spear_chief', 'goblin_bombardier', 'goblin_shadow_lord', 'goblin_warg_alpha', 'goblin_witch_king'];
+        const t4Id = t4Pool[randomInt(0, t4Pool.length - 1)];
+        const t4Count = randomInt(1, 2) + Math.floor(goblinGrowth / 8);
+        troops.push({ ...TROOP_TEMPLATES[t4Id], count: Math.max(1, t4Count), xp: 0 });
+      }
+      const merged = troops.reduce((acc, t) => {
+        const existing = acc.get(t.id);
+        if (existing) acc.set(t.id, { ...existing, count: existing.count + t.count });
+        else acc.set(t.id, t);
+        return acc;
+      }, new Map<string, Troop>());
+      return Array.from(merged.values()).filter(t => t.count > 0);
+    }
     const t1Count = randomInt(12, 20) + growth;
     troops.push({ ...TROOP_TEMPLATES['peasant'], count: t1Count, xp: 0 });
 
@@ -4650,6 +4696,15 @@ export default function App() {
       ];
     }
     if (location.type === 'BANDIT_CAMP') {
+      if (location.id.startsWith('goblin_camp_')) {
+        return [
+          { troopId: 'goblin_scavenger', count: 80 },
+          { troopId: 'goblin_spear_urchin', count: 70 },
+          { troopId: 'goblin_slinger', count: 60 },
+          { troopId: 'goblin_raider', count: 35 },
+          { troopId: 'goblin_pikeman', count: 25 }
+        ];
+      }
       return [
         { troopId: 'peasant', count: 60 },
         { troopId: 'militia', count: 50 },
@@ -6906,8 +6961,9 @@ export default function App() {
 
     // Check if we just defeated a Bandit Camp
     if (activeEnemy && currentLocation && currentLocation.type === 'BANDIT_CAMP' && battleResult?.outcome === 'A') {
+        const isGoblinCamp = currentLocation.id.startsWith('goblin_camp_');
         setLocations(prev => prev.filter(l => l.id !== currentLocation.id));
-        addLog("你成功捣毁了劫匪窝点！这地方以后安全了。");
+        addLog(isGoblinCamp ? "你成功捣毁了哥布林营地！这地方暂时安静了。" : "你成功捣毁了劫匪窝点！这地方以后安全了。");
         // Extra loot logic could go here, but AI handles loot gold.
     }
 
@@ -6937,17 +6993,18 @@ export default function App() {
 
   // --- Bandit Camp Logic ---
   const handleBanditAction = (action: 'ATTACK' | 'SNEAK') => {
+      const isGoblinCamp = !!currentLocation && currentLocation.type === 'BANDIT_CAMP' && currentLocation.id.startsWith('goblin_camp_');
       if (action === 'ATTACK') {
           const banditTroops = buildBanditTroops();
           
           const enemy: EnemyForce = {
-              name: '劫匪大本营',
-              description: '聚集了大量亡命之徒。',
+              name: isGoblinCamp ? '哥布林营地' : '劫匪大本营',
+              description: isGoblinCamp ? '矮棚与陷阱连成一片，绿皮正在集结。' : '聚集了大量亡命之徒。',
               troops: banditTroops,
               difficulty: '一般',
               lootPotential: 3.0, // High reward
               terrain: 'BANDIT_CAMP',
-              baseTroopId: 'peasant'
+              baseTroopId: isGoblinCamp ? 'goblin_scavenger' : 'peasant'
           };
           setActiveEnemy(enemy);
           setPendingBattleMeta({ mode: 'FIELD' });
@@ -6956,10 +7013,10 @@ export default function App() {
       } else {
           // Sneak
           if (Math.random() > 0.7) { // 30% fail
-              addLog("潜行失败！哨兵发现了你的踪迹！");
+              addLog(isGoblinCamp ? "潜行失败！哥布林哨兵发出尖叫，营地沸腾起来！" : "潜行失败！哨兵发现了你的踪迹！");
               handleBanditAction('ATTACK');
           } else {
-              addLog("你带着部队悄悄溜走了，没有惊动任何人。");
+              addLog(isGoblinCamp ? "你绕开陷阱区悄悄撤离，营地还没反应过来。" : "你带着部队悄悄溜走了，没有惊动任何人。");
               setView('MAP');
           }
       }
@@ -8337,7 +8394,19 @@ export default function App() {
   );
 
   const renderBanditEncounter = () => (
-    <BanditEncounterView onAction={handleBanditAction} />
+    <BanditEncounterView
+      onAction={handleBanditAction}
+      title={currentLocation?.id?.startsWith('goblin_camp_') ? '哥布林营地' : '劫匪窝点'}
+      description={currentLocation?.id?.startsWith('goblin_camp_')
+        ? (
+            <>
+              你发现了一片矮棚与陷阱交织的营地。油烟、蘑菇与火药味混在一起。
+              <br /><br />
+              捣毁这里可以获得大量战利品，但也可能惊动整片绿皮。
+            </>
+          )
+        : undefined}
+    />
   );
 
   const renderWorldBoard = () => {
