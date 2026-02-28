@@ -2732,30 +2732,30 @@ export default function App() {
     return (loc.garrison && loc.garrison.length > 0 ? loc.garrison : buildGarrisonTroops(loc)).map(t => ({ ...t }));
   };
 
-  const buildImposterTroops = () => {
-    // Generate a random attack force
+  const buildImposterTroops = (day: number) => {
+    const scale = 0.72 + Math.min(0.28, Math.max(0, day) / 2400);
     const roster = [
       // Tier 1
-      { id: 'void_larva', count: randomInt(40, 60) },
-      { id: 'glitch_pawn', count: randomInt(40, 60) },
-      { id: 'static_noise_walker', count: randomInt(30, 50) },
-      { id: 'imposter_light_infantry', count: randomInt(40, 70) },
-      { id: 'imposter_spearman', count: randomInt(35, 60) },
-      { id: 'imposter_short_bowman', count: randomInt(30, 50) },
+      { id: 'void_larva', count: Math.max(1, Math.floor(randomInt(40, 60) * scale)) },
+      { id: 'glitch_pawn', count: Math.max(1, Math.floor(randomInt(40, 60) * scale)) },
+      { id: 'static_noise_walker', count: Math.max(1, Math.floor(randomInt(30, 50) * scale)) },
+      { id: 'imposter_light_infantry', count: Math.max(1, Math.floor(randomInt(40, 70) * scale)) },
+      { id: 'imposter_spearman', count: Math.max(1, Math.floor(randomInt(35, 60) * scale)) },
+      { id: 'imposter_short_bowman', count: Math.max(1, Math.floor(randomInt(30, 50) * scale)) },
       // Tier 2
-      { id: 'entropy_acolyte', count: randomInt(20, 30) },
-      { id: 'pixel_shifter', count: randomInt(15, 25) },
-      { id: 'syntax_error_scout', count: randomInt(15, 25) },
-      { id: 'imposter_heavy_infantry', count: randomInt(15, 25) },
-      { id: 'imposter_longbowman', count: randomInt(12, 20) },
+      { id: 'entropy_acolyte', count: Math.max(1, Math.floor(randomInt(20, 30) * (scale * 0.92))) },
+      { id: 'pixel_shifter', count: Math.max(1, Math.floor(randomInt(15, 25) * (scale * 0.92))) },
+      { id: 'syntax_error_scout', count: Math.max(1, Math.floor(randomInt(15, 25) * (scale * 0.92))) },
+      { id: 'imposter_heavy_infantry', count: Math.max(1, Math.floor(randomInt(15, 25) * (scale * 0.92))) },
+      { id: 'imposter_longbowman', count: Math.max(1, Math.floor(randomInt(12, 20) * (scale * 0.92))) },
       // Tier 3
-      { id: 'memory_leak_mage', count: randomInt(5, 10) },
-      { id: 'recursion_archer', count: randomInt(8, 15) },
-      { id: 'buffer_overflow_brute', count: randomInt(5, 10) },
-      { id: 'imposter_heavy_knight', count: randomInt(2, 4) },
+      { id: 'memory_leak_mage', count: Math.max(1, Math.floor(randomInt(5, 10) * (scale * 0.85))) },
+      { id: 'recursion_archer', count: Math.max(1, Math.floor(randomInt(8, 15) * (scale * 0.85))) },
+      { id: 'buffer_overflow_brute', count: Math.max(1, Math.floor(randomInt(5, 10) * (scale * 0.85))) },
+      { id: 'imposter_heavy_knight', count: Math.max(1, Math.floor(randomInt(2, 4) * (scale * 0.8))) },
       // Tier 4
-      { id: 'kernel_panic_knight', count: randomInt(2, 5) },
-      { id: 'blue_screen_golem', count: randomInt(1, 3) }
+      { id: 'kernel_panic_knight', count: Math.max(1, Math.floor(randomInt(2, 5) * (scale * 0.8))) },
+      { id: 'blue_screen_golem', count: Math.max(1, Math.floor(randomInt(1, 3) * (scale * 0.75))) }
     ];
     
     return roster
@@ -3509,14 +3509,14 @@ export default function App() {
         }
 
         // 2. Spawn Attack Waves into Stationed Armies
-        const spawnCooldown = 6;
+        const spawnCooldown = 9;
         const lastInvasionDay = portal.lastInvasionDay ?? 0;
         const stationedArmies = portal.stationedArmies ?? [];
 
-          if (nextDay - lastInvasionDay >= spawnCooldown) {
-            const newForces = buildImposterTroops();
+          if (nextDay - lastInvasionDay >= spawnCooldown && stationedArmies.length < 3) {
+            const newForces = buildImposterTroops(nextDay);
             const newArmy: EnemyForce = {
-               name: `伪人裂隙浪潮·${Math.floor(nextDay / 6)}`,
+               name: `伪人裂隙浪潮·${Math.floor(nextDay / spawnCooldown)}`,
                description: '从裂隙中涌出的攻击部队。',
                troops: newForces,
                difficulty: '困难',
@@ -3757,11 +3757,28 @@ export default function App() {
         const councilFactions = FACTIONS.filter(faction => getFactionLocations(faction.id, newLocations).length > 0);
         councilFactions.forEach(faction => {
           const factionLocations = getFactionLocations(faction.id, newLocations);
+          const threatened = factionLocations.filter(loc => !!loc.activeSiege);
           const totalTroops = factionLocations.reduce((sum, loc) => sum + getGarrisonCount(getLocationTroops(loc)), 0);
           const hasImposterClaim = newLocations.some(loc => isImposterControlledLocation(loc) && loc.claimFactionId === faction.id);
           const avgGarrison = factionLocations.length > 0 ? totalTroops / factionLocations.length : totalTroops;
           let decision: 'EXPAND' | 'HOLD' | 'ATTACK' = 'HOLD';
           const roll = Math.random();
+          if (threatened.length > 0) {
+            logsToAdd.push(`【议会】${faction.name} 决定组织援军解围。`);
+            const sortedTargets = [...threatened].sort((a, b) => getGarrisonCount(getLocationTroops(a)) - getGarrisonCount(getLocationTroops(b)));
+            const reinforceTargets = sortedTargets.slice(0, Math.min(2, sortedTargets.length));
+            reinforceTargets.forEach(target => {
+              const baseTroops = getLocationTroops(target);
+              const cap = getGarrisonCap(target);
+              const currentCount = getGarrisonCount(baseTroops);
+              if (currentCount >= cap) return;
+              const recruitCount = target.type === 'CITY' ? 90 : target.type === 'CASTLE' ? 60 : 36;
+              const available = Math.min(cap - currentCount, recruitCount);
+              const nextGarrison = applyRecruitment(baseTroops, target, available);
+              newLocations = newLocations.map(loc => loc.id === target.id ? { ...loc, garrison: nextGarrison } : loc);
+            });
+            return;
+          }
           if (hasImposterClaim) {
             decision = roll < 0.72 ? 'ATTACK' : 'EXPAND';
           } else if (avgGarrison < 280) {
@@ -3784,7 +3801,7 @@ export default function App() {
               const cap = getGarrisonCap(target);
               const currentCount = getGarrisonCount(baseTroops);
               if (currentCount >= cap) return;
-              const recruitCount = target.type === 'CITY' ? 30 : target.type === 'CASTLE' ? 20 : 12;
+              const recruitCount = target.type === 'CITY' ? 90 : target.type === 'CASTLE' ? 60 : 36;
               const available = Math.min(cap - currentCount, recruitCount);
               const nextGarrison = applyRecruitment(baseTroops, target, available);
               newLocations = newLocations.map(loc => loc.id === target.id ? { ...loc, garrison: nextGarrison } : loc);
@@ -3965,6 +3982,34 @@ export default function App() {
           const partyCount = getTroopCount(nextLord.partyTroops);
           const partyMax = nextLord.partyMaxCount ?? Math.max(1, partyCount);
           const needsRest = partyCount < Math.max(20, Math.floor(partyMax * 0.6));
+          const siegeCandidates = newLocations.filter(loc => (
+            loc.factionId === nextLord.factionId &&
+            !!loc.activeSiege &&
+            (loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE' || isCastleLikeLocation(loc))
+          ));
+          const reliefTarget = siegeCandidates.length === 0 ? null : (() => {
+            const scored = siegeCandidates
+              .map(loc => ({
+                loc,
+                dist: Math.hypot(loc.coordinates.x - currentLoc.coordinates.x, loc.coordinates.y - currentLoc.coordinates.y),
+                pinned: loc.id === nextLord.fiefId ? 0 : 1
+              }))
+              .sort((a, b) => a.pinned - b.pinned || a.dist - b.dist);
+            const candidate = scored[0]?.loc ?? null;
+            if (!candidate?.activeSiege) return null;
+            const siege = candidate.activeSiege;
+            const attackerPower = calculatePower(siege.troops ?? []);
+            const defense = getLocationDefenseDetails(candidate);
+            const wallBonus = 1 + (defense.wallLevel * 0.2);
+            const garrison = (candidate.garrison && candidate.garrison.length > 0 ? candidate.garrison : buildGarrisonTroops(candidate)).map(t => ({ ...t }));
+            const stayTroops = (candidate.stayParties ?? []).flatMap(p => p.troops ?? []).map(t => ({ ...t }));
+            const stationedTroops = (candidate.stationedArmies ?? []).flatMap(a => a.troops ?? []).map(t => ({ ...t }));
+            const defenderPower = calculatePower([...garrison, ...stayTroops, ...stationedTroops]) * wallBonus;
+            const partyPower = calculatePower(nextLord.partyTroops);
+            const threshold = siege.attackerFactionId ? 1.25 : 1.18;
+            if (partyPower + defenderPower <= attackerPower * threshold) return null;
+            return candidate;
+          })();
           const raidSources = newLocations.filter(loc => (
             loc.factionId === nextLord.factionId &&
             loc.factionRaidTargetId &&
@@ -3973,7 +4018,9 @@ export default function App() {
           ));
           const raidSource = raidSources.sort((a, b) => (a.factionRaidEtaDay ?? 0) - (b.factionRaidEtaDay ?? 0))[0];
           let desiredState = nextLord.state;
-          if (needsRest) {
+          if (reliefTarget && (!needsRest || reliefTarget.id === nextLord.fiefId) && partyCount >= 20) {
+            desiredState = 'MARSHALLING';
+          } else if (needsRest) {
             desiredState = 'RESTING';
           } else if (raidSource) {
             desiredState = nextLord.fiefId === raidSource.id || nextLord.focus !== 'WAR' ? 'MARSHALLING' : 'BESIEGING';
@@ -4005,12 +4052,12 @@ export default function App() {
             return { ...nextLord, partyTroops: trained };
           }
           if (nextLord.state === 'MARSHALLING') {
-            const gatherLoc = raidSource ? getLocationById(raidSource.id) ?? fief ?? currentLoc : fief ?? currentLoc;
+            const gatherLoc = reliefTarget ?? (raidSource ? getLocationById(raidSource.id) ?? fief ?? currentLoc : fief ?? currentLoc);
             if (gatherLoc.id !== nextLord.currentLocationId) {
-              return moveTo(gatherLoc, `前往${gatherLoc.name}集结待命`);
+              return moveTo(gatherLoc, reliefTarget ? `前往${gatherLoc.name}解围` : `前往${gatherLoc.name}集结待命`);
             }
             const trained = applyGarrisonTraining(nextLord.partyTroops, 3);
-            nextLord = recordLordAction(nextLord, gatherLoc.id, `在${gatherLoc.name}集结待命`);
+            nextLord = recordLordAction(nextLord, gatherLoc.id, reliefTarget ? `在${gatherLoc.name}参与解围` : `在${gatherLoc.name}集结待命`);
             return { ...nextLord, partyTroops: trained };
           }
           if (nextLord.state === 'BESIEGING') {

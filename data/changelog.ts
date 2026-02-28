@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.28',
+    date: '2026-02-28',
+    items: [
+      '议会扩军时补兵量提升至 3 倍',
+      '伪人袭击间隔调整为 1.5 倍，并调慢浪潮规模增长',
+      'AI 更倾向解围被围攻据点，并组织援军增援'
+    ]
+  },
+  {
     version: '0.3.27',
     date: '2026-02-28',
     items: [
