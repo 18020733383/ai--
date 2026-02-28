@@ -105,7 +105,7 @@ type TownViewProps = {
   buildGarrisonTroops: (location: Location) => Troop[];
   getGarrisonCount: (troops: Troop[]) => number;
   getGarrisonLimit: (location: Location) => number;
-  getLocationDefenseDetails: (location: Location) => { wallLevel: number; wallName: string; wallDesc: string; mechanisms: { name: string; description: string }[]; flavorText: string; wallHp: number; mechanismHp: number; rangedHitBonus: number; rangedDamageBonus: number; meleeDamageReduction: number };
+  getLocationDefenseDetails: (location: Location) => { wallLevel: number; wallName: string; wallDesc: string; mechanisms: { name: string; description: string }[]; flavorText: string; wallHp: number; mechanismHp: number; rangedHitBonus: number; rangedDamageBonus: number; meleeDamageReduction: number; antiAirPowerBonus: number; airstrikeDamageReduction: number };
   getSiegeEngineName: (type: SiegeEngineType) => string;
   siegeEngineOptions: { type: SiegeEngineType; name: string; cost: number; days: number; description: string }[];
   startSiegeBattle: (location: Location) => void;
@@ -3011,7 +3011,22 @@ export const TownView = ({
               <div className="text-stone-200 font-bold">可建造建筑</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {buildingOptions.map(building => {
-                  const disabled = player.gold < building.cost || builtBuildings.includes(building.type) || constructionQueue.some(q => q.type === building.type);
+                  const prereq = building.type === 'AA_TOWER_II'
+                    ? 'AA_TOWER_I'
+                    : building.type === 'AA_TOWER_III'
+                      ? 'AA_TOWER_II'
+                      : building.type === 'AA_NET_II'
+                        ? 'AA_NET_I'
+                        : building.type === 'AA_RADAR_II'
+                          ? 'AA_RADAR_I'
+                          : null;
+                  const superseded = building.type === 'AA_TOWER_I' ? (builtBuildings.includes('AA_TOWER_II') || builtBuildings.includes('AA_TOWER_III'))
+                    : building.type === 'AA_TOWER_II' ? builtBuildings.includes('AA_TOWER_III')
+                      : building.type === 'AA_NET_I' ? builtBuildings.includes('AA_NET_II')
+                        : building.type === 'AA_RADAR_I' ? builtBuildings.includes('AA_RADAR_II')
+                          : false;
+                  const missingPrereq = !!prereq && !builtBuildings.includes(prereq) && !constructionQueue.some(q => q.type === prereq);
+                  const disabled = player.gold < building.cost || superseded || builtBuildings.includes(building.type) || constructionQueue.some(q => q.type === building.type) || missingPrereq;
                   return (
                     <div key={building.type} className="bg-stone-900 border border-stone-800 p-4 rounded">
                       <div className="flex items-center justify-between mb-2">
@@ -3168,6 +3183,24 @@ export const TownView = ({
                 <ShieldAlert size={48} className="text-amber-900/50" />
               </div>
               <p className="text-stone-300">{localDefenseDetails.wallDesc}</p>
+              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                <div className="bg-black/20 border border-stone-800 rounded px-3 py-2 text-stone-300 flex items-center justify-between">
+                  <span className="text-stone-500">城防耐久</span>
+                  <span className="font-mono">{localDefenseDetails.wallHp + localDefenseDetails.mechanismHp}</span>
+                </div>
+                <div className="bg-black/20 border border-stone-800 rounded px-3 py-2 text-stone-300 flex items-center justify-between">
+                  <span className="text-stone-500">对空强度</span>
+                  <span className="font-mono">+{Math.round(localDefenseDetails.antiAirPowerBonus * 100)}%</span>
+                </div>
+                <div className="bg-black/20 border border-stone-800 rounded px-3 py-2 text-stone-300 flex items-center justify-between">
+                  <span className="text-stone-500">空袭减伤</span>
+                  <span className="font-mono">-{Math.round(localDefenseDetails.airstrikeDamageReduction * 100)}%</span>
+                </div>
+                <div className="bg-black/20 border border-stone-800 rounded px-3 py-2 text-stone-300 flex items-center justify-between">
+                  <span className="text-stone-500">远程加成</span>
+                  <span className="font-mono">命中+{Math.round(localDefenseDetails.rangedHitBonus * 100)}% 伤害+{Math.round(localDefenseDetails.rangedDamageBonus * 100)}%</span>
+                </div>
+              </div>
             </div>
 
             <div>

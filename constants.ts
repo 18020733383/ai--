@@ -4992,7 +4992,12 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
     }
   },
   relationEvents: [],
-  locationRelations: {}
+  locationRelations: {},
+  story: {
+    introSeen: false,
+    mainQuest: 'CLEANSE_PORTALS',
+    mainQuestStage: 0
+  }
 };
 
 // Initial state for locations, recruits will be generated at runtime

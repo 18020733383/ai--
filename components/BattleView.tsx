@@ -14,7 +14,7 @@ type BattleMeta = { mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: 
 
 type SiegeEngineOption = { type: SiegeEngineType; name: string; cost: number; days: number; description: string };
 
-type DefenseDetails = { wallName: string; wallLevel: number; wallHp: number; mechanismHp: number; rangedHitBonus: number; rangedDamageBonus: number; meleeDamageReduction: number; mechanisms: { name: string; description: string }[] };
+type DefenseDetails = { wallName: string; wallLevel: number; wallHp: number; mechanismHp: number; rangedHitBonus: number; rangedDamageBonus: number; meleeDamageReduction: number; antiAirPowerBonus: number; airstrikeDamageReduction: number; mechanisms: { name: string; description: string }[] };
 
 type BattleViewProps = {
   activeEnemy: EnemyForce | null;
@@ -335,6 +335,9 @@ export const BattleView = ({
             </div>
             <div className="text-stone-500">
               远程命中 +{Math.round(defenseDetails.rangedHitBonus * 100)}% · 远程伤害 +{Math.round(defenseDetails.rangedDamageBonus * 100)}% · 近战减伤 {Math.round(defenseDetails.meleeDamageReduction * 100)}%
+            </div>
+            <div className="text-stone-500">
+              对空强度 +{Math.round(defenseDetails.antiAirPowerBonus * 100)}% · 空袭减伤 -{Math.round(defenseDetails.airstrikeDamageReduction * 100)}%
             </div>
             {hasDefenseBuilding && (
               <div className="text-amber-500">已建造额外防御建筑</div>

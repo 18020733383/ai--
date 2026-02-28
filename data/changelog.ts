@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.32',
+    date: '2026-02-28',
+    items: [
+      '新增多级防空设施：防空箭塔/防空幕网/预警瞭望链',
+      '围城空战结算引入防空强度与空袭减伤',
+      '新增开局序章引入动画与主线目标提示'
+    ]
+  },
+  {
     version: '0.3.31',
     date: '2026-02-28',
     items: [

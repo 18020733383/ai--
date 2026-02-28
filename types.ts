@@ -240,6 +240,11 @@ export interface PlayerState {
   relationMatrix: RelationMatrix;
   relationEvents: RelationEvent[];
   locationRelations: Record<string, number>;
+  story?: {
+    introSeen?: boolean;
+    mainQuest?: string;
+    mainQuestStage?: number;
+  };
 }
 
 export interface EnemyForce {
@@ -384,7 +389,19 @@ export type BattleBrief = {
   keyUnitDamageSummary: string;
 };
 
-export type BuildingType = 'FACTORY' | 'TRAINING_CAMP' | 'BARRACKS' | 'DEFENSE' | 'RECRUITER';
+export type BuildingType =
+  | 'FACTORY'
+  | 'TRAINING_CAMP'
+  | 'BARRACKS'
+  | 'DEFENSE'
+  | 'RECRUITER'
+  | 'AA_TOWER_I'
+  | 'AA_TOWER_II'
+  | 'AA_TOWER_III'
+  | 'AA_NET_I'
+  | 'AA_NET_II'
+  | 'AA_RADAR_I'
+  | 'AA_RADAR_II';
 export type SiegeEngineType = 'RAM' | 'TOWER' | 'CATAPULT' | 'SIMPLE_LADDER';
 
 export interface ConstructionQueueItem {
@@ -399,7 +416,7 @@ export interface SiegeEngineQueueItem {
   totalDays: number;
 }
 
-export type GameView = 'MAP' | 'TOWN' | 'BATTLE' | 'BATTLE_RESULT' | 'GAME_OVER' | 'PARTY' | 'CHARACTER' | 'TRAINING' | 'ASYLUM' | 'MARKET' | 'BANDIT_ENCOUNTER' | 'CAVE' | 'HERO_CHAT' | 'WORLD_BOARD' | 'TROOP_ARCHIVE' | 'RELATIONS';
+export type GameView = 'INTRO' | 'MAP' | 'TOWN' | 'BATTLE' | 'BATTLE_RESULT' | 'GAME_OVER' | 'PARTY' | 'CHARACTER' | 'TRAINING' | 'ASYLUM' | 'MARKET' | 'BANDIT_ENCOUNTER' | 'CAVE' | 'HERO_CHAT' | 'WORLD_BOARD' | 'TROOP_ARCHIVE' | 'RELATIONS';
 
 export interface RecruitOffer {
   troopId: string;

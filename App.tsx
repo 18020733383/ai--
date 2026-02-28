@@ -24,6 +24,7 @@ import { CharacterView } from './views/CharacterView';
 import { BanditEncounterView } from './views/BanditEncounterView';
 import { HeroChatView } from './views/HeroChatView';
 import { GameOverView } from './views/GameOverView';
+import { IntroCinematicView } from './views/IntroCinematicView';
 import { 
   Map as MapIcon, MapPin, Coins, Trophy, Users, ShieldAlert, Skull, ArrowRight, Home, Swords, 
   Trees, Mountain, Snowflake, Sun, Tent, Shield, Ghost, Crosshair, Zap, 
@@ -2745,7 +2746,14 @@ export default function App() {
     { type: 'TRAINING_CAMP', name: '训练营', cost: 500, days: 3, description: '驻军获得经验并自动晋升。' },
     { type: 'BARRACKS', name: '兵营', cost: 800, days: 4, description: '驻军容量提升 50%。' },
     { type: 'DEFENSE', name: '防御建筑', cost: 700, days: 4, description: '增强据点防御强度。' },
-    { type: 'RECRUITER', name: '征兵官', cost: 650, days: 3, description: '定期招募新兵加入驻军。' }
+    { type: 'RECRUITER', name: '征兵官', cost: 650, days: 3, description: '定期招募新兵加入驻军。' },
+    { type: 'AA_TOWER_I', name: '防空箭塔·I', cost: 420, days: 2, description: '对空火力覆盖，提升守方防空强度。' },
+    { type: 'AA_TOWER_II', name: '防空箭塔·II', cost: 760, days: 3, description: '更密集的对空火力与瞄准体系。' },
+    { type: 'AA_TOWER_III', name: '防空箭塔·III', cost: 1200, days: 4, description: '成体系的防空火网，压制空袭与制空渗透。' },
+    { type: 'AA_NET_I', name: '防空幕网·I', cost: 520, days: 2, description: '在关键区域布置幕网与诱饵，降低空袭杀伤。' },
+    { type: 'AA_NET_II', name: '防空幕网·II', cost: 880, days: 3, description: '更高密度的幕网与诱饵阵列。' },
+    { type: 'AA_RADAR_I', name: '预警瞭望链·I', cost: 460, days: 2, description: '改良岗哨与信号传递，提高对空发现与远程命中。' },
+    { type: 'AA_RADAR_II', name: '预警瞭望链·II', cost: 820, days: 3, description: '更完整的预警与引导，显著提升对空命中。' }
   ];
 
   const getBuildingName = (type: BuildingType) => buildingOptions.find(b => b.type === type)?.name ?? type;
@@ -3569,7 +3577,9 @@ export default function App() {
          const airToGroundAP = calcAttackPower(attackers.filter(isAirCapable), 'GROUND');
          const defenderGroundPower = calculatePower(defendersGroundAfterAir) * wallBonus;
          const airToGroundRatio = defenderGroundPower > 0 ? airToGroundAP / defenderGroundPower : airToGroundAP > 0 ? 10 : 0;
-         const defenderGroundLossRate = airToGroundRatio > 0 ? clampRate(agLoss * airToGroundRatio, 0.4) : 0;
+        const defenderGroundLossRate = airToGroundRatio > 0
+          ? clampRate(agLoss * airToGroundRatio, 0.4) * (1 - (defense as any).airstrikeDamageReduction)
+          : 0;
 
          garrison = applyLossSelective(garrison, defenderGroundLossRate, isGroundCapable);
          const nextStayPartiesGround = nextStayPartiesAir
@@ -3580,7 +3590,7 @@ export default function App() {
            .filter(army => army.troops.length > 0);
 
          const gaLoss = 0.035 + (Math.random() * 0.035);
-         const groundToAirDP = calcAttackPower(defendersGroundAfterAir, 'AIR');
+        const groundToAirDP = calcAttackPower(defendersGroundAfterAir, 'AIR') * (1 + (defense as any).antiAirPowerBonus);
          const attackerAirPower = calculatePower(attackers.filter(isAirCapable));
          const groundToAirRatio = attackerAirPower > 0 ? groundToAirDP / attackerAirPower : groundToAirDP > 0 ? 10 : 0;
          const attackerAirLossRate2 = groundToAirRatio > 0 ? clampRate(gaLoss * groundToAirRatio, 0.4) : 0;
@@ -4775,7 +4785,9 @@ export default function App() {
       mechanismHp: 0,
       rangedHitBonus: 0,
       rangedDamageBonus: 0,
-      meleeDamageReduction: 0
+      meleeDamageReduction: 0,
+      antiAirPowerBonus: 0,
+      airstrikeDamageReduction: 0
     };
 
     if (location.type === 'CITY') {
@@ -4958,13 +4970,64 @@ export default function App() {
         details.flavorText = "这里是世界的伤口，任何靠近的人都会被存在本身排斥。在这里，物理法则只是建议，不是铁律。";
     }
 
-    const mechanismCount = details.mechanisms.length;
     const hasDefenseBuilding = (location.buildings ?? []).includes('DEFENSE');
+    const built = location.buildings ?? [];
+    let extraMechanismHp = 0;
+    let extraRangedHit = 0;
+    let extraRangedDamage = 0;
+    let extraMeleeReduction = 0;
+    if (built.includes('AA_TOWER_I')) {
+      details.mechanisms.push({ name: "防空箭塔·I", description: "加固箭塔与集束瞄具，可稳定压制低空目标。" });
+      details.antiAirPowerBonus += 0.12;
+      extraMechanismHp += 120;
+      extraRangedHit += 0.02;
+    }
+    if (built.includes('AA_TOWER_II')) {
+      details.mechanisms.push({ name: "防空箭塔·II", description: "加装连弩与导引标尺，对空火力密度显著提升。" });
+      details.antiAirPowerBonus += 0.22;
+      extraMechanismHp += 220;
+      extraRangedHit += 0.03;
+    }
+    if (built.includes('AA_TOWER_III')) {
+      details.mechanisms.push({ name: "防空箭塔·III", description: "分区火网与齐射号令，对空压制可持续维持。" });
+      details.antiAirPowerBonus += 0.35;
+      extraMechanismHp += 320;
+      extraRangedHit += 0.04;
+      extraRangedDamage += 0.02;
+    }
+    if (built.includes('AA_NET_I')) {
+      details.mechanisms.push({ name: "防空幕网·I", description: "在城防关键点布置幕网与诱饵，降低空袭穿透效率。" });
+      details.airstrikeDamageReduction += 0.12;
+      extraMechanismHp += 160;
+      extraMeleeReduction += 0.01;
+    }
+    if (built.includes('AA_NET_II')) {
+      details.mechanisms.push({ name: "防空幕网·II", description: "更高密度的幕网与诱饵阵列，显著削弱空对地打击。" });
+      details.airstrikeDamageReduction += 0.22;
+      extraMechanismHp += 260;
+      extraMeleeReduction += 0.02;
+    }
+    if (built.includes('AA_RADAR_I')) {
+      details.mechanisms.push({ name: "预警瞭望链·I", description: "岗哨与信号点连成体系，提高提前发现与对空引导。" });
+      details.antiAirPowerBonus += 0.08;
+      extraMechanismHp += 120;
+      extraRangedHit += 0.03;
+    }
+    if (built.includes('AA_RADAR_II')) {
+      details.mechanisms.push({ name: "预警瞭望链·II", description: "更完整的预警与引导网络，对空射击命中显著提升。" });
+      details.antiAirPowerBonus += 0.14;
+      extraMechanismHp += 200;
+      extraRangedHit += 0.05;
+    }
+
+    const mechanismCount = details.mechanisms.length;
     details.wallHp = Math.max(0, details.wallLevel) * 650 + (hasDefenseBuilding ? 260 : 0);
-    details.mechanismHp = mechanismCount * 140;
-    details.rangedHitBonus = clampValue(0.02 + details.wallLevel * 0.05 + mechanismCount * 0.007 + (hasDefenseBuilding ? 0.02 : 0), 0, 0.45);
-    details.rangedDamageBonus = clampValue(details.wallLevel * 0.05 + mechanismCount * 0.007 + (hasDefenseBuilding ? 0.03 : 0), 0, 0.38);
-    details.meleeDamageReduction = clampValue(details.wallLevel * 0.04 + mechanismCount * 0.008 + (hasDefenseBuilding ? 0.02 : 0), 0, 0.4);
+    details.mechanismHp = mechanismCount * 140 + extraMechanismHp;
+    details.rangedHitBonus = clampValue(0.02 + details.wallLevel * 0.05 + mechanismCount * 0.007 + (hasDefenseBuilding ? 0.02 : 0) + extraRangedHit, 0, 0.55);
+    details.rangedDamageBonus = clampValue(details.wallLevel * 0.05 + mechanismCount * 0.007 + (hasDefenseBuilding ? 0.03 : 0) + extraRangedDamage, 0, 0.45);
+    details.meleeDamageReduction = clampValue(details.wallLevel * 0.04 + mechanismCount * 0.008 + (hasDefenseBuilding ? 0.02 : 0) + extraMeleeReduction, 0, 0.45);
+    details.antiAirPowerBonus = clampValue(details.antiAirPowerBonus, 0, 0.85);
+    details.airstrikeDamageReduction = clampValue(details.airstrikeDamageReduction, 0, 0.65);
     return details;
   };
 
@@ -7681,7 +7744,7 @@ export default function App() {
   const normalizeView = (raw: unknown, hasLocation: boolean): GameView => {
     const value = typeof raw === 'string' ? raw : 'MAP';
     const safe = value as GameView;
-    const allowed: GameView[] = ['MAP', 'TOWN', 'PARTY', 'CHARACTER', 'TRAINING', 'ASYLUM', 'MARKET', 'CAVE', 'GAME_OVER', 'HERO_CHAT', 'WORLD_BOARD', 'TROOP_ARCHIVE'];
+    const allowed: GameView[] = ['INTRO', 'MAP', 'TOWN', 'PARTY', 'CHARACTER', 'TRAINING', 'ASYLUM', 'MARKET', 'BANDIT_ENCOUNTER', 'CAVE', 'BATTLE', 'BATTLE_RESULT', 'GAME_OVER', 'HERO_CHAT', 'WORLD_BOARD', 'TROOP_ARCHIVE', 'RELATIONS'];
     if (!allowed.includes(safe)) return 'MAP';
     if (safe === 'TOWN' && !hasLocation) return 'MAP';
     return safe;
@@ -7813,6 +7876,12 @@ export default function App() {
   useEffect(() => {
     setHeroes(prev => prev.map(normalizeHero));
   }, []);
+
+  useEffect(() => {
+    if ((player.story?.introSeen ?? false) === true) return;
+    if (player.day > 1) return;
+    setView(prev => (prev === 'INTRO' ? prev : 'INTRO'));
+  }, [player.day, player.story?.introSeen]);
 
   const importSaveData = () => {
     try {
@@ -9227,6 +9296,24 @@ export default function App() {
             handleMouseUp={handleMouseUp}
             moveTo={moveTo}
             setHoveredLocation={setHoveredLocation}
+          />
+        )}
+        {view === 'INTRO' && (
+          <IntroCinematicView
+            onFinish={() => {
+              setPlayer(prev => ({
+                ...prev,
+                story: {
+                  ...(prev.story ?? {}),
+                  introSeen: true,
+                  mainQuest: prev.story?.mainQuest ?? 'CLEANSE_PORTALS',
+                  mainQuestStage: Math.max(1, prev.story?.mainQuestStage ?? 0)
+                }
+              }));
+              addLog('【主线】清理传送门周边的伪人活动，封堵异常源头。');
+              addLog('提示：传送门据点会不断酝酿新的袭击，围绕它们建立据点、清剿外溢，是回家的唯一线索。');
+              setView('MAP');
+            }}
           />
         )}
         {view === 'RELATIONS' && renderRelations()}
