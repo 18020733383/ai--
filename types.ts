@@ -39,6 +39,8 @@ export type TroopAttributes = {
   hp: number;
   range: number;
   morale: number;
+  air?: number;
+  antiAir?: number;
 };
 
 export type TroopCategory = 'NORMAL' | 'HEAVY';

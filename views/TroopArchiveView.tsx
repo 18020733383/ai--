@@ -157,14 +157,15 @@ export const TroopArchiveView = ({
       return byName();
     });
 
-  const attrOrder: Array<{ key: keyof Troop['attributes']; label: string }> = [
+  const attrOrder = [
     { key: 'attack', label: '攻' },
     { key: 'defense', label: '防' },
     { key: 'agility', label: '敏' },
     { key: 'hp', label: '体' },
     { key: 'range', label: '远' },
     { key: 'morale', label: '士' }
-  ];
+  ] as const;
+  type AttrKey = typeof attrOrder[number]['key'];
 
   const calcStats = () => {
     const count = filtered.length;
@@ -176,7 +177,7 @@ export const TroopArchiveView = ({
       range: 0,
       morale: 0
     };
-    const max: Record<keyof Troop['attributes'], { value: number; troopId: string; troopName: string }> = {
+    const max: Record<AttrKey, { value: number; troopId: string; troopName: string }> = {
       attack: { value: -1, troopId: '', troopName: '' },
       defense: { value: -1, troopId: '', troopName: '' },
       agility: { value: -1, troopId: '', troopName: '' },
@@ -193,7 +194,7 @@ export const TroopArchiveView = ({
       sum.range += t.attributes.range;
       sum.morale += t.attributes.morale;
 
-      (Object.keys(max) as Array<keyof Troop['attributes']>).forEach(key => {
+      (Object.keys(max) as Array<AttrKey>).forEach(key => {
         const value = t.attributes[key];
         if (value > max[key].value) max[key] = { value, troopId: t.id, troopName: t.name };
       });

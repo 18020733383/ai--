@@ -3428,18 +3428,35 @@ export default function App() {
          const wallBonus = 1 + (defense.wallLevel * 0.2);
          const getProfile = (troop: Troop) => {
            const tmpl = getTroopTemplate(troop.id);
-           const domain = (tmpl?.combatDomain ?? troop.combatDomain ?? 'GROUND') as 'GROUND' | 'AIR' | 'HYBRID';
-           const range = tmpl?.attributes?.range ?? troop.attributes?.range ?? 0;
+           const normalizedId = troop.id.startsWith('garrison_') ? troop.id.slice('garrison_'.length) : troop.id;
+           const inferredDomain: 'GROUND' | 'AIR' | 'HYBRID' = tmpl?.combatDomain ?? troop.combatDomain ?? (
+             normalizedId.includes('aerial') ? 'AIR' : 'GROUND'
+           );
+           const attrs = tmpl?.attributes ?? troop.attributes;
+           const range = attrs?.range ?? 0;
+           const airValue = typeof (attrs as any)?.air === 'number'
+             ? Number((attrs as any).air)
+             : inferredDomain === 'AIR' ? 180 : inferredDomain === 'HYBRID' ? 130 : 0;
+           let antiAirValue = typeof (attrs as any)?.antiAir === 'number'
+             ? Number((attrs as any).antiAir)
+             : Math.round(Math.max(0, range) * 0.85 + 10);
+           const tier = tmpl?.tier ?? troop.tier ?? 1;
+           const isRoach = normalizedId.startsWith('roach_');
+           const isRoachGlide = isRoach && !normalizedId.includes('aerial') && tier <= 2;
+           if (isRoachGlide) antiAirValue = Math.max(antiAirValue, 65);
+           const clamp01 = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
            const attackVsAir = typeof (tmpl?.attackVsAir ?? troop.attackVsAir) === 'number'
              ? (tmpl?.attackVsAir ?? troop.attackVsAir) as number
-             : Math.min(1.05, 0.25 + (Math.max(0, range) / 160));
+             : clamp01(0.18 + (antiAirValue / 210) + (inferredDomain !== 'GROUND' ? airValue / 520 : 0), 0.15, 1.25);
            const attackVsGround = typeof (tmpl?.attackVsGround ?? troop.attackVsGround) === 'number'
              ? (tmpl?.attackVsGround ?? troop.attackVsGround) as number
-             : (domain === 'AIR' ? 0.9 : 1.0);
+             : inferredDomain === 'AIR'
+               ? clamp01(0.75 + (airValue / 520), 0.75, 1.25)
+               : 1.0;
            const canCapture = typeof (tmpl?.canCapture ?? troop.canCapture) === 'boolean'
              ? (tmpl?.canCapture ?? troop.canCapture) as boolean
-             : domain !== 'AIR';
-           return { domain, attackVsAir, attackVsGround, canCapture };
+             : inferredDomain !== 'AIR';
+           return { domain: inferredDomain, attackVsAir, attackVsGround, canCapture };
          };
          const isAirCapable = (t: Troop) => {
            const d = getProfile(t).domain;

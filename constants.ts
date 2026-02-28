@@ -163,7 +163,9 @@ const troopAttr = (attack: number, defense: number, agility: number, hp: number,
   agility,
   hp,
   range,
-  morale
+  morale,
+  air: 0,
+  antiAir: clampByte(Math.round(Math.max(0, range) * 0.85 + 10))
 });
 
 const clampByte = (value: number) => Math.max(0, Math.min(255, Math.round(value)));
@@ -194,23 +196,31 @@ const normalizeAttributes = (attrs: Troop['attributes'], tier: TroopTier) => {
   if (isLegacyAttributeRange(attrs)) {
     const cap = getTierCap(tier);
     const scale = (value: number) => clampByte((value / 10) * cap);
+    const scaledRange = scale(attrs.range);
     return {
       attack: scale(attrs.attack),
       defense: scale(attrs.defense),
       agility: scale(attrs.agility),
       hp: scale(attrs.hp),
-      range: scale(attrs.range),
-      morale: scale(attrs.morale)
+      range: scaledRange,
+      morale: scale(attrs.morale),
+      air: 0,
+      antiAir: clampByte(Math.round(Math.max(0, scaledRange) * 0.85 + 10))
     };
   }
 
+  const range = clampByte(attrs.range);
+  const air = clampByte((attrs as any).air ?? 0);
+  const antiAir = clampByte((attrs as any).antiAir ?? Math.round(Math.max(0, range) * 0.85 + 10));
   return {
     attack: clampByte(attrs.attack),
     defense: clampByte(attrs.defense),
     agility: clampByte(attrs.agility),
     hp: clampByte(attrs.hp),
-    range: clampByte(attrs.range),
-    morale: clampByte(attrs.morale)
+    range,
+    morale: clampByte(attrs.morale),
+    air,
+    antiAir
   };
 };
 
@@ -1298,7 +1308,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeTargetId: 'undead_gargoyle_ancient',
     description: '在夜色里掠过城墙的石翼怪物。【技能：俯冲撕裂】对弓弩阵线有压制。',
     equipment: ['石翼', '冥火爪', '黑曜石鳞'],
-    attributes: troopAttr(7, 6, 8, 7, 6, 8),
+    attributes: { ...troopAttr(7, 6, 8, 7, 6, 8), air: 150, antiAir: 150 },
     combatDomain: 'HYBRID',
     attackVsAir: 0.95,
     attackVsGround: 1.05,
@@ -1315,7 +1325,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     maxXp: 2600,
     description: '被墓主赐火的石翼君王。【连携：冥翼遮天】压制敌军远程命中与士气。',
     equipment: ['冥翼', '墓主刻印', '黑曜石心核'],
-    attributes: troopAttr(9, 9, 8, 9, 7, 10),
+    attributes: { ...troopAttr(9, 9, 8, 9, 7, 10), air: 200, antiAir: 190 },
     combatDomain: 'HYBRID',
     attackVsAir: 1.05,
     attackVsGround: 1.1,
@@ -1333,7 +1343,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeTargetId: 'beast_roc',
     description: '栖息地里飞起的猛禽幼体。【技能：掠影】降低被锁定概率。',
     equipment: ['锐喙', '幼翼', '利爪'],
-    attributes: troopAttr(4, 3, 6, 4, 6, 6),
+    attributes: { ...troopAttr(4, 3, 6, 4, 6, 6), air: 120, antiAir: 95 },
     combatDomain: 'AIR',
     attackVsAir: 0.6,
     attackVsGround: 0.7,
@@ -1351,7 +1361,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeTargetId: 'beast_roc_alpha',
     description: '在空中俯冲撕裂的猛禽。【技能：撕裂俯冲】对后排有额外杀伤。',
     equipment: ['钢翼', '巨喙', '钩爪'],
-    attributes: troopAttr(7, 5, 9, 6, 7, 8),
+    attributes: { ...troopAttr(7, 5, 9, 6, 7, 8), air: 180, antiAir: 140 },
     combatDomain: 'AIR',
     attackVsAir: 0.85,
     attackVsGround: 1.15,
@@ -1368,7 +1378,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     maxXp: 2800,
     description: '遮天蔽日的王翼。【连携：风暴号令】野兽单位机动提升。',
     equipment: ['王翼', '风暴喉音', '裂空爪'],
-    attributes: troopAttr(10, 7, 9, 8, 8, 10),
+    attributes: { ...troopAttr(10, 7, 9, 8, 8, 10), air: 220, antiAir: 175 },
     combatDomain: 'AIR',
     attackVsAir: 1.0,
     attackVsGround: 1.25,
@@ -1386,7 +1396,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeTargetId: 'arcane_biplane',
     description: '用符文与轻木拼出的空中骑兵。【技能：俯冲投矛】短时间压制敌军远程。',
     equipment: ['符文滑翔翼', '投矛束', '轻甲'],
-    attributes: troopAttr(5, 4, 7, 5, 6, 7),
+    attributes: { ...troopAttr(5, 4, 7, 5, 6, 7), air: 150, antiAir: 120 },
     combatDomain: 'AIR',
     attackVsAir: 0.75,
     attackVsGround: 0.9,
@@ -1403,7 +1413,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     maxXp: 900,
     description: '炼金燃料与法阵共同驱动的简易飞机。【技能：空中扫射】对密集阵线有效。',
     equipment: ['双翼机体', '魔导机枪', '炼金燃料'],
-    attributes: troopAttr(7, 5, 8, 7, 8, 8),
+    attributes: { ...troopAttr(7, 5, 8, 7, 8, 8), air: 200, antiAir: 165 },
     combatDomain: 'AIR',
     attackVsAir: 0.95,
     attackVsGround: 1.1,
@@ -1420,7 +1430,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     maxXp: 1400,
     description: '浮空符文阵列与厚甲吊舱构成的空中堡垒。【技能：高空投弹】对城外阵地与围城营地有效。',
     equipment: ['浮空符文阵列', '装甲吊舱', '投弹舱'],
-    attributes: troopAttr(8, 8, 4, 10, 9, 9),
+    attributes: { ...troopAttr(8, 8, 4, 10, 9, 9), air: 230, antiAir: 135 },
     combatDomain: 'AIR',
     attackVsAir: 0.8,
     attackVsGround: 1.25,
@@ -2784,7 +2794,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeTargetId: 'roach_aerial_duelist',
     description: '魔法污染让它直立行走，还学会了抡棍。【技能：数量压迫】同类数量越多，越容易把你挤到墙角。不靠战斗经验升级，靠吞噬成长。',
     equipment: ['纸卷棍', '破碎护胸片'],
-    attributes: troopAttr(25, 20, 45, 25, 5, 30)
+    attributes: { ...troopAttr(25, 20, 45, 25, 5, 30), antiAir: 55 }
   },
   roach_pikeman: {
     id: 'roach_pikeman',
@@ -2797,7 +2807,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeTargetId: 'roach_aerial_lancer',
     description: '拿着牙签当长矛，队形居然还挺像回事。【技能：刺戳连打】更容易在短时间内多次命中。不靠战斗经验升级，靠吞噬成长。',
     equipment: ['牙签长矛', '硬壳护臂'],
-    attributes: troopAttr(25, 25, 45, 25, 15, 30)
+    attributes: { ...troopAttr(25, 25, 45, 25, 15, 30), antiAir: 65 }
   },
   roach_slinger: {
     id: 'roach_slinger',
@@ -2810,7 +2820,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeTargetId: 'roach_aerial_harrier',
     description: '用瓶盖当弹丸，命中率不高，但胜在会乱丢。【技能：碎片飞溅】对密集目标更有威胁。不靠战斗经验升级，靠吞噬成长。',
     equipment: ['橡皮筋弹弓', '瓶盖弹丸'],
-    attributes: troopAttr(20, 15, 45, 20, 60, 30)
+    attributes: { ...troopAttr(20, 15, 45, 20, 60, 30), antiAir: 130 }
   },
   roach_shieldling: {
     id: 'roach_shieldling',
@@ -2823,7 +2833,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeTargetId: 'roach_aerial_guard',
     description: '把便利店的塑料盖当盾，居然真的能挡几下。【技能：硬壳顶住】更难被远程压制。不靠战斗经验升级，靠吞噬成长。',
     equipment: ['塑料盖盾', '弯曲短刃'],
-    attributes: troopAttr(20, 45, 40, 30, 5, 30)
+    attributes: { ...troopAttr(20, 45, 40, 30, 5, 30), antiAir: 50 }
   },
 
   roach_aerial_duelist: {
@@ -2837,7 +2847,9 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeTargetId: 'roach_chitin_commander',
     description: '强化的肢体与保持飞行的能力，让它更像“会扑人脸的精英”。【技能：低空突袭】更容易击溃后排。',
     equipment: ['折断铁片刀', '强化翅鞘'],
-    attributes: troopAttr(60, 40, 75, 50, 5, 60)
+    attributes: { ...troopAttr(60, 40, 75, 50, 5, 60), air: 150, antiAir: 120 },
+    combatDomain: 'AIR',
+    canCapture: false
   },
   roach_aerial_lancer: {
     id: 'roach_aerial_lancer',
@@ -2850,7 +2862,9 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeTargetId: 'roach_giant_halberdier',
     description: '它没有马，但有翅膀，冲刺时带着“嗡嗡的气势”。【技能：穿刺俯冲】对重甲更有效。',
     equipment: ['加长牙签枪', '翅鞘护甲'],
-    attributes: troopAttr(60, 35, 75, 55, 25, 60)
+    attributes: { ...troopAttr(60, 35, 75, 55, 25, 60), air: 160, antiAir: 120 },
+    combatDomain: 'AIR',
+    canCapture: false
   },
   roach_aerial_harrier: {
     id: 'roach_aerial_harrier',
@@ -2863,7 +2877,9 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeTargetId: 'roach_giant_gunner',
     description: '会飞的远程单位：你以为它在撤退，其实它在绕你背后丢垃圾。【技能：盘旋齐射】短时间多次远程压制。',
     equipment: ['裂纹玻璃弹', '临时弹袋'],
-    attributes: troopAttr(55, 30, 80, 50, 110, 60)
+    attributes: { ...troopAttr(55, 30, 80, 50, 110, 60), air: 170, antiAir: 170 },
+    combatDomain: 'AIR',
+    canCapture: false
   },
   roach_aerial_guard: {
     id: 'roach_aerial_guard',
@@ -2876,7 +2892,9 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeTargetId: 'roach_carapace_titan',
     description: '带盾还能飞，像一块会移动的盾牌飞向你。【技能：护翼格挡】显著提升大型单位的抗打击能力。',
     equipment: ['加固塑料盖盾', '胶带护甲'],
-    attributes: troopAttr(40, 75, 65, 65, 5, 70)
+    attributes: { ...troopAttr(40, 75, 65, 65, 5, 70), air: 155, antiAir: 135 },
+    combatDomain: 'AIR',
+    canCapture: false
   },
 
   roach_chitin_commander: {
