@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.25',
+    date: '2026-02-28',
+    items: [
+      '存档结构升级为SaveGame根对象（meta/world/entities/player/ui/systems/settings）',
+      '读档加入迁移与默认填充，兼容旧存档并减少漏字段'
+    ]
+  },
+  {
     version: '0.3.24',
     date: '2026-02-27',
     items: [

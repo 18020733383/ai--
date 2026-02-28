@@ -7001,51 +7001,126 @@ export default function App() {
     localStorage.setItem('openai.model', '');
   };
 
-  const buildSaveData = () => ({
-    version: 1,
-    savedAt: Date.now(),
+  const SAVEGAME_SCHEMA_VERSION = 1 as const;
+  type SaveGame = {
+    meta: {
+      schemaId: 'CALRADIA_CHRONICLES';
+      schemaVersion: typeof SAVEGAME_SCHEMA_VERSION;
+      timestamp: number;
+      createdAt: string;
+    };
+    world: {
+      locations: Location[];
+      logs: string[];
+      recentBattleBriefs: BattleBrief[];
+      worldBattleReports: WorldBattleReport[];
+      worldDiplomacy: WorldDiplomacyState;
+      battleTimeline: Array<{ day: number; count: number }>;
+    };
+    entities: {
+      heroes: Hero[];
+      lords: Lord[];
+    };
+    player: PlayerState;
+    ui: {
+      view: GameView;
+      currentLocationId: string | null;
+      townTab: typeof townTab;
+      workDays: number;
+      miningDays: number;
+      roachLureDays: number;
+      trainingMyArmy: { id: string; count: number }[];
+      trainingEnemyArmy: { id: string; count: number }[];
+      trainInputMy: { id: string; count: number };
+      trainInputEnemy: { id: string; count: number };
+    };
+    systems: {
+      customTroopTemplates: Record<string, Omit<Troop, 'count' | 'xp'>>;
+      shaperDialogue: typeof shaperDialogue;
+      shaperInput: string;
+      shaperProposal: typeof shaperProposal;
+      altarDialogues: typeof altarDialogues;
+      altarDrafts: typeof altarDrafts;
+      altarProposals: typeof altarProposals;
+      altarRecruitDays: number;
+    };
+    settings: {
+      battleStreamEnabled: boolean;
+      battleResolutionMode: 'AI' | 'PROGRAM';
+      aiProvider: AIProvider;
+      doubaoApiKey: string;
+      geminiApiKey: string;
+      openAIProfiles: typeof openAIProfiles;
+      openAIActiveProfileId: typeof activeOpenAIProfileId;
+      openAI: {
+        baseUrl: string;
+        key: string;
+        model: string;
+      };
+    };
+  };
+
+  const buildSaveGame = (): SaveGame => ({
+    meta: {
+      schemaId: 'CALRADIA_CHRONICLES',
+      schemaVersion: SAVEGAME_SCHEMA_VERSION,
+      timestamp: Date.now(),
+      createdAt: new Date().toISOString()
+    },
+    world: {
+      locations,
+      logs,
+      recentBattleBriefs,
+      worldBattleReports,
+      worldDiplomacy,
+      battleTimeline
+    },
+    entities: {
+      heroes,
+      lords
+    },
     player,
-    heroes,
-    lords,
-    locations,
-    logs,
-    recentBattleBriefs,
-    worldBattleReports,
-    worldDiplomacy,
-    view,
-    currentLocationId: currentLocation?.id ?? null,
-    townTab,
-    workDays,
-    trainingMyArmy,
-    trainingEnemyArmy,
-    trainInputMy,
-    trainInputEnemy,
-    customTroopTemplates,
-    shaperDialogue,
-    shaperInput,
-    shaperProposal,
-    altarDialogues,
-    altarDrafts,
-    altarProposals,
-    altarRecruitDays,
-    altarRecruitState,
-    battleStreamEnabled,
-    battleResolutionMode,
-    openAIProfiles,
-    openAIActiveProfileId: activeOpenAIProfileId,
-    aiProvider,
-    doubaoApiKey,
-    geminiApiKey,
-    openAI: {
-      baseUrl: openAIBaseUrl,
-      key: openAIKey,
-      model: openAIModel
+    ui: {
+      view,
+      currentLocationId: currentLocation?.id ?? null,
+      townTab,
+      workDays,
+      miningDays,
+      roachLureDays,
+      trainingMyArmy,
+      trainingEnemyArmy,
+      trainInputMy,
+      trainInputEnemy
+    },
+    systems: {
+      customTroopTemplates,
+      shaperDialogue,
+      shaperInput,
+      shaperProposal,
+      altarDialogues,
+      altarDrafts,
+      altarProposals,
+      altarRecruitDays
+    },
+    settings: {
+      battleStreamEnabled,
+      battleResolutionMode,
+      openAIProfiles,
+      openAIActiveProfileId: activeOpenAIProfileId,
+      aiProvider,
+      doubaoApiKey,
+      geminiApiKey,
+      openAI: {
+        baseUrl: openAIBaseUrl,
+        key: openAIKey,
+        model: openAIModel
+      }
     }
   });
 
   const exportSaveData = () => {
     try {
-      const payload = buildSaveData();
+      const payload = buildSaveGame();
       const json = JSON.stringify(payload, null, 2);
       setSaveDataText(json);
       setSaveDataNotice('存档已生成，已填入文本框。');
@@ -7053,7 +7128,7 @@ export default function App() {
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
       anchor.href = url;
-      anchor.download = `calradia-save-day-${player.day}.json`;
+      anchor.download = `calradia-save-v${payload.meta.schemaVersion}-day-${player.day}.json`;
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
@@ -7299,9 +7374,74 @@ export default function App() {
   const importSaveData = () => {
     try {
       const parsed = JSON.parse(saveDataText);
-      const nextPlayer = parsed?.player as PlayerState | undefined;
-      const nextLocations = parsed?.locations as Location[] | undefined;
-      const nextHeroes = parsed?.heroes as Hero[] | undefined;
+      const migrateToSaveGame = (raw: any): SaveGame => {
+        const isNew = raw?.meta?.schemaId === 'CALRADIA_CHRONICLES' && raw?.meta?.schemaVersion === SAVEGAME_SCHEMA_VERSION;
+        if (isNew) return raw as SaveGame;
+        const legacy = raw ?? {};
+        const legacyPlayer = legacy?.player as PlayerState | undefined;
+        const legacyLocations = legacy?.locations as Location[] | undefined;
+        const legacyHeroes = legacy?.heroes as Hero[] | undefined;
+        const legacyLords = legacy?.lords as Lord[] | undefined;
+        return {
+          meta: {
+            schemaId: 'CALRADIA_CHRONICLES',
+            schemaVersion: SAVEGAME_SCHEMA_VERSION,
+            timestamp: typeof legacy?.savedAt === 'number' ? legacy.savedAt : Date.now(),
+            createdAt: new Date(typeof legacy?.savedAt === 'number' ? legacy.savedAt : Date.now()).toISOString()
+          },
+          world: {
+            locations: Array.isArray(legacyLocations) ? legacyLocations : [],
+            logs: Array.isArray(legacy?.logs) ? legacy.logs : [],
+            recentBattleBriefs: Array.isArray(legacy?.recentBattleBriefs) ? legacy.recentBattleBriefs : [],
+            worldBattleReports: Array.isArray(legacy?.worldBattleReports) ? legacy.worldBattleReports : [],
+            worldDiplomacy: legacy?.worldDiplomacy ?? buildInitialWorldDiplomacy(),
+            battleTimeline: Array.isArray(legacy?.battleTimeline) ? legacy.battleTimeline : []
+          },
+          entities: {
+            heroes: Array.isArray(legacyHeroes) ? legacyHeroes : [],
+            lords: Array.isArray(legacyLords) ? legacyLords : []
+          },
+          player: legacyPlayer ?? INITIAL_PLAYER_STATE,
+          ui: {
+            view: legacy?.view ?? 'MAP',
+            currentLocationId: typeof legacy?.currentLocationId === 'string' ? legacy.currentLocationId : null,
+            townTab: legacy?.townTab ?? 'RECRUIT',
+            workDays: typeof legacy?.workDays === 'number' ? legacy.workDays : 1,
+            miningDays: typeof legacy?.miningDays === 'number' ? legacy.miningDays : 2,
+            roachLureDays: typeof legacy?.roachLureDays === 'number' ? legacy.roachLureDays : 2,
+            trainingMyArmy: Array.isArray(legacy?.trainingMyArmy) ? legacy.trainingMyArmy : trainingMyArmy,
+            trainingEnemyArmy: Array.isArray(legacy?.trainingEnemyArmy) ? legacy.trainingEnemyArmy : trainingEnemyArmy,
+            trainInputMy: legacy?.trainInputMy ?? trainInputMy,
+            trainInputEnemy: legacy?.trainInputEnemy ?? trainInputEnemy
+          },
+          systems: {
+            customTroopTemplates: legacy?.customTroopTemplates ?? {},
+            shaperDialogue: Array.isArray(legacy?.shaperDialogue) ? legacy.shaperDialogue : shaperDialogue,
+            shaperInput: typeof legacy?.shaperInput === 'string' ? legacy.shaperInput : '',
+            shaperProposal: legacy?.shaperProposal ?? null,
+            altarDialogues: legacy?.altarDialogues ?? {},
+            altarDrafts: legacy?.altarDrafts ?? {},
+            altarProposals: legacy?.altarProposals ?? {},
+            altarRecruitDays: typeof legacy?.altarRecruitDays === 'number' ? legacy.altarRecruitDays : 2
+          },
+          settings: {
+            battleStreamEnabled: typeof legacy?.battleStreamEnabled === 'boolean' ? legacy.battleStreamEnabled : battleStreamEnabled,
+            battleResolutionMode: legacy?.battleResolutionMode === 'AI' || legacy?.battleResolutionMode === 'PROGRAM' ? legacy.battleResolutionMode : battleResolutionMode,
+            openAIProfiles: Array.isArray(legacy?.openAIProfiles) ? legacy.openAIProfiles : [],
+            openAIActiveProfileId: typeof legacy?.openAIActiveProfileId === 'string' ? legacy.openAIActiveProfileId : null,
+            aiProvider: typeof legacy?.aiProvider === 'string' ? legacy.aiProvider : aiProvider,
+            doubaoApiKey: typeof legacy?.doubaoApiKey === 'string' ? legacy.doubaoApiKey : doubaoApiKey,
+            geminiApiKey: typeof legacy?.geminiApiKey === 'string' ? legacy.geminiApiKey : geminiApiKey,
+            openAI: legacy?.openAI ?? { baseUrl: openAIBaseUrl, key: openAIKey, model: openAIModel }
+          }
+        };
+      };
+
+      const save = migrateToSaveGame(parsed);
+      const nextPlayer = save?.player as PlayerState | undefined;
+      const nextLocations = save?.world?.locations as Location[] | undefined;
+      const nextHeroes = save?.entities?.heroes as Hero[] | undefined;
+      const nextLords = save?.entities?.lords as Lord[] | undefined;
       if (!nextPlayer || !Array.isArray(nextPlayer.troops)) throw new Error('存档缺少玩家信息。');
       if (!Array.isArray(nextLocations)) throw new Error('存档缺少据点信息。');
     const normalizedPlayer = {
@@ -7331,36 +7471,39 @@ export default function App() {
         if (loc.factionId) return { ...loc, owner: normalizedOwner, claimFactionId: loc.factionId };
         return normalizedOwner === loc.owner ? loc : { ...loc, owner: normalizedOwner };
       });
-      setLocations(normalizedLocations);
-      const nextLogs = Array.isArray(parsed?.logs) ? parsed.logs.filter((x: any) => typeof x === 'string').slice(0, 120) : [];
+      const finalLords = Array.isArray(nextLords) && nextLords.length > 0
+        ? nextLords
+        : normalizedLocations.flatMap(loc => loc.lord ? [loc.lord] : []);
+      const syncedLocations = syncLordPresence(normalizedLocations, finalLords);
+      setLords(finalLords.length > 0 ? finalLords : lordsRef.current);
+      setLocations(syncedLocations);
+      const nextLogs = Array.isArray(save?.world?.logs)
+        ? save.world.logs.filter((x: any) => typeof x === 'string').slice(0, 120)
+        : [];
       setLogs(nextLogs);
-      const nextBriefsRaw = Array.isArray(parsed?.recentBattleBriefs) ? parsed.recentBattleBriefs : [];
+      const normalizeOutcome = (raw: any): 'A' | 'B' => {
+        if (raw === 'B' || raw === 'DEFEAT' || raw === 'RETREAT') return 'B';
+        return 'A';
+      };
+      const nextBriefsRaw = Array.isArray(save?.world?.recentBattleBriefs) ? save.world.recentBattleBriefs : [];
       const nextBriefs = nextBriefsRaw.map((b: any) => ({
         day: typeof b?.day === 'number' ? b.day : normalizedPlayer.day,
         battleLocation: String(b?.battleLocation ?? '').trim(),
         enemyName: String(b?.enemyName ?? '').trim() || '（未知敌军）',
-        outcome: b?.outcome === 'A'
-          ? 'A'
-          : (b?.outcome === 'B' || b?.outcome === 'DEFEAT' || b?.outcome === 'RETREAT')
-            ? 'B'
-            : (b?.outcome === 'VICTORY' ? 'A' : 'A'),
+        outcome: normalizeOutcome(b?.outcome),
         playerSide: String(b?.playerSide ?? '').trim(),
         enemySide: String(b?.enemySide ?? '').trim(),
         keyUnitDamageSummary: String(b?.keyUnitDamageSummary ?? b?.heroInjuries ?? '').trim()
       })).slice(0, 3);
       setRecentBattleBriefs(nextBriefs);
-      const nextReportsRaw = Array.isArray(parsed?.worldBattleReports) ? parsed.worldBattleReports : [];
+      const nextReportsRaw = Array.isArray(save?.world?.worldBattleReports) ? save.world.worldBattleReports : [];
       const nextReports = nextReportsRaw.map((b: any) => ({
         id: String(b?.id ?? `battle_import_${Math.random().toString(36).slice(2, 8)}`),
         day: typeof b?.day === 'number' ? b.day : normalizedPlayer.day,
         createdAt: String(b?.createdAt ?? ''),
         battleLocation: String(b?.battleLocation ?? '').trim(),
         enemyName: String(b?.enemyName ?? '').trim() || '（未知敌军）',
-        outcome: b?.outcome === 'A'
-          ? 'A'
-          : (b?.outcome === 'B' || b?.outcome === 'DEFEAT' || b?.outcome === 'RETREAT')
-            ? 'B'
-            : (b?.outcome === 'VICTORY' ? 'A' : 'A'),
+        outcome: normalizeOutcome(b?.outcome),
         playerSide: String(b?.playerSide ?? '').trim(),
         enemySide: String(b?.enemySide ?? '').trim(),
         keyUnitDamageSummary: String(b?.keyUnitDamageSummary ?? b?.heroInjuries ?? '').trim(),
@@ -7416,32 +7559,43 @@ export default function App() {
         })) : []
       })).slice(0, 12);
       setWorldBattleReports(nextReports);
-      setWorldDiplomacy(normalizeWorldDiplomacy(parsed?.worldDiplomacy, normalizedPlayer.day));
-      const nextLocationId = typeof parsed?.currentLocationId === 'string' ? parsed.currentLocationId : null;
-      const nextLocation = normalizedLocations.find(l => l.id === nextLocationId) ?? null;
+      setWorldDiplomacy(normalizeWorldDiplomacy(save?.world?.worldDiplomacy, normalizedPlayer.day));
+      const nextTimelineRaw = Array.isArray(save?.world?.battleTimeline) ? save.world.battleTimeline : [];
+      const nextTimeline = nextTimelineRaw
+        .map((item: any) => ({
+          day: typeof item?.day === 'number' ? item.day : normalizedPlayer.day,
+          count: typeof item?.count === 'number' ? item.count : 0
+        }))
+        .filter(item => item.day >= 0 && item.count >= 0)
+        .slice(-80);
+      setBattleTimeline(nextTimeline.length > 0 ? nextTimeline : [{ day: normalizedPlayer.day, count: 0 }]);
+      const nextLocationId = typeof save?.ui?.currentLocationId === 'string' ? save.ui.currentLocationId : null;
+      const nextLocation = syncedLocations.find(l => l.id === nextLocationId) ?? null;
       setCurrentLocation(nextLocation);
-      const safeView = normalizeView(parsed?.view, !!nextLocation);
+      const safeView = normalizeView(save?.ui?.view, !!nextLocation);
       setView(safeView);
-      setTownTab(parsed?.townTab ?? 'RECRUIT');
-      setWorkDays(typeof parsed?.workDays === 'number' ? parsed.workDays : 1);
-      setTrainingMyArmy(Array.isArray(parsed?.trainingMyArmy) ? parsed.trainingMyArmy : trainingMyArmy);
-      setTrainingEnemyArmy(Array.isArray(parsed?.trainingEnemyArmy) ? parsed.trainingEnemyArmy : trainingEnemyArmy);
-      setTrainInputMy(parsed?.trainInputMy ?? trainInputMy);
-      setTrainInputEnemy(parsed?.trainInputEnemy ?? trainInputEnemy);
-      setCustomTroopTemplates(parsed?.customTroopTemplates ?? {});
-      setShaperDialogue(Array.isArray(parsed?.shaperDialogue) ? parsed.shaperDialogue : shaperDialogue);
-      setShaperInput(typeof parsed?.shaperInput === 'string' ? parsed.shaperInput : '');
-      setShaperProposal(parsed?.shaperProposal ?? null);
-      setAltarDialogues(parsed?.altarDialogues ?? {});
-      setAltarDrafts(parsed?.altarDrafts ?? {});
-      setAltarProposals(parsed?.altarProposals ?? {});
-      setAltarRecruitDays(typeof parsed?.altarRecruitDays === 'number' ? parsed.altarRecruitDays : 2);
-      setAltarRecruitState(parsed?.altarRecruitState ?? null);
-      const importedProfiles = Array.isArray(parsed?.openAIProfiles)
-        ? parsed.openAIProfiles.filter((p: any) => p && typeof p.id === 'string')
+      setTownTab(save?.ui?.townTab ?? 'RECRUIT');
+      setWorkDays(typeof save?.ui?.workDays === 'number' ? save.ui.workDays : 1);
+      setMiningDays(typeof save?.ui?.miningDays === 'number' ? save.ui.miningDays : 2);
+      setRoachLureDays(typeof save?.ui?.roachLureDays === 'number' ? save.ui.roachLureDays : 2);
+      setTrainingMyArmy(Array.isArray(save?.ui?.trainingMyArmy) ? save.ui.trainingMyArmy : trainingMyArmy);
+      setTrainingEnemyArmy(Array.isArray(save?.ui?.trainingEnemyArmy) ? save.ui.trainingEnemyArmy : trainingEnemyArmy);
+      setTrainInputMy(save?.ui?.trainInputMy ?? trainInputMy);
+      setTrainInputEnemy(save?.ui?.trainInputEnemy ?? trainInputEnemy);
+      setCustomTroopTemplates(save?.systems?.customTroopTemplates ?? {});
+      setShaperDialogue(Array.isArray(save?.systems?.shaperDialogue) ? save.systems.shaperDialogue : shaperDialogue);
+      setShaperInput(typeof save?.systems?.shaperInput === 'string' ? save.systems.shaperInput : '');
+      setShaperProposal(save?.systems?.shaperProposal ?? null);
+      setAltarDialogues(save?.systems?.altarDialogues ?? {});
+      setAltarDrafts(save?.systems?.altarDrafts ?? {});
+      setAltarProposals(save?.systems?.altarProposals ?? {});
+      setAltarRecruitDays(typeof save?.systems?.altarRecruitDays === 'number' ? save.systems.altarRecruitDays : 2);
+      setAltarRecruitState(null);
+      const importedProfiles = Array.isArray(save?.settings?.openAIProfiles)
+        ? save.settings.openAIProfiles.filter((p: any) => p && typeof p.id === 'string')
         : [];
       if (importedProfiles.length > 0) {
-        const importedActiveId = typeof parsed?.openAIActiveProfileId === 'string' ? parsed.openAIActiveProfileId : null;
+        const importedActiveId = typeof save?.settings?.openAIActiveProfileId === 'string' ? save.settings.openAIActiveProfileId : null;
         const activeProfile = importedProfiles.find((p: any) => p.id === importedActiveId) ?? importedProfiles[0];
         setOpenAIProfiles(importedProfiles);
         setActiveOpenAIProfileId(activeProfile.id);
@@ -7454,10 +7608,10 @@ export default function App() {
         localStorage.setItem('openai.baseUrl', String(activeProfile.baseUrl ?? '').trim());
         localStorage.setItem('openai.key', String(activeProfile.key ?? '').trim());
         localStorage.setItem('openai.model', String(activeProfile.model ?? '').trim());
-      } else if (parsed?.openAI) {
-        const baseUrl = typeof parsed.openAI.baseUrl === 'string' ? parsed.openAI.baseUrl : openAIBaseUrl;
-        const key = typeof parsed.openAI.key === 'string' ? parsed.openAI.key : openAIKey;
-        const model = typeof parsed.openAI.model === 'string' ? parsed.openAI.model : openAIModel;
+      } else if (save?.settings?.openAI) {
+        const baseUrl = typeof save.settings.openAI.baseUrl === 'string' ? save.settings.openAI.baseUrl : openAIBaseUrl;
+        const key = typeof save.settings.openAI.key === 'string' ? save.settings.openAI.key : openAIKey;
+        const model = typeof save.settings.openAI.model === 'string' ? save.settings.openAI.model : openAIModel;
         setOpenAIBaseUrl(baseUrl);
         setOpenAIKey(key);
         setOpenAIModel(model);
@@ -7465,25 +7619,25 @@ export default function App() {
         localStorage.setItem('openai.key', key.trim());
         localStorage.setItem('openai.model', model.trim());
       }
-      const importedProvider = typeof parsed?.aiProvider === 'string' ? parsed.aiProvider : aiProvider;
+      const importedProvider = typeof save?.settings?.aiProvider === 'string' ? save.settings.aiProvider : aiProvider;
       const normalizedProvider = importedProvider === 'GPT' || importedProvider === 'GEMINI' || importedProvider === 'DOUBAO' || importedProvider === 'CUSTOM'
         ? importedProvider
         : 'CUSTOM';
       setAIProvider(normalizedProvider as AIProvider);
       localStorage.setItem('ai.provider', normalizedProvider);
-      const importedDoubaoKey = typeof parsed?.doubaoApiKey === 'string' ? parsed.doubaoApiKey : doubaoApiKey;
-      const importedGeminiKey = typeof parsed?.geminiApiKey === 'string' ? parsed.geminiApiKey : geminiApiKey;
+      const importedDoubaoKey = typeof save?.settings?.doubaoApiKey === 'string' ? save.settings.doubaoApiKey : doubaoApiKey;
+      const importedGeminiKey = typeof save?.settings?.geminiApiKey === 'string' ? save.settings.geminiApiKey : geminiApiKey;
       setDoubaoApiKey(importedDoubaoKey);
       setGeminiApiKey(importedGeminiKey);
       localStorage.setItem('doubao.key', String(importedDoubaoKey ?? '').trim());
       localStorage.setItem('gemini.key', String(importedGeminiKey ?? '').trim());
-      if (typeof parsed?.battleStreamEnabled === 'boolean') {
-        setBattleStreamEnabled(parsed.battleStreamEnabled);
-        localStorage.setItem('battle.stream', parsed.battleStreamEnabled ? '1' : '0');
+      if (typeof save?.settings?.battleStreamEnabled === 'boolean') {
+        setBattleStreamEnabled(save.settings.battleStreamEnabled);
+        localStorage.setItem('battle.stream', save.settings.battleStreamEnabled ? '1' : '0');
       }
-      if (parsed?.battleResolutionMode === 'AI' || parsed?.battleResolutionMode === 'PROGRAM') {
-        setBattleResolutionMode(parsed.battleResolutionMode);
-        localStorage.setItem('battle.mode', parsed.battleResolutionMode);
+      if (save?.settings?.battleResolutionMode === 'AI' || save?.settings?.battleResolutionMode === 'PROGRAM') {
+        setBattleResolutionMode(save.settings.battleResolutionMode);
+        localStorage.setItem('battle.mode', save.settings.battleResolutionMode);
       }
       setOpenAIModels([]);
       setActiveEnemy(null);
@@ -7494,6 +7648,11 @@ export default function App() {
       setBattleMeta(null);
       setBattleSnapshot(null);
       setBattleError(null);
+      setWorkState(null);
+      setMiningState(null);
+      setRoachLureState(null);
+      setAltarRecruitState(null);
+      setHabitatStayState(null);
       setSaveDataNotice('存档已导入。');
     } catch (e: any) {
       setSaveDataNotice(e?.message || '导入失败。');
