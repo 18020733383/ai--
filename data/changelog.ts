@@ -6,6 +6,16 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.37',
+    date: '2026-03-01',
+    items: [
+      '重伤士兵占用带兵上限，恢复后才可参战',
+      '酒馆招募英雄需要花费（随属性变化，上限约500）',
+      '隐匿点仪表盘新增槽位/施工统计与停留N天快进',
+      '新增地下医院：停留期间加速重伤恢复（可升级）'
+    ]
+  },
+  {
     version: '0.3.36',
     date: '2026-03-01',
     items: [

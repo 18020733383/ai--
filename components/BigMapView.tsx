@@ -36,6 +36,13 @@ type HabitatStayState = {
   daysPassed: number;
 };
 
+type HideoutStayState = {
+  isActive: boolean;
+  locationId: string;
+  totalDays: number;
+  daysPassed: number;
+};
+
 type BigMapViewProps = {
   zoom: number;
   camera: { x: number; y: number };
@@ -45,10 +52,12 @@ type BigMapViewProps = {
   miningState: MiningState | null;
   roachLureState: RoachLureState | null;
   habitatStayState: HabitatStayState | null;
+  hideoutStayState: HideoutStayState | null;
   onAbortWork: () => void;
   onAbortMining: () => void;
   onAbortRoachLure: () => void;
   onAbortHabitat: () => void;
+  onAbortHideoutStay: () => void;
   hoveredLocation: Location | null;
   mousePos: { x: number; y: number };
   mapRef: React.RefObject<HTMLDivElement>;
@@ -68,10 +77,12 @@ export const BigMapView = ({
   miningState,
   roachLureState,
   habitatStayState,
+  hideoutStayState,
   onAbortWork,
   onAbortMining,
   onAbortRoachLure,
   onAbortHabitat,
+  onAbortHideoutStay,
   hoveredLocation,
   mousePos,
   mapRef,
@@ -82,7 +93,7 @@ export const BigMapView = ({
   setHoveredLocation
 }: BigMapViewProps) => {
   const unitSize = 10 * zoom;
-  const isTimeSkipActive = !!(workState?.isActive || miningState?.isActive || roachLureState?.isActive || habitatStayState?.isActive);
+  const isTimeSkipActive = !!(workState?.isActive || miningState?.isActive || roachLureState?.isActive || habitatStayState?.isActive || hideoutStayState?.isActive);
   const imposterPortal = locations.find(loc => loc.type === 'IMPOSTER_PORTAL');
   const fieldCampCount = locations.filter(loc => loc.type === 'FIELD_CAMP').length;
   const factionColors = FACTIONS.reduce<Record<string, string>>((acc, faction) => {
@@ -334,6 +345,40 @@ export const BigMapView = ({
               进度：{habitatStayState.daysPassed} / {habitatStayState.totalDays} 天
             </div>
             <Button variant="danger" size="sm" onClick={onAbortHabitat}>
+              中止
+            </Button>
+          </div>
+        </div>
+      )}
+      {hideoutStayState?.isActive && (
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-auto">
+          <div className="bg-stone-900/90 border-2 border-emerald-600 rounded-lg p-6 shadow-2xl flex flex-col items-center gap-4 min-w-[300px] animate-fade-in">
+            <div className="flex items-center gap-2 text-emerald-300 text-xl font-bold font-serif">
+              <MapPin className="animate-pulse" />
+              <span>停留中...</span>
+            </div>
+            <div className="flex items-center gap-6">
+              <div className="text-center">
+                <div className="text-xs text-stone-500 uppercase tracking-wider mb-1">当前天数</div>
+                <div className="bg-black border border-stone-700 rounded px-3 py-2 min-w-[80px]">
+                  <div className="text-3xl font-mono text-stone-200 font-bold relative overflow-hidden h-9">
+                    <div key={player.day} className="animate-[slide-up_0.2s_ease-out]">
+                      {player.day}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="w-full bg-stone-800 rounded-full h-2 mt-2">
+              <div
+                className="bg-emerald-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${(hideoutStayState.daysPassed / hideoutStayState.totalDays) * 100}%` }}
+              />
+            </div>
+            <div className="text-xs text-stone-400">
+              进度：{hideoutStayState.daysPassed} / {hideoutStayState.totalDays} 天
+            </div>
+            <Button variant="danger" size="sm" onClick={onAbortHideoutStay}>
               中止
             </Button>
           </div>

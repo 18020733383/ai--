@@ -45,7 +45,8 @@ export const MysteriousCaveView = ({
   onRecruitOffer,
   onBackToMap
 }: MysteriousCaveViewProps) => {
-  const currentTroopCount = player.troops.reduce((a, b) => a + b.count, 0);
+  const woundedTroopCount = (player.woundedTroops ?? []).reduce((sum, e) => sum + (e.count ?? 0), 0);
+  const currentTroopCount = player.troops.reduce((a, b) => a + b.count, 0) + woundedTroopCount;
   const maxTroops = getMaxTroops();
 
   const renderRecruitCard = (offer: RecruitOffer) => {

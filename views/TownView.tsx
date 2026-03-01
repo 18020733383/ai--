@@ -48,6 +48,13 @@ type AltarRecruitState = {
   recruitedByTroopId: Record<string, number>;
 };
 
+type HideoutStayState = {
+  isActive: boolean;
+  locationId: string;
+  totalDays: number;
+  daysPassed: number;
+};
+
 type TownViewProps = {
   currentLocation: Location | null;
   locations: Location[];
@@ -67,6 +74,8 @@ type TownViewProps = {
   setMiningDays: (value: number) => void;
   roachLureDays: number;
   setRoachLureDays: (value: number) => void;
+  hideoutStayDays: number;
+  setHideoutStayDays: (value: number) => void;
   workState: WorkState | null;
   setWorkState: (value: WorkState | null) => void;
   miningState: MiningState | null;
@@ -75,6 +84,8 @@ type TownViewProps = {
   setRoachLureState: (value: RoachLureState | null) => void;
   habitatStayState: HabitatStayState | null;
   setHabitatStayState: (value: HabitatStayState | null) => void;
+  hideoutStayState: HideoutStayState | null;
+  setHideoutStayState: (value: HideoutStayState | null) => void;
   altarRecruitDays: number;
   setAltarRecruitDays: (value: number) => void;
   altarRecruitState: AltarRecruitState | null;
@@ -158,6 +169,8 @@ export const TownView = ({
   setMiningDays,
   roachLureDays,
   setRoachLureDays,
+  hideoutStayDays,
+  setHideoutStayDays,
   workState,
   setWorkState,
   miningState,
@@ -166,6 +179,8 @@ export const TownView = ({
   setRoachLureState,
   habitatStayState,
   setHabitatStayState,
+  hideoutStayState,
+  setHideoutStayState,
   altarRecruitDays,
   setAltarRecruitDays,
   altarRecruitState,
@@ -300,7 +315,9 @@ export const TownView = ({
   const [coffeeGiftError, setCoffeeGiftError] = React.useState<string | null>(null);
   const tavernLabel = "前往酒馆";
 
-  const currentTroopCount = player.troops.reduce((a, b) => a + b.count, 0);
+  const woundedTroopCount = (player.woundedTroops ?? []).reduce((sum, e) => sum + (e.count ?? 0), 0);
+  const activeTroopCount = player.troops.reduce((a, b) => a + b.count, 0);
+  const currentTroopCount = activeTroopCount + woundedTroopCount;
   const maxTroops = getMaxTroops();
   const cityRestCost = 5;
   const canRestInCity = player.gold >= cityRestCost;
@@ -410,8 +427,25 @@ export const TownView = ({
     setHeroDialogue({ heroId: hero.id, text: line });
   };
 
+  const getHeroRecruitCost = (hero: Hero) => {
+    const atk = Math.max(0, hero.attributes?.attack ?? 0);
+    const agi = Math.max(0, hero.attributes?.agility ?? 0);
+    const hp = Math.max(0, hero.attributes?.hp ?? 0);
+    const lvl = Math.max(0, hero.level ?? 0);
+    const base = 120;
+    const statCost = atk * 8 + agi * 8 + hp * 2;
+    const levelCost = lvl * 18;
+    return Math.max(60, Math.min(500, Math.floor(base + statCost + levelCost)));
+  };
+
   const recruitHero = (hero: Hero) => {
     if (hero.recruited) return;
+    const cost = getHeroRecruitCost(hero);
+    if (player.gold < cost) {
+      addLog("资金不足，无法招募该英雄。");
+      return;
+    }
+    setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - cost) }));
     setHeroes(prev => prev.map(h => h.id === hero.id ? {
       ...h,
       recruited: true,
@@ -421,7 +455,7 @@ export const TownView = ({
       stayDays: undefined
     } : h));
     setHeroDialogue(null);
-    addLog(`${hero.name} 加入了你的队伍。`);
+    addLog(`你花费 ${cost} 第纳尔招募了 ${hero.name}。`);
   };
   const workIncomePerDay = 20 + Math.max(0, player.attributes.commerce ?? 0) * 5;
   const mineralInventory = player.minerals ?? initialMinerals;
@@ -1014,7 +1048,7 @@ export const TownView = ({
 
   const handleStartRoachLure = () => {
     if (!isRoachNest) return;
-    const currentCount = player.troops.reduce((a, b) => a + b.count, 0);
+    const currentCount = activeTroopCount + woundedTroopCount;
     const maxTroops = getMaxTroops();
     if (currentCount >= maxTroops) {
       addLog("队伍人数已达上限，无法继续吸引。");
@@ -1121,7 +1155,7 @@ export const TownView = ({
       addLog("祭坛尚未确立兵种树。");
       return;
     }
-    const currentCount = player.troops.reduce((a, b) => a + b.count, 0);
+    const currentCount = activeTroopCount + woundedTroopCount;
     const maxTroops = getMaxTroops();
     if (currentCount >= maxTroops) {
       addLog("队伍人数已达上限，无法继续传教。");
@@ -1263,6 +1297,14 @@ export const TownView = ({
   const isSlotBuilt = (slot: { type: BuildingType | null; daysLeft?: number }) => !!slot.type && !(slot.daysLeft && slot.daysLeft > 0);
   const hideoutFacilitySlots = normalizeHideoutSlots(hideoutSelectedLayer?.facilitySlots as any);
   const hideoutDefenseSlots = normalizeHideoutSlots(hideoutSelectedLayer?.defenseSlots as any);
+  const hideoutFacilityUsed = hideoutFacilitySlots.filter(s => !!s.type).length;
+  const hideoutFacilityBuilding = hideoutFacilitySlots.filter(s => !!s.type && !!s.daysLeft && s.daysLeft > 0).length;
+  const hideoutDefenseUsed = hideoutDefenseSlots.filter(s => !!s.type).length;
+  const hideoutDefenseBuilding = hideoutDefenseSlots.filter(s => !!s.type && !!s.daysLeft && s.daysLeft > 0).length;
+  const hideoutAllLayerCount = hideoutState?.layers?.length ?? 0;
+  const hideoutAllSlotsTotal = hideoutAllLayerCount * 10;
+  const hideoutAllFacilityUsed = (hideoutState?.layers ?? []).reduce((sum, l) => sum + (Array.isArray(l.facilitySlots) ? l.facilitySlots.filter(s => !!(s as any)?.type).length : 0), 0);
+  const hideoutAllDefenseUsed = (hideoutState?.layers ?? []).reduce((sum, l) => sum + (Array.isArray(l.defenseSlots) ? l.defenseSlots.filter(s => !!(s as any)?.type).length : 0), 0);
   const hideoutExposure = Math.max(0, Math.min(100, hideoutState?.exposure ?? 0));
   const hideoutCamouflageCooldownUntilDay = hideoutState?.camouflageCooldownUntilDay ?? 0;
 
@@ -1280,7 +1322,8 @@ export const TownView = ({
     b.type === 'BARRACKS' ||
     b.type === 'RECRUITER' ||
     b.type === 'SHRINE' ||
-    b.type === 'ORE_REFINERY'
+    b.type === 'ORE_REFINERY' ||
+    b.type === 'HOSPITAL_I'
   ));
   const hideoutDefenseBuildOptions = buildingOptions.filter(b => (
     b.type === 'DEFENSE' ||
@@ -1315,6 +1358,9 @@ export const TownView = ({
     if (type === 'RECRUITER') return ['每 4 天征募一次（与数量叠加）', '优先补满驻军空位'];
     if (type === 'SHRINE') return ['若已确立宗教：每 4 天招募信徒守卫', '驻军不足时优先补充'];
     if (type === 'ORE_REFINERY') return ['解锁该层“矿石精炼”', '低纯度×3 → 高一档纯度×1（需要时间+费用）'];
+    if (type === 'HOSPITAL_I') return ['唯一建筑（全隐匿点）', '停留期间每 3 天额外推进伤兵恢复 1 天'];
+    if (type === 'HOSPITAL_II') return ['唯一建筑（全隐匿点）', '停留期间每 3 天额外推进伤兵恢复 2 天'];
+    if (type === 'HOSPITAL_III') return ['唯一建筑（全隐匿点）', '停留期间每 3 天额外推进伤兵恢复 3 天'];
     if (type === 'DEFENSE') return ['提升防御强度（可叠加）'];
     if (type === 'AA_TOWER_I') return ['提升防空强度与远程命中（可叠加）'];
     if (type === 'AA_TOWER_II') return ['需要 AA_TOWER_I', '提升防空强度（可叠加）'];
@@ -1335,6 +1381,9 @@ export const TownView = ({
     if (type === 'TRAINING_CAMP') return [`训练：每 3 天触发一次（强度随数量提升）`];
     if (type === 'RECRUITER') return [`征募：每 4 天 +${4 + Math.min(6, depth * 2)} 名守军（每座，上限内）`];
     if (type === 'SHRINE') return [`信徒：每 4 天 +${3 + Math.min(4, depth)} 名（每座，上限内，需宗教）`];
+    if (type === 'HOSPITAL_I') return ['治疗：停留期间每 3 天额外推进伤兵恢复 1 天'];
+    if (type === 'HOSPITAL_II') return ['治疗：停留期间每 3 天额外推进伤兵恢复 2 天'];
+    if (type === 'HOSPITAL_III') return ['治疗：停留期间每 3 天额外推进伤兵恢复 3 天'];
     if (type === 'MAZE_I') return ['延缓：敌军抵达后需等待 1 天才会开战'];
     if (type === 'MAZE_II') return ['延缓：敌军抵达后需等待 2 天才会开战'];
     if (type === 'MAZE_III') return ['延缓：敌军抵达后需等待 3 天才会开战'];
@@ -1350,6 +1399,8 @@ export const TownView = ({
     if (type === 'AA_RADAR_I') return 'AA_RADAR_II';
     if (type === 'MAZE_I') return 'MAZE_II';
     if (type === 'MAZE_II') return 'MAZE_III';
+    if (type === 'HOSPITAL_I') return 'HOSPITAL_II';
+    if (type === 'HOSPITAL_II') return 'HOSPITAL_III';
     return null;
   };
 
@@ -1455,7 +1506,7 @@ export const TownView = ({
     if (!isOwnedByPlayer) return;
     const garrisonTroop = ownedGarrison.find(t => t.id === troopId);
     if (!garrisonTroop) return;
-    const currentCount = player.troops.reduce((a, b) => a + b.count, 0);
+    const currentCount = activeTroopCount + woundedTroopCount;
     const availableSpace = getMaxTroops() - currentCount;
     const moveCount = Math.min(amount, garrisonTroop.count, availableSpace);
     if (moveCount <= 0) {
@@ -1596,7 +1647,7 @@ export const TownView = ({
     const layer = hideout.layers[layerIndex];
     const garrisonTroop = (layer.garrison ?? []).find(t => t.id === troopId);
     if (!garrisonTroop) return;
-    const currentCount = player.troops.reduce((a, b) => a + b.count, 0);
+    const currentCount = activeTroopCount + woundedTroopCount;
     const availableSpace = getMaxTroops() - currentCount;
     const moveCount = Math.min(amount, garrisonTroop.count, availableSpace);
     if (moveCount <= 0) {
@@ -1648,6 +1699,18 @@ export const TownView = ({
       const hasMaze = allDefense.some(s => s.type === 'MAZE_I' || s.type === 'MAZE_II' || s.type === 'MAZE_III');
       if (hasMaze) {
         addLog("迷宫为唯一建筑，隐匿点内已存在。");
+        return;
+      }
+    }
+    if (building.type === 'HOSPITAL_I') {
+      if (category !== 'FACILITY') {
+        addLog("地下医院属于建筑设施。");
+        return;
+      }
+      const allFacilities = (hideout.layers ?? []).flatMap(l => l.facilitySlots ?? []);
+      const hasHospital = allFacilities.some(s => s.type === 'HOSPITAL_I' || s.type === 'HOSPITAL_II' || s.type === 'HOSPITAL_III');
+      if (hasHospital) {
+        addLog("地下医院为唯一建筑，隐匿点内已存在。");
         return;
       }
     }
@@ -2340,6 +2403,35 @@ export const TownView = ({
 
             {hideoutPage === 'DASHBOARD' && (
               <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <div className="bg-stone-900/60 border border-stone-800 rounded p-5">
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-200 font-bold">统计</div>
+                    <Home size={16} className="text-emerald-300" />
+                  </div>
+                  <div className="mt-3 space-y-3">
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-stone-500">
+                        <span>建筑槽（该层）</span>
+                        <span>{hideoutFacilityUsed}/10 {hideoutFacilityBuilding > 0 ? `· 施工中 ${hideoutFacilityBuilding}` : ''}</span>
+                      </div>
+                      <div className="h-2 bg-stone-950/60 border border-stone-800 rounded mt-1 overflow-hidden">
+                        <div className="h-full bg-emerald-700/60" style={{ width: `${Math.round((hideoutFacilityUsed / 10) * 100)}%` }} />
+                      </div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between text-xs text-stone-500">
+                        <span>防御槽（该层）</span>
+                        <span>{hideoutDefenseUsed}/10 {hideoutDefenseBuilding > 0 ? `· 施工中 ${hideoutDefenseBuilding}` : ''}</span>
+                      </div>
+                      <div className="h-2 bg-stone-950/60 border border-stone-800 rounded mt-1 overflow-hidden">
+                        <div className="h-full bg-emerald-700/60" style={{ width: `${Math.round((hideoutDefenseUsed / 10) * 100)}%` }} />
+                      </div>
+                    </div>
+                    <div className="text-xs text-stone-500">
+                      全隐匿点：建筑 {hideoutAllFacilityUsed}/{hideoutAllSlotsTotal} · 防御 {hideoutAllDefenseUsed}/{hideoutAllSlotsTotal}
+                    </div>
+                  </div>
+                </div>
                 <button
                   onClick={() => setHideoutPage('GARRISON')}
                   className="text-left bg-stone-900/60 border border-stone-800 rounded p-5 hover:border-stone-600 transition-colors"
@@ -2414,6 +2506,40 @@ export const TownView = ({
                     {(currentLocation.localLogs ?? []).length > 0 ? (currentLocation.localLogs ?? [])[0]?.text : '暂无记录'}
                   </div>
                 </button>
+                <div className="bg-stone-900/60 border border-stone-800 rounded p-5">
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-200 font-bold">停留</div>
+                    <History size={16} className="text-emerald-300" />
+                  </div>
+                  <div className="text-stone-400 text-sm mt-2">在隐匿点停留一段时间（会触发日结算）。</div>
+                  <div className="mt-3 flex items-end gap-3">
+                    <div className="flex-1">
+                      <div className="text-xs text-stone-500 mb-1">天数</div>
+                      <input
+                        value={hideoutStayDays}
+                        onChange={(e) => setHideoutStayDays(Math.max(1, Math.min(60, Number(e.target.value) || 1)))}
+                        className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+                        type="number"
+                        min={1}
+                        max={60}
+                        disabled={!!hideoutStayState?.isActive}
+                      />
+                    </div>
+                    <Button
+                      variant="secondary"
+                      disabled={!!hideoutStayState?.isActive || !!currentLocation.activeSiege}
+                      onClick={() => {
+                        const days = Math.max(1, Math.min(60, Math.floor(hideoutStayDays || 1)));
+                        setHideoutStayDays(days);
+                        setHideoutStayState({ isActive: true, locationId: currentLocation.id, totalDays: days, daysPassed: 0 });
+                        onBackToMap();
+                      }}
+                    >
+                      开始
+                    </Button>
+                  </div>
+                  {!!currentLocation.activeSiege && <div className="text-xs text-amber-300 mt-2">围攻中无法停留。</div>}
+                </div>
               </div>
             )}
 
@@ -2636,12 +2762,17 @@ export const TownView = ({
                           .filter(opt => depth === 0 ? true : (opt.type !== 'CAMOUFLAGE_STRUCTURE' && opt.type !== 'MAZE_I'));
                         const defenseBuilt = hideoutDefenseSlots.filter(s => s.type && isSlotBuilt(s)).map(s => s.type as BuildingType);
                         const hasMaze = hideoutDefenseSlots.some(s => s.type === 'MAZE_I' || s.type === 'MAZE_II' || s.type === 'MAZE_III');
+                        const hasHospital = (hideoutState?.layers ?? []).some(l => (l.facilitySlots ?? []).some(s => s.type === 'HOSPITAL_I' || s.type === 'HOSPITAL_II' || s.type === 'HOSPITAL_III'));
                         const canBuildType = (type: BuildingType) => {
                           if (category === 'DEFENSE' && type === 'CAMOUFLAGE_STRUCTURE' && depth !== 0) return { ok: false, reason: '仅地面层可建造' };
                           if (type === 'MAZE_I') {
                             if (category !== 'DEFENSE') return { ok: false, reason: '迷宫属于防御设施' };
                             if (depth !== 0) return { ok: false, reason: '仅地面层可建造' };
                             if (hasMaze) return { ok: false, reason: '唯一建筑，已存在' };
+                          }
+                          if (type === 'HOSPITAL_I') {
+                            if (category !== 'FACILITY') return { ok: false, reason: '地下医院属于建筑设施' };
+                            if (hasHospital) return { ok: false, reason: '唯一建筑，已存在' };
                           }
                           if (type === 'AA_TOWER_II' && !defenseBuilt.includes('AA_TOWER_I')) return { ok: false, reason: '需要 AA_TOWER_I' };
                           if (type === 'AA_TOWER_III' && !defenseBuilt.includes('AA_TOWER_II')) return { ok: false, reason: '需要 AA_TOWER_II' };
@@ -3195,7 +3326,9 @@ export const TownView = ({
                       </div>
                       <div className="flex gap-2">
                         <Button onClick={() => talkToHero(hero)} variant="secondary">对话</Button>
-                        <Button onClick={() => recruitHero(hero)} variant="gold">招募</Button>
+                        <Button onClick={() => recruitHero(hero)} variant="gold" disabled={player.gold < getHeroRecruitCost(hero)}>
+                          招募（{getHeroRecruitCost(hero)}）
+                        </Button>
                       </div>
                     </div>
                   ))}

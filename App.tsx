@@ -795,6 +795,7 @@ export default function App() {
   const [workDays, setWorkDays] = useState(1);
   const [miningDays, setMiningDays] = useState(2);
   const [roachLureDays, setRoachLureDays] = useState(2);
+  const [hideoutStayDays, setHideoutStayDays] = useState(3);
   const [miningState, setMiningState] = useState<{
     isActive: boolean;
     locationId: string;
@@ -905,6 +906,12 @@ export default function App() {
     accumulatedIncome: number;
   } | null>(null);
   const [habitatStayState, setHabitatStayState] = useState<{
+    isActive: boolean;
+    locationId: string;
+    totalDays: number;
+    daysPassed: number;
+  } | null>(null);
+  const [hideoutStayState, setHideoutStayState] = useState<{
     isActive: boolean;
     locationId: string;
     totalDays: number;
@@ -1054,7 +1061,7 @@ export default function App() {
         const tier1Pool = ['roach_brawler', 'roach_pikeman', 'roach_slinger', 'roach_shieldling'];
         const troopId = tier1Pool[Math.floor(Math.random() * tier1Pool.length)];
         const current = playerRef.current;
-        const currentCount = current.troops.reduce((a, b) => a + b.count, 0);
+        const currentCount = current.troops.reduce((a, b) => a + b.count, 0) + (current.woundedTroops ?? []).reduce((sum, e) => sum + (e.count ?? 0), 0);
         const maxTroops = 20 + current.attributes.leadership * 5;
         const availableSpace = maxTroops - currentCount;
         if (availableSpace <= 0) {
@@ -1122,6 +1129,30 @@ export default function App() {
   }, [habitatStayState]);
 
   useEffect(() => {
+    if (!hideoutStayState?.isActive) return;
+    if (hideoutStayState.daysPassed >= hideoutStayState.totalDays) {
+      const finishTimer = setTimeout(() => {
+        addLog(`停留结束，时间已快进 ${hideoutStayState.totalDays} 天。`);
+        setHideoutStayState(null);
+        if (currentLocation) {
+          setView('TOWN');
+          setTownTab('HIDEOUT');
+        }
+      }, 350);
+      return () => clearTimeout(finishTimer);
+    }
+
+    const timer = setTimeout(() => {
+      if (!currentLocation) return;
+      if (currentLocation.id !== hideoutStayState.locationId) return;
+      processDailyCycle(currentLocation, 0, 1, 0, true);
+      setHideoutStayState(prev => prev ? { ...prev, daysPassed: prev.daysPassed + 1 } : null);
+    }, 50);
+
+    return () => clearTimeout(timer);
+  }, [hideoutStayState]);
+
+  useEffect(() => {
     if (!altarRecruitState?.isActive) return;
     if (altarRecruitState.daysPassed >= altarRecruitState.totalDays) {
       const finishTimer = setTimeout(() => {
@@ -1163,7 +1194,7 @@ export default function App() {
       const pool = tier1Pool.length > 0 ? tier1Pool : troopIds;
       const troopId = pool[Math.floor(Math.random() * pool.length)];
       const current = playerRef.current;
-      const currentCount = current.troops.reduce((a, b) => a + b.count, 0);
+      const currentCount = current.troops.reduce((a, b) => a + b.count, 0) + (current.woundedTroops ?? []).reduce((sum, e) => sum + (e.count ?? 0), 0);
       const maxTroops = getMaxTroops();
       const availableSpace = maxTroops - currentCount;
       if (availableSpace <= 0) {
@@ -2655,7 +2686,7 @@ export default function App() {
   const moveTo = (targetX: number, targetY: number, locationId?: string) => {
     if (isDragging) return;
     if (targetPosition) return; // Already moving
-    if (workState?.isActive || miningState?.isActive || roachLureState?.isActive || altarRecruitState?.isActive || habitatStayState?.isActive) return;
+    if (workState?.isActive || miningState?.isActive || roachLureState?.isActive || altarRecruitState?.isActive || habitatStayState?.isActive || hideoutStayState?.isActive) return;
     
     // Find location object if ID provided
     const loc = locations.find(l => l.id === locationId);
@@ -2750,6 +2781,9 @@ export default function App() {
     { type: 'RECRUITER', name: '征兵官', cost: 650, days: 3, description: '定期招募新兵加入驻军。' },
     { type: 'SHRINE', name: '神殿', cost: 720, days: 4, description: '若你已确立宗教，会周期性招募信徒守卫此层。' },
     { type: 'ORE_REFINERY', name: '矿石精炼厂', cost: 780, days: 4, description: '花钱与时间将低纯度矿石熔炼为更高纯度。' },
+    { type: 'HOSPITAL_I', name: '地下医院·I', cost: 520, days: 3, description: '简易诊疗与担架通道，能更快让伤兵恢复。' },
+    { type: 'HOSPITAL_II', name: '地下医院·II', cost: 920, days: 4, description: '更完善的隔离区与药剂储备，显著缩短伤兵恢复。' },
+    { type: 'HOSPITAL_III', name: '地下医院·III', cost: 1450, days: 5, description: '完整的地下医馆体系，把死亡率压到最低水平。' },
     { type: 'CAMOUFLAGE_STRUCTURE', name: '伪装结构', cost: 680, days: 4, description: '降低隐匿点暴露程度（冷却），仅限地面层。' },
     { type: 'AA_TOWER_I', name: '防空箭塔·I', cost: 420, days: 2, description: '对空火力覆盖，提升守方防空强度。' },
     { type: 'AA_TOWER_II', name: '防空箭塔·II', cost: 760, days: 3, description: '更密集的对空火力与瞄准体系。' },
@@ -3022,7 +3056,26 @@ export default function App() {
       }
 
       const nextDay = nextPlayer.day + 1;
-      const woundedList = Array.isArray(nextPlayer.woundedTroops) ? nextPlayer.woundedTroops.map(x => ({ ...x })) : [];
+      const stayLoc = location ? (newLocations.find(l => l.id === location.id) ?? location) : null;
+      const hospitalLevel = (() => {
+        if (!stayLoc || stayLoc.type !== 'HIDEOUT' || stayLoc.owner !== 'PLAYER') return 0;
+        const layers = stayLoc.hideout?.layers ?? [];
+        const built = layers.flatMap(l => (l.facilitySlots ?? []) as any[])
+          .filter(s => !!s?.type && !(typeof s?.daysLeft === 'number' && s.daysLeft > 0))
+          .map(s => s.type as BuildingType);
+        if (built.includes('HOSPITAL_III')) return 3;
+        if (built.includes('HOSPITAL_II')) return 2;
+        if (built.includes('HOSPITAL_I')) return 1;
+        return 0;
+      })();
+      let woundedList = Array.isArray(nextPlayer.woundedTroops) ? nextPlayer.woundedTroops.map(x => ({ ...x })) : [];
+      if (hospitalLevel > 0 && woundedList.length > 0 && nextDay % 3 === 0) {
+        woundedList = woundedList.map(e => ({
+          ...e,
+          recoverDay: Math.max(nextDay, Math.floor((e.recoverDay ?? nextDay) - hospitalLevel))
+        }));
+        logsToAdd.push(`地下医院发挥作用：伤兵恢复进度加快 ${hospitalLevel} 天。`);
+      }
       if (woundedList.length > 0) {
         const recovered = woundedList.filter(e => (e.recoverDay ?? 0) <= nextDay && (e.count ?? 0) > 0);
         const remaining = woundedList.filter(e => (e.recoverDay ?? 0) > nextDay && (e.count ?? 0) > 0);
@@ -5664,7 +5717,7 @@ export default function App() {
 
      if (location.type === 'WORLD_BOARD') {
        setCurrentLocation(location);
-      if (!workState?.isActive && !habitatStayState?.isActive) {
+      if (!workState?.isActive && !habitatStayState?.isActive && !hideoutStayState?.isActive) {
          setView('WORLD_BOARD');
        }
        addLog(`抵达了 ${location.name}。`);
@@ -5789,39 +5842,39 @@ export default function App() {
        setView('TOWN');
        setTownTab('LOCAL_GARRISON');
     } else if (location.type === 'HABITAT') {
-      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive && !habitatStayState?.isActive) {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive && !habitatStayState?.isActive && !hideoutStayState?.isActive) {
         setView('TOWN');
         setTownTab('HABITAT');
       }
     } else if (location.type === 'ALTAR') {
-      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive && !habitatStayState?.isActive) {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive && !habitatStayState?.isActive && !hideoutStayState?.isActive) {
         setView('TOWN');
         setTownTab('ALTAR');
       }
     } else if (MINE_CONFIGS[location.type]) {
-      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !habitatStayState?.isActive) {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !habitatStayState?.isActive && !hideoutStayState?.isActive) {
         setView('TOWN');
         setTownTab('MINING');
       }
     } else if (location.type === 'BLACKSMITH') {
-      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !habitatStayState?.isActive) {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !habitatStayState?.isActive && !hideoutStayState?.isActive) {
         setView('TOWN');
         setTownTab('FORGE');
       }
     } else if (location.type === 'MAGICIAN_LIBRARY') {
-      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive && !habitatStayState?.isActive) {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive && !habitatStayState?.isActive && !hideoutStayState?.isActive) {
         setView('TOWN');
         setTownTab('MAGICIAN_LIBRARY');
       }
     } else if (location.type === 'SOURCE_RECOMPILER') {
-      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive && !habitatStayState?.isActive) {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !altarRecruitState?.isActive && !habitatStayState?.isActive && !hideoutStayState?.isActive) {
         setView('TOWN');
         setTownTab('RECOMPILER');
       }
      } else {
        // Only set view to TOWN if not working.
        // The work loop will handle the view.
-      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !habitatStayState?.isActive) {
+      if (!workState?.isActive && !miningState?.isActive && !roachLureState?.isActive && !habitatStayState?.isActive && !hideoutStayState?.isActive) {
         setView('TOWN');
         setTownTab('RECRUIT');
        }
@@ -7305,7 +7358,8 @@ export default function App() {
     if (!currentLocation) return;
 
     const countToRecruit = amountToRecruit || offer.count;
-    const currentCount = player.troops.reduce((a, b) => a + b.count, 0);
+    const woundedCount = (player.woundedTroops ?? []).reduce((sum, e) => sum + (e.count ?? 0), 0);
+    const currentCount = player.troops.reduce((a, b) => a + b.count, 0) + woundedCount;
     const max = getMaxTroops();
     const totalCost = offer.cost * countToRecruit;
 
@@ -7686,7 +7740,7 @@ export default function App() {
       addLog("你的钱不够！院长不喜欢穷鬼。");
       return;
     }
-    const currentCount = player.troops.reduce((a, b) => a + b.count, 0);
+    const currentCount = player.troops.reduce((a, b) => a + b.count, 0) + (player.woundedTroops ?? []).reduce((sum, e) => sum + (e.count ?? 0), 0);
     if (currentCount >= getMaxTroops()) {
       addLog("床位满了（队伍已达上限）。");
       return;
@@ -9034,7 +9088,7 @@ export default function App() {
             onClick={() => setView(view === 'PARTY' ? 'MAP' : 'PARTY')}
             className="flex items-center gap-1 text-stone-200 hover:text-white px-2 rounded transition-colors" 
           >
-             <Users size={14} /> <span>{player.troops.reduce((a, b) => a + b.count, 0)} / {getMaxTroops()}</span>
+             <Users size={14} /> <span>{player.troops.reduce((a, b) => a + b.count, 0) + (player.woundedTroops ?? []).reduce((sum, e) => sum + (e.count ?? 0), 0)} / {getMaxTroops()}</span>
           </button>
           <button
             onClick={() => setIsMapListOpen(true)}
@@ -9920,6 +9974,7 @@ export default function App() {
             miningState={miningState}
             roachLureState={roachLureState}
             habitatStayState={habitatStayState}
+            hideoutStayState={hideoutStayState}
             onAbortWork={() => {
               if (!workState?.isActive) return;
               addLog('你中止了打工。');
@@ -9939,6 +9994,11 @@ export default function App() {
               if (!habitatStayState?.isActive) return;
               addLog('你中止了栖息。');
               setHabitatStayState(null);
+            }}
+            onAbortHideoutStay={() => {
+              if (!hideoutStayState?.isActive) return;
+              addLog('你中止了停留。');
+              setHideoutStayState(null);
             }}
             hoveredLocation={hoveredLocation}
             mousePos={mousePos}
@@ -9991,6 +10051,8 @@ export default function App() {
             setMiningDays={setMiningDays}
             roachLureDays={roachLureDays}
             setRoachLureDays={setRoachLureDays}
+            hideoutStayDays={hideoutStayDays}
+            setHideoutStayDays={setHideoutStayDays}
             workState={workState}
             setWorkState={setWorkState}
             miningState={miningState}
@@ -9999,6 +10061,8 @@ export default function App() {
             setRoachLureState={setRoachLureState}
             habitatStayState={habitatStayState}
             setHabitatStayState={setHabitatStayState}
+            hideoutStayState={hideoutStayState}
+            setHideoutStayState={setHideoutStayState}
             altarRecruitDays={altarRecruitDays}
             setAltarRecruitDays={setAltarRecruitDays}
             altarRecruitState={altarRecruitState}
