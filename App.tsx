@@ -25,6 +25,8 @@ import { BanditEncounterView } from './views/BanditEncounterView';
 import { HeroChatView } from './views/HeroChatView';
 import { GameOverView } from './views/GameOverView';
 import { IntroCinematicView } from './views/IntroCinematicView';
+import { EndingCinematicView } from './views/EndingCinematicView';
+import { MainMenuView } from './views/MainMenuView';
 import { 
   Map as MapIcon, MapPin, Coins, Trophy, Users, ShieldAlert, Skull, ArrowRight, Home, Swords, 
   Trees, Mountain, Snowflake, Sun, Tent, Shield, Ghost, Crosshair, Zap, 
@@ -720,8 +722,7 @@ const buildInitialWorld = () => {
 
 export default function App() {
   const initialWorld = React.useMemo(() => buildInitialWorld(), []);
-  const [player, setPlayer] = useState<PlayerState>(INITIAL_PLAYER_STATE);
-  const [heroes, setHeroes] = useState<Hero[]>(() => {
+  const buildRandomizedHeroes = () => {
     const cityIds = LOCATIONS.filter(l => l.type === 'CITY').map(l => l.id);
     return INITIAL_HERO_ROSTER.map(hero => {
       if (cityIds.length === 0 || Math.random() < 0.45) return { ...hero };
@@ -729,10 +730,13 @@ export default function App() {
       const stayDays = Math.floor(Math.random() * 4) + 2;
       return { ...hero, locationId: cityId, stayDays };
     });
-  });
+  };
+  const [player, setPlayer] = useState<PlayerState>(INITIAL_PLAYER_STATE);
+  const [heroes, setHeroes] = useState<Hero[]>(() => buildRandomizedHeroes());
   const [locations, setLocations] = useState<Location[]>(() => initialWorld.locations);
   const [lords, setLords] = useState<Lord[]>(() => initialWorld.lords);
-  const [view, setView] = useState<GameView>('MAP');
+  const [view, setView] = useState<GameView>('MAIN_MENU');
+  const [endingReturnView, setEndingReturnView] = useState<GameView>('GAME_OVER');
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [activeEnemy, setActiveEnemy] = useState<EnemyForce | null>(null);
   const [negotiationState, setNegotiationState] = useState<NegotiationState>({
@@ -896,6 +900,19 @@ export default function App() {
   const [troopArchivePageSize, setTroopArchivePageSize] = useState(12);
   const [partyCategoryFilter, setPartyCategoryFilter] = useState<'ALL' | 'NORMAL' | 'HEAVY'>('ALL');
   const [heroDialogue, setHeroDialogue] = useState<{ heroId: string; text: string } | null>(null);
+
+  useEffect(() => {
+    setPlayer(prev => {
+      const story = prev.story ?? {};
+      if (story.outsiderHeroId && story.outsiderCluePack) return prev;
+      const candidates = (heroes ?? []).filter(h => h && h.status !== 'DEAD').map(h => h.id);
+      if (candidates.length === 0) return prev;
+      const outsiderHeroId = candidates[Math.floor(Math.random() * candidates.length)];
+      const packs = ['A', 'B', 'C', 'D'];
+      const outsiderCluePack = packs[Math.floor(Math.random() * packs.length)];
+      return { ...prev, story: { ...story, outsiderHeroId, outsiderCluePack } };
+    });
+  }, [heroes]);
 
   // Work State
   const [workState, setWorkState] = useState<{
@@ -1147,7 +1164,7 @@ export default function App() {
       if (currentLocation.id !== hideoutStayState.locationId) return;
       processDailyCycle(currentLocation, 0, 1, 0, true);
       setHideoutStayState(prev => prev ? { ...prev, daysPassed: prev.daysPassed + 1 } : null);
-    }, 50);
+    }, 1200);
 
     return () => clearTimeout(timer);
   }, [hideoutStayState]);
@@ -3863,10 +3880,12 @@ export default function App() {
                 ...nextPlayer,
                 story: {
                   ...(nextPlayer.story ?? {}),
-                  gameOverReason: 'HIDEOUT_FALLEN'
+                  gameOverReason: 'HIDEOUT_FALLEN',
+                  endingId: 'HIDEOUT_FALLEN'
                 }
               };
-              setView('GAME_OVER');
+              setEndingReturnView('GAME_OVER');
+              setView('ENDING');
               return {
                 ...loc,
                 hideout: nextHideout,
@@ -7543,6 +7562,18 @@ export default function App() {
           updateLocationState(updated);
           addLog(`你攻占了 ${target.name}，解放了这座据点。`);
           addLocationLog(target.id, `围攻结束，${target.name} 被玩家攻占。`);
+          if (target.type === 'IMPOSTER_PORTAL') {
+            setPlayer(prev => ({
+              ...prev,
+              story: {
+                ...(prev.story ?? {}),
+                gameOverReason: 'PORTAL_CLEARED',
+                endingId: 'PORTAL_CLEARED'
+              }
+            }));
+            setEndingReturnView('GAME_OVER');
+            setView('ENDING');
+          }
         } else {
           const updated = {
             ...target,
@@ -7565,7 +7596,7 @@ export default function App() {
       setBattleSnapshot(null);
       setPendingBattleMeta(null);
       setPendingBattleIsTraining(false);
-      setView('MAP');
+      if (target?.type !== 'IMPOSTER_PORTAL' || battleResult?.outcome !== 'A') setView('MAP');
       return;
     }
 
@@ -8272,6 +8303,141 @@ export default function App() {
     }
   });
 
+  type SaveSlotMeta = {
+    id: string;
+    name: string;
+    createdAt: number;
+    updatedAt: number;
+    isAuto?: boolean;
+    day?: number;
+    level?: number;
+    renown?: number;
+    endingId?: string;
+  };
+  const SAVE_INDEX_KEY = 'calradia.saves.v1';
+  const SAVE_DATA_PREFIX = 'calradia.save.v1.';
+  const SAVE_SELECTED_KEY = 'calradia.saves.selected';
+  const AUTO_SAVE_ID = 'AUTO';
+
+  const readSaveIndex = (): SaveSlotMeta[] => {
+    try {
+      const raw = localStorage.getItem(SAVE_INDEX_KEY);
+      if (!raw) return [];
+      const list = JSON.parse(raw);
+      if (!Array.isArray(list)) return [];
+      return list
+        .filter(item => item && typeof item.id === 'string')
+        .map(item => ({
+          id: String(item.id),
+          name: String(item.name ?? '未命名存档'),
+          createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
+          updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : Date.now(),
+          isAuto: !!item.isAuto,
+          day: typeof item.day === 'number' ? item.day : undefined,
+          level: typeof item.level === 'number' ? item.level : undefined,
+          renown: typeof item.renown === 'number' ? item.renown : undefined,
+          endingId: typeof item.endingId === 'string' ? item.endingId : undefined
+        }));
+    } catch {
+      return [];
+    }
+  };
+  const writeSaveIndex = (list: SaveSlotMeta[]) => {
+    localStorage.setItem(SAVE_INDEX_KEY, JSON.stringify(list.slice(0, 40)));
+  };
+
+  const [saveSlots, setSaveSlots] = useState<SaveSlotMeta[]>(() => readSaveIndex());
+  const [selectedSaveId, setSelectedSaveId] = useState<string | null>(() => {
+    const raw = localStorage.getItem(SAVE_SELECTED_KEY);
+    return raw ? raw : null;
+  });
+
+  useEffect(() => {
+    if (!selectedSaveId) localStorage.removeItem(SAVE_SELECTED_KEY);
+    else localStorage.setItem(SAVE_SELECTED_KEY, selectedSaveId);
+  }, [selectedSaveId]);
+
+  const upsertSaveSlot = (meta: SaveSlotMeta) => {
+    setSaveSlots(prev => {
+      const list = Array.isArray(prev) ? prev.slice() : [];
+      const idx = list.findIndex(s => s.id === meta.id);
+      const next = idx >= 0 ? list.map(s => (s.id === meta.id ? { ...s, ...meta } : s)) : [...list, meta];
+      writeSaveIndex(next);
+      return next;
+    });
+  };
+
+  const deleteSaveSlot = (id: string) => {
+    const safeId = String(id);
+    if (!safeId || safeId === AUTO_SAVE_ID) return;
+    try {
+      localStorage.removeItem(`${SAVE_DATA_PREFIX}${safeId}`);
+    } catch {}
+    setSaveSlots(prev => {
+      const next = (prev ?? []).filter(s => s.id !== safeId);
+      writeSaveIndex(next);
+      return next;
+    });
+    setSelectedSaveId(prev => (prev === safeId ? null : prev));
+  };
+
+  const writeSavePayload = (slotId: string, name: string, isAuto: boolean, payload: SaveGame) => {
+    const id = String(slotId);
+    localStorage.setItem(`${SAVE_DATA_PREFIX}${id}`, JSON.stringify(payload));
+    upsertSaveSlot({
+      id,
+      name: name || '未命名存档',
+      createdAt: isAuto ? (saveSlots.find(s => s.id === id)?.createdAt ?? payload.meta.timestamp) : payload.meta.timestamp,
+      updatedAt: payload.meta.timestamp,
+      isAuto,
+      day: payload.player.day,
+      level: payload.player.level,
+      renown: payload.player.renown,
+      endingId: payload.player.story?.endingId ?? payload.player.story?.gameOverReason
+    });
+  };
+
+  useEffect(() => {
+    if (view === 'MAIN_MENU' || view === 'INTRO' || view === 'ENDING' || view === 'GAME_OVER') return;
+    if (view === 'BATTLE' || view === 'BATTLE_RESULT') return;
+    const timer = window.setTimeout(() => {
+      try {
+        const payload = buildSaveGame();
+        payload.ui.view = 'MAP';
+        payload.ui.currentLocationId = null;
+        writeSavePayload(AUTO_SAVE_ID, '自动存档', true, payload);
+      } catch {}
+    }, 1200);
+    return () => window.clearTimeout(timer);
+  }, [player.day, player.gold, player.renown, player.level, player.story?.endingId, view]);
+
+  const createSaveFromAuto = () => {
+    try {
+      const raw = localStorage.getItem(`${SAVE_DATA_PREFIX}${AUTO_SAVE_ID}`);
+      if (!raw) return;
+      const payload = JSON.parse(raw) as SaveGame;
+      const now = Date.now();
+      payload.meta = { ...payload.meta, timestamp: now, createdAt: new Date(now).toISOString() };
+      const id = `SLOT_${now}_${Math.floor(Math.random() * 10000)}`;
+      const label = `存档 ${new Date(now).toLocaleString('zh-CN', { hour12: false })}`;
+      writeSavePayload(id, label, false, payload);
+      setSelectedSaveId(id);
+    } catch {}
+  };
+
+  const loadSaveSlot = (preferredId?: string) => {
+    const candidates = [preferredId, selectedSaveId, AUTO_SAVE_ID].filter(Boolean) as string[];
+    for (const id of candidates) {
+      try {
+        const raw = localStorage.getItem(`${SAVE_DATA_PREFIX}${id}`);
+        if (!raw) continue;
+        setEndingReturnView('GAME_OVER');
+        importSaveData(raw, { silent: true });
+        return;
+      } catch {}
+    }
+  };
+
   const exportSaveData = () => {
     try {
       const payload = buildSaveGame();
@@ -8392,8 +8558,9 @@ export default function App() {
   const normalizeView = (raw: unknown, hasLocation: boolean): GameView => {
     const value = typeof raw === 'string' ? raw : 'MAP';
     const safe = value as GameView;
-    const allowed: GameView[] = ['INTRO', 'MAP', 'TOWN', 'PARTY', 'CHARACTER', 'TRAINING', 'ASYLUM', 'MARKET', 'BANDIT_ENCOUNTER', 'CAVE', 'BATTLE', 'BATTLE_RESULT', 'GAME_OVER', 'HERO_CHAT', 'WORLD_BOARD', 'TROOP_ARCHIVE', 'RELATIONS'];
+    const allowed: GameView[] = ['MAIN_MENU', 'INTRO', 'MAP', 'TOWN', 'PARTY', 'CHARACTER', 'TRAINING', 'ASYLUM', 'MARKET', 'BANDIT_ENCOUNTER', 'CAVE', 'BATTLE', 'BATTLE_RESULT', 'ENDING', 'GAME_OVER', 'HERO_CHAT', 'WORLD_BOARD', 'TROOP_ARCHIVE', 'RELATIONS'];
     if (!allowed.includes(safe)) return 'MAP';
+    if (safe === 'ENDING' || safe === 'GAME_OVER' || safe === 'BATTLE' || safe === 'BATTLE_RESULT') return 'MAP';
     if (safe === 'TOWN' && !hasLocation) return 'MAP';
     return safe;
   };
@@ -8528,12 +8695,14 @@ export default function App() {
   useEffect(() => {
     if ((player.story?.introSeen ?? false) === true) return;
     if (player.day > 1) return;
+    if (view === 'MAIN_MENU') return;
     setView(prev => (prev === 'INTRO' ? prev : 'INTRO'));
-  }, [player.day, player.story?.introSeen]);
+  }, [player.day, player.story?.introSeen, view]);
 
-  const importSaveData = () => {
+  const importSaveData = (rawText?: string, options?: { silent?: boolean; forceView?: GameView }) => {
     try {
-      const parsed = JSON.parse(saveDataText);
+      const sourceText = typeof rawText === 'string' ? rawText : saveDataText;
+      const parsed = JSON.parse(sourceText);
       const migrateToSaveGame = (raw: any): SaveGame => {
         const isNew = raw?.meta?.schemaId === 'CALRADIA_CHRONICLES' && raw?.meta?.schemaVersion === SAVEGAME_SCHEMA_VERSION;
         if (isNew) return raw as SaveGame;
@@ -8791,7 +8960,11 @@ export default function App() {
       const nextLocation = syncedLocations.find(l => l.id === nextLocationId) ?? null;
       setCurrentLocation(nextLocation);
       const safeView = normalizeView(save?.ui?.view, !!nextLocation);
-      setView(safeView);
+      const forced = options?.forceView;
+      const finalView = forced
+        ? (forced === 'TOWN' && !nextLocation ? 'MAP' : forced)
+        : safeView;
+      setView(finalView);
       setTownTab(save?.ui?.townTab ?? 'RECRUIT');
       setWorkDays(typeof save?.ui?.workDays === 'number' ? save.ui.workDays : 1);
       setMiningDays(typeof save?.ui?.miningDays === 'number' ? save.ui.miningDays : 2);
@@ -8871,9 +9044,9 @@ export default function App() {
       setRoachLureState(null);
       setAltarRecruitState(null);
       setHabitatStayState(null);
-      setSaveDataNotice('存档已导入。');
+      if (!options?.silent) setSaveDataNotice('存档已导入。');
     } catch (e: any) {
-      setSaveDataNotice(e?.message || '导入失败。');
+      if (!options?.silent) setSaveDataNotice(e?.message || '导入失败。');
     }
   };
 
@@ -9910,12 +10083,41 @@ export default function App() {
   );
 
   const restartGame = () => {
+    const freshWorld = buildInitialWorld();
     setPlayer(INITIAL_PLAYER_STATE);
-    setLocations(ensureLocationLords(seedStayParties(LOCATIONS)));
-    setView('MAP');
-    setLogs(["新的一天开始了..."]);
+    setHeroes(buildRandomizedHeroes());
+    setLocations(freshWorld.locations);
+    setLords(freshWorld.lords);
+    setCurrentLocation(null);
+    setView('MAIN_MENU');
+    setEndingReturnView('GAME_OVER');
+    setLogs(["欢迎来到《卡拉迪亚编年史》。拖动地图探索，滚轮缩放，点击据点移动。"]);
     setActiveEnemy(null);
     setBattleResult(null);
+    setIsBattling(false);
+    setIsBattleStreaming(false);
+    setIsBattleResultFinal(true);
+    setBattleMeta(null);
+    setBattleSnapshot(null);
+    setPendingBattleMeta(null);
+    setPendingBattleIsTraining(false);
+  };
+
+  const startNewGame = () => {
+    restartGame();
+    setPlayer(prev => ({
+      ...prev,
+      story: {
+        ...(prev.story ?? {}),
+        introSeen: false,
+        mainQuest: 'CLEANSE_PORTALS',
+        mainQuestStage: 1,
+        gameOverReason: undefined,
+        endingId: undefined
+      }
+    }));
+    setEndingReturnView('GAME_OVER');
+    setView('INTRO');
   };
 
   const renderGameOver = () => (
@@ -9959,11 +10161,83 @@ export default function App() {
      </div>
   );
 
+  const endingKey = player.story?.endingId ?? player.story?.gameOverReason ?? '';
+  const endingContent = (() => {
+    if (endingKey === 'PORTAL_CLEARED') {
+      return {
+        title: '终章：门',
+        subtitle: `第 ${player.day} 天`,
+        lines: [
+          '裂隙在你面前缓慢收拢，像合上的伤口。',
+          '那些不该存在的回声逐渐沉寂，空气第一次变得干净。',
+          '你听见“回家”的字眼，从很远的地方重新响起。',
+          '门亮起时，英雄们都沉默了——没人知道下一步该站在哪一边。',
+          '你伸出手，指尖触到一阵熟悉的刺痛：现实的边界。',
+          '这是胜利，也是一场告别。'
+        ]
+      };
+    }
+    if (endingKey === 'HIDEOUT_FALLEN') {
+      return {
+        title: '终章：最后的退路',
+        subtitle: `第 ${player.day} 天`,
+        lines: [
+          '最深处的火把熄灭了。',
+          '石门被撞开时，你听见自己的呼吸像空洞回音。',
+          '隐匿点的结构开始崩塌——不是石头，而是“规则”。',
+          '你曾以为这里是退路，后来才明白：这里只是延迟。',
+          '异常吞没了路径，回家的门再也不会亮起。',
+          '你的故事在黑暗里结束。'
+        ]
+      };
+    }
+    return {
+      title: '终章：无名之死',
+      subtitle: `第 ${player.day} 天`,
+      lines: [
+        '最后一名士兵倒下时，风没有停。',
+        '地图仍在延伸，历史仍在继续，只是再也与你无关。',
+        '你想起很多名字，却没来得及说出口。',
+        '夜色把一切抹平。',
+        '你曾来过。',
+        '然后离开。'
+      ]
+    };
+  })();
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-sans selection:bg-amber-900 selection:text-white overflow-hidden flex flex-col">
-      {view !== 'GAME_OVER' && view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && renderHeader()}
+      {view !== 'MAIN_MENU' && view !== 'INTRO' && view !== 'ENDING' && view !== 'GAME_OVER' && view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && renderHeader()}
       
-      <main className={view === 'MAP' || view === 'HERO_CHAT' ? "flex-1 w-full flex" : "flex-1 container mx-auto pb-8 pt-4"}>
+      <main className={view === 'MAP' || view === 'HERO_CHAT' || view === 'MAIN_MENU' ? "flex-1 w-full flex" : "flex-1 container mx-auto pb-8 pt-4"}>
+        {view === 'MAIN_MENU' && (
+          <MainMenuView
+            saves={saveSlots}
+            selectedSaveId={selectedSaveId}
+            onSelectSave={(id) => setSelectedSaveId(id)}
+            onDeleteSave={(id) => deleteSaveSlot(id)}
+            onNewGame={startNewGame}
+            onContinue={(preferredId) => loadSaveSlot(preferredId)}
+            onCreateSaveFromAuto={createSaveFromAuto}
+            endings={[
+              { id: 'PORTAL_CLEARED', title: '封堵裂隙', subtitle: '你夺回了回家的门。' },
+              { id: 'HIDEOUT_FALLEN', title: '隐匿点沦陷', subtitle: '最后退路被异常吞没。' },
+              { id: 'ALL_DIED', title: '无名之死', subtitle: '队伍覆灭，传说终止。' }
+            ]}
+            onReplayEnding={(endingId) => {
+              setEndingReturnView('MAIN_MENU');
+              setPlayer(prev => ({
+                ...prev,
+                story: {
+                  ...(prev.story ?? {}),
+                  endingId,
+                  gameOverReason: endingId
+                }
+              }));
+              setView('ENDING');
+            }}
+          />
+        )}
         {view === 'MAP' && (
           <BigMapView
             zoom={zoom}
@@ -10008,6 +10282,14 @@ export default function App() {
             handleMouseUp={handleMouseUp}
             moveTo={moveTo}
             setHoveredLocation={setHoveredLocation}
+          />
+        )}
+        {view === 'ENDING' && (
+          <EndingCinematicView
+            title={endingContent.title}
+            subtitle={endingContent.subtitle}
+            lines={endingContent.lines}
+            onFinish={() => setView(endingReturnView)}
           />
         )}
         {view === 'INTRO' && (

@@ -252,6 +252,9 @@ export interface PlayerState {
     mainQuest?: string;
     mainQuestStage?: number;
     gameOverReason?: string;
+    endingId?: string;
+    outsiderHeroId?: string;
+    outsiderCluePack?: string;
   };
 }
 
@@ -434,7 +437,7 @@ export interface SiegeEngineQueueItem {
   totalDays: number;
 }
 
-export type GameView = 'INTRO' | 'MAP' | 'TOWN' | 'BATTLE' | 'BATTLE_RESULT' | 'GAME_OVER' | 'PARTY' | 'CHARACTER' | 'TRAINING' | 'ASYLUM' | 'MARKET' | 'BANDIT_ENCOUNTER' | 'CAVE' | 'HERO_CHAT' | 'WORLD_BOARD' | 'TROOP_ARCHIVE' | 'RELATIONS';
+export type GameView = 'MAIN_MENU' | 'INTRO' | 'MAP' | 'TOWN' | 'BATTLE' | 'BATTLE_RESULT' | 'ENDING' | 'GAME_OVER' | 'PARTY' | 'CHARACTER' | 'TRAINING' | 'ASYLUM' | 'MARKET' | 'BANDIT_ENCOUNTER' | 'CAVE' | 'HERO_CHAT' | 'WORLD_BOARD' | 'TROOP_ARCHIVE' | 'RELATIONS';
 
 export interface RecruitOffer {
   troopId: string;

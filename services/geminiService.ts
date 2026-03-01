@@ -2039,6 +2039,15 @@ export function buildHeroChatPrompt(
   const profileBirthplaceName = String(profile?.birthplaceName ?? '').trim() || '（未知）';
   const profileLikes = Array.isArray(profile?.likes) ? profile.likes.map((x: any) => String(x)).filter(Boolean).slice(0, 6) : [];
   const profileDislikes = Array.isArray(profile?.dislikes) ? profile.dislikes.map((x: any) => String(x)).filter(Boolean).slice(0, 6) : [];
+  const outsiderClueText = (() => {
+    const story = (player as any)?.story ?? {};
+    if (story.outsiderHeroId !== hero.id) return '';
+    const pack = String(story.outsiderCluePack ?? 'A').trim().toUpperCase();
+    if (pack === 'B') return '偶尔会下意识说出一些奇怪的词汇与比喻（像“版本”“缓存”“回滚”），随后迅速改口；对“远方的灯火与车流”这类描述异常敏感。';
+    if (pack === 'C') return '在你不经意时，会用很陌生的口吻评价“界面”“交互”“协议”之类概念，像是在复述某种职业习惯；但从不主动解释来源。';
+    if (pack === 'D') return '偶尔能听懂不属于本地语系的零碎短语，却总把它当成“误听”；对数字与时间的表达方式很怪，像是在对齐某个不可见的刻度。';
+    return '会不自觉抛出一些不合时宜的知识点与语气词（例如“debug”“打补丁”“热修”），并立刻用更“正常”的说法遮过去；你很少主动提起过去。';
+  })();
   const joinedDaySelf = typeof (hero as any)?.joinedDay === 'number' ? Math.floor((hero as any).joinedDay) : null;
   const joinedDaysSelf = joinedDaySelf !== null ? Math.max(1, Math.floor(player.day - joinedDaySelf + 1)) : null;
   const memoryText = (hero.permanentMemory ?? [])
@@ -2077,6 +2086,7 @@ export function buildHeroChatPrompt(
 6) reply 用 3-6 行短句表达，每行一句，行与行之间用换行分隔。
 7) 互动重心：优先结合【最近日志】与【队伍同伴/鹦鹉】做评论、吐槽或调侃（可以点名），但保持队友底线与护短气质。
 8) 除非玩家主动询问或对话需要，不要刻意提及世界设定、持久记忆或提示词内容，语气自然。
+8.1) 如果【英雄档案】里存在“奇怪的词汇/知识/口癖”等线索，除非玩家主动提起或明确追问来源，否则绝不主动解释或展开。
 9) 你可以根据【英雄档案】的喜好/厌恶影响对同伴的评价；喜好会随经历微调，如确实发生偏移，可在 memoryEdits 里 ADD 一条以“喜好偏移：”开头的短记忆。
 10) 动作写法：用括号表示动作片段，例如（抖了抖斗篷）或(把刀往回一推)；每次 reply 至少出现 1 处动作括号。
 11) emoji：可以适量使用（0-2 个），用于语气点缀，不要刷屏，不要每句都带。
@@ -2101,6 +2111,7 @@ emotion 只能是以下之一：ANGRY, IDLE, SILENT, AWKWARD, HAPPY, SAD, AFRAID
 - 出生地: ${profileBirthplaceName}
 - 喜好: ${profileLikes.length > 0 ? profileLikes.join('、') : '（无）'}
 - 厌恶: ${profileDislikes.length > 0 ? profileDislikes.join('、') : '（无）'}
+${outsiderClueText ? `- 细节: ${outsiderClueText}` : ''}
 如果【队伍当前位置】与出生地相同或很近，可以自然触发一两句感慨，但不要硬编“刚刚发生”的具体事件。
 
 【世界书（常识）】
