@@ -6,6 +6,16 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.36',
+    date: '2026-03-01',
+    items: [
+      '隐匿点槽位支持查看详情与升级（防空/迷宫等）',
+      '新增隐匿点据点日志与守护者驻守记录',
+      '新增迷宫防御建筑：可延缓讨伐军围攻开始',
+      '讨伐军触发改为按周期概率检测，节奏更慢且受暴露影响'
+    ]
+  },
+  {
     version: '0.3.35',
     date: '2026-03-01',
     items: [

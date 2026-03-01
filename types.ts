@@ -492,6 +492,7 @@ export type HideoutState = {
   layers: HideoutLayer[];
   selectedLayer?: number;
   lastRaidDay?: number;
+  lastRaidCheckDay?: number;
   exposure?: number;
   camouflageCooldownUntilDay?: number;
 };

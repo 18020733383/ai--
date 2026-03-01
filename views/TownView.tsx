@@ -1542,7 +1542,7 @@ export const TownView = ({
     updateLocationState({
       ...currentLocation,
       hideout: {
-        ...(hideout ?? { layers: [], selectedLayer: 0, lastRaidDay: 0, exposure: 8, camouflageCooldownUntilDay: 0 }),
+        ...(hideout ?? { layers: [], selectedLayer: 0, lastRaidDay: 0, lastRaidCheckDay: 0, exposure: 8, camouflageCooldownUntilDay: 0 }),
         layers: [...layers, nextLayer],
         selectedLayer: nextDepth
       }

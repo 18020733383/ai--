@@ -4383,13 +4383,38 @@ export default function App() {
 
       const hideoutTarget = newLocations.find(loc => loc.type === 'HIDEOUT' && loc.owner === 'PLAYER');
       if (hideoutTarget && !hideoutTarget.activeSiege && !hideoutTarget.isUnderSiege && hideoutTarget.hideout) {
-        const lastRaidDay = hideoutTarget.hideout.lastRaidDay ?? 0;
-        const daysSince = Math.max(0, nextDay - lastRaidDay);
         const exposure = clampValue(hideoutTarget.hideout.exposure ?? 0, 0, 100);
-        const threshold = exposure >= 75 ? 6 : exposure >= 55 ? 8 : 10;
-        const baseChance = daysSince >= threshold ? Math.min(0.14 + (daysSince - threshold) * 0.02, 0.55) : 0;
-        const chance = clampValue(baseChance * (0.55 + (exposure / 100) * 1.8), 0, 0.75);
-        if (Math.random() < chance) {
+        const hasExistingRaidCamp = newLocations.some(loc => (
+          loc.type === 'FIELD_CAMP' &&
+          loc.owner === 'ENEMY' &&
+          loc.camp?.kind === 'FACTION_RAID' &&
+          loc.camp?.targetLocationId === hideoutTarget.id
+        ));
+        const lastRaidDayRaw = hideoutTarget.hideout.lastRaidDay ?? 0;
+        const lastRaidDay = lastRaidDayRaw <= 0 ? nextDay : lastRaidDayRaw;
+        const daysSinceLastRaid = Math.max(0, nextDay - lastRaidDay);
+
+        const intervalDays = exposure < 30 ? 10 : exposure < 55 ? 8 : exposure < 75 ? 6 : 4;
+        const lastCheckDay = hideoutTarget.hideout.lastRaidCheckDay ?? 0;
+        const shouldCheck = (nextDay - lastCheckDay) >= intervalDays;
+        const graceDays = 12;
+        const cooldownOk = daysSinceLastRaid >= graceDays;
+
+        if (shouldCheck) {
+          const hideoutIndex = newLocations.findIndex(loc => loc.id === hideoutTarget.id);
+          if (hideoutIndex >= 0) {
+            newLocations[hideoutIndex] = {
+              ...hideoutTarget,
+              hideout: { ...hideoutTarget.hideout, lastRaidDay, lastRaidCheckDay: nextDay }
+            };
+          }
+        }
+
+        if (shouldCheck && !hasExistingRaidCamp && cooldownOk) {
+          const exposureChance = clampValue(0.03 + (exposure / 100) * 0.22, 0.02, 0.28);
+          const timePressure = clampValue((daysSinceLastRaid - graceDays) * 0.012, 0, 0.18);
+          const chance = clampValue(exposureChance + timePressure, 0, 0.35);
+          if (Math.random() < chance) {
           const marchDays = 2 + Math.floor(Math.random() * 3);
           const etaDay = nextDay + marchDays;
           const roll = Math.random();
@@ -4455,12 +4480,13 @@ export default function App() {
           if (hideoutIndex >= 0) {
             newLocations[hideoutIndex] = {
               ...hideoutTarget,
-              hideout: { ...hideoutTarget.hideout, lastRaidDay: nextDay }
+              hideout: { ...hideoutTarget.hideout, lastRaidDay: nextDay, lastRaidCheckDay: nextDay }
             };
           }
           logsToAdd.push(`【讨伐】侦查到有部队在隐匿点周围集结（暴露${Math.round(exposure)}%），预计 ${marchDays} 天后发动进攻。`);
           addLocalLog(hideoutTarget.id, `侦查到讨伐队集结，预计 ${etaDay} 天后发动进攻。`);
           newLocations.push(camp);
+          }
         }
       }
 
@@ -8547,6 +8573,7 @@ export default function App() {
             layers: normalizedLayers,
             selectedLayer: Math.max(0, Math.min(normalizedLayers.length - 1, Math.floor(hideout?.selectedLayer ?? 0))),
             lastRaidDay: typeof hideout?.lastRaidDay === 'number' ? hideout!.lastRaidDay : 0,
+            lastRaidCheckDay: typeof hideout?.lastRaidCheckDay === 'number' ? hideout!.lastRaidCheckDay : 0,
             exposure: typeof hideout?.exposure === 'number' ? Math.max(0, Math.min(100, hideout!.exposure)) : 8,
             camouflageCooldownUntilDay: typeof hideout?.camouflageCooldownUntilDay === 'number' ? hideout!.camouflageCooldownUntilDay : 0
           }
