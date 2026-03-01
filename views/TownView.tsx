@@ -1265,8 +1265,9 @@ export const TownView = ({
   const [hideoutRefineMineralId, setHideoutRefineMineralId] = React.useState<MineralId>('NULL_CRYSTAL');
   const [hideoutRefineFromPurity, setHideoutRefineFromPurity] = React.useState<MineralPurity>(1);
   const [hideoutRefineOutputCount, setHideoutRefineOutputCount] = React.useState(1);
-  const [hideoutPage, setHideoutPage] = React.useState<'DASHBOARD' | 'GARRISON' | 'GUARDIAN' | 'FACILITIES' | 'DEFENSE' | 'REFINERY' | 'LOGS' | 'BUILD'>('DASHBOARD');
+  const [hideoutPage, setHideoutPage] = React.useState<'DASHBOARD' | 'GARRISON' | 'GUARDIAN' | 'FACILITIES' | 'DEFENSE' | 'REFINERY' | 'LOGS' | 'BUILD' | 'DETAIL'>('DASHBOARD');
   const [hideoutBuildTarget, setHideoutBuildTarget] = React.useState<{ category: 'FACILITY' | 'DEFENSE'; slotIndex: number } | null>(null);
+  const [hideoutInspectTarget, setHideoutInspectTarget] = React.useState<{ category: 'FACILITY' | 'DEFENSE'; slotIndex: number } | null>(null);
   const [hideoutBuildAnim, setHideoutBuildAnim] = React.useState<{ category: 'FACILITY' | 'DEFENSE'; slotIndex: number; id: string } | null>(null);
 
   const hideoutFacilityBuildOptions = buildingOptions.filter(b => (
@@ -1280,13 +1281,10 @@ export const TownView = ({
   const hideoutDefenseBuildOptions = buildingOptions.filter(b => (
     b.type === 'DEFENSE' ||
     b.type === 'AA_TOWER_I' ||
-    b.type === 'AA_TOWER_II' ||
-    b.type === 'AA_TOWER_III' ||
     b.type === 'AA_NET_I' ||
-    b.type === 'AA_NET_II' ||
     b.type === 'AA_RADAR_I' ||
-    b.type === 'AA_RADAR_II' ||
-    b.type === 'CAMOUFLAGE_STRUCTURE'
+    b.type === 'CAMOUFLAGE_STRUCTURE' ||
+    b.type === 'MAZE_I'
   ));
   const hideoutHasRefineryBuilt = hideoutFacilitySlots.some(slot => slot.type === 'ORE_REFINERY' && isSlotBuilt(slot));
 
@@ -1322,7 +1320,41 @@ export const TownView = ({
     if (type === 'AA_RADAR_I') return ['提升防空强度与远程命中（可叠加）'];
     if (type === 'AA_RADAR_II') return ['需要 AA_RADAR_I', '提升防空强度与远程命中（可叠加）'];
     if (type === 'CAMOUFLAGE_STRUCTURE') return ['仅地面层可建', '可花钱降低暴露（冷却）', '被动减缓暴露上升'];
+    if (type === 'MAZE_I') return ['仅地面层可建（唯一）', '讨伐军进入据点后需等待 1 天才会开战'];
+    if (type === 'MAZE_II') return ['仅地面层可建（唯一）', '讨伐军进入据点后需等待 2 天才会开战'];
+    if (type === 'MAZE_III') return ['仅地面层可建（唯一）', '讨伐军进入据点后需等待 3 天才会开战'];
     return [];
+  };
+
+  const getBuildingYieldLines = (type: BuildingType, depth: number) => {
+    if (type === 'HOUSING') return [`税收：每 3 天 +${18 + depth * 4} 第纳尔（每座）`];
+    if (type === 'TRAINING_CAMP') return [`训练：每 3 天触发一次（强度随数量提升）`];
+    if (type === 'RECRUITER') return [`征募：每 4 天 +${4 + Math.min(6, depth * 2)} 名守军（每座，上限内）`];
+    if (type === 'SHRINE') return [`信徒：每 4 天 +${3 + Math.min(4, depth)} 名（每座，上限内，需宗教）`];
+    if (type === 'MAZE_I') return ['延缓：敌军抵达后需等待 1 天才会开战'];
+    if (type === 'MAZE_II') return ['延缓：敌军抵达后需等待 2 天才会开战'];
+    if (type === 'MAZE_III') return ['延缓：敌军抵达后需等待 3 天才会开战'];
+    return [];
+  };
+
+  const getBuildingSpec = (type: BuildingType) => buildingOptions.find(b => b.type === type) ?? null;
+
+  const getUpgradeNextType = (type: BuildingType): BuildingType | null => {
+    if (type === 'AA_TOWER_I') return 'AA_TOWER_II';
+    if (type === 'AA_TOWER_II') return 'AA_TOWER_III';
+    if (type === 'AA_NET_I') return 'AA_NET_II';
+    if (type === 'AA_RADAR_I') return 'AA_RADAR_II';
+    if (type === 'MAZE_I') return 'MAZE_II';
+    if (type === 'MAZE_II') return 'MAZE_III';
+    return null;
+  };
+
+  const getUpgradeCostDays = (fromType: BuildingType, toType: BuildingType) => {
+    const from = getBuildingSpec(fromType);
+    const to = getBuildingSpec(toType);
+    if (!from || !to) return null;
+    const delta = Math.max(1, to.cost - from.cost);
+    return { cost: Math.ceil(delta * 1.05), days: to.days, name: to.name };
   };
 
   const handleBuySiegeEngine = (engine: { type: SiegeEngineType; name: string; cost: number; days: number }) => {
@@ -1595,6 +1627,22 @@ export const TownView = ({
       addLog("伪装结构只能在地面层建造。");
       return;
     }
+    if (building.type === 'MAZE_I') {
+      if (category !== 'DEFENSE') {
+        addLog("迷宫属于防御设施。");
+        return;
+      }
+      if (layer.depth !== 0) {
+        addLog("迷宫只能在地面层建造。");
+        return;
+      }
+      const allDefense = (hideout.layers ?? []).flatMap(l => l.defenseSlots ?? []);
+      const hasMaze = allDefense.some(s => s.type === 'MAZE_I' || s.type === 'MAZE_II' || s.type === 'MAZE_III');
+      if (hasMaze) {
+        addLog("迷宫为唯一建筑，隐匿点内已存在。");
+        return;
+      }
+    }
     if (building.type === 'AA_TOWER_II' || building.type === 'AA_TOWER_III' || building.type === 'AA_NET_II' || building.type === 'AA_RADAR_II') {
       const prereq = building.type === 'AA_TOWER_II'
         ? 'AA_TOWER_I'
@@ -1668,6 +1716,55 @@ export const TownView = ({
       }
     });
     addLog(`伪装结构启动：暴露程度降低 ${Math.round(exposure - reduced)}。`);
+  };
+
+  const handleHideoutUpgradeSlot = (category: 'FACILITY' | 'DEFENSE', slotIndex: number) => {
+    if (!isHideout || !isOwnedByPlayer) return;
+    const hideout = currentLocation.hideout;
+    if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
+    const layerIndex = Math.max(0, Math.min(hideout.layers.length - 1, hideout.selectedLayer ?? 0));
+    const layer = hideout.layers[layerIndex];
+    const idx = Math.max(0, Math.min(9, Math.floor(slotIndex)));
+    const slots = (category === 'FACILITY' ? layer.facilitySlots : layer.defenseSlots) ?? [];
+    const slot = (slots as any[])[idx] as any;
+    const type = (slot?.type ?? null) as BuildingType | null;
+    if (!type) return;
+    if (slot?.daysLeft && slot.daysLeft > 0) {
+      addLog("该建筑仍在施工中。");
+      return;
+    }
+    const nextType = getUpgradeNextType(type);
+    if (!nextType) {
+      addLog("该建筑已达到最高等级。");
+      return;
+    }
+    if (type === 'MAZE_I' || type === 'MAZE_II') {
+      if (layer.depth !== 0 || category !== 'DEFENSE') {
+        addLog("迷宫只能存在于地面层的防御槽。");
+        return;
+      }
+    }
+    const spec = getUpgradeCostDays(type, nextType);
+    if (!spec) return;
+    if (player.gold < spec.cost) {
+      addLog("资金不足，无法升级。");
+      return;
+    }
+    setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - spec.cost) }));
+    updateHideoutLayerWithLocalLog(
+      layerIndex,
+      (l) => {
+        const emptySlot = { type: null as BuildingType | null, daysLeft: undefined as number | undefined, totalDays: undefined as number | undefined };
+        const nextSlots = [...((category === 'FACILITY' ? l.facilitySlots : l.defenseSlots) ?? Array.from({ length: 10 }, () => ({ ...emptySlot })))];
+        const existing = nextSlots[idx] ?? { ...emptySlot };
+        nextSlots[idx] = { ...existing, type: nextType, daysLeft: spec.days, totalDays: spec.days };
+        return category === 'FACILITY'
+          ? { ...l, facilitySlots: nextSlots }
+          : { ...l, defenseSlots: nextSlots };
+      },
+      `升级：${layer.name} 槽位${idx + 1} 升级为 ${spec.name}（${spec.days}天）。`
+    );
+    addLog(`开始升级为 ${spec.name}，需要 ${spec.days} 天。`);
   };
 
   const handleHideoutStartRefine = () => {
@@ -2222,6 +2319,7 @@ export const TownView = ({
                   key={item.id}
                   onClick={() => {
                     setHideoutBuildTarget(null);
+                    setHideoutInspectTarget(null);
                     setHideoutPage(item.id);
                   }}
                   className={`px-3 py-2 rounded border text-sm ${hideoutPage === item.id ? 'bg-emerald-900/30 border-emerald-700 text-emerald-200' : 'bg-stone-900/60 border-stone-700 text-stone-400 hover:border-stone-500'}`}
@@ -2411,10 +2509,17 @@ export const TownView = ({
                       </div>
                     )}
                     {slot.type ? (
-                      <div className="space-y-2">
+                      <button
+                        className="w-full h-full text-left space-y-2 hover:text-emerald-200 transition-colors"
+                        onClick={() => {
+                          setHideoutInspectTarget({ category: 'FACILITY', slotIndex });
+                          setHideoutPage('DETAIL');
+                        }}
+                        title="点击查看详情"
+                      >
                         <div className="text-xs text-stone-500">槽位 {slotIndex + 1}</div>
                         <div className="text-stone-200 font-bold text-sm">{getHideoutSlotLabel(slot)}</div>
-                      </div>
+                      </button>
                     ) : (
                       <button
                         className="w-full h-full flex flex-col items-center justify-center gap-2 text-stone-400 hover:text-emerald-200 transition-colors"
@@ -2448,10 +2553,17 @@ export const TownView = ({
                       </div>
                     )}
                     {slot.type ? (
-                      <div className="space-y-2">
+                      <button
+                        className="w-full h-full text-left space-y-2 hover:text-emerald-200 transition-colors"
+                        onClick={() => {
+                          setHideoutInspectTarget({ category: 'DEFENSE', slotIndex });
+                          setHideoutPage('DETAIL');
+                        }}
+                        title="点击查看详情"
+                      >
                         <div className="text-xs text-stone-500">槽位 {slotIndex + 1}</div>
                         <div className="text-stone-200 font-bold text-sm">{getHideoutSlotLabel(slot)}</div>
-                      </div>
+                      </button>
                     ) : (
                       <button
                         className="w-full h-full flex flex-col items-center justify-center gap-2 text-stone-400 hover:text-emerald-200 transition-colors"
@@ -2512,10 +2624,16 @@ export const TownView = ({
                           );
                         }
                         const options = (category === 'FACILITY' ? hideoutFacilityBuildOptions : hideoutDefenseBuildOptions)
-                          .filter(opt => depth === 0 ? true : opt.type !== 'CAMOUFLAGE_STRUCTURE');
+                          .filter(opt => depth === 0 ? true : (opt.type !== 'CAMOUFLAGE_STRUCTURE' && opt.type !== 'MAZE_I'));
                         const defenseBuilt = hideoutDefenseSlots.filter(s => s.type && isSlotBuilt(s)).map(s => s.type as BuildingType);
+                        const hasMaze = hideoutDefenseSlots.some(s => s.type === 'MAZE_I' || s.type === 'MAZE_II' || s.type === 'MAZE_III');
                         const canBuildType = (type: BuildingType) => {
                           if (category === 'DEFENSE' && type === 'CAMOUFLAGE_STRUCTURE' && depth !== 0) return { ok: false, reason: '仅地面层可建造' };
+                          if (type === 'MAZE_I') {
+                            if (category !== 'DEFENSE') return { ok: false, reason: '迷宫属于防御设施' };
+                            if (depth !== 0) return { ok: false, reason: '仅地面层可建造' };
+                            if (hasMaze) return { ok: false, reason: '唯一建筑，已存在' };
+                          }
                           if (type === 'AA_TOWER_II' && !defenseBuilt.includes('AA_TOWER_I')) return { ok: false, reason: '需要 AA_TOWER_I' };
                           if (type === 'AA_TOWER_III' && !defenseBuilt.includes('AA_TOWER_II')) return { ok: false, reason: '需要 AA_TOWER_II' };
                           if (type === 'AA_NET_II' && !defenseBuilt.includes('AA_NET_I')) return { ok: false, reason: '需要 AA_NET_I' };
@@ -2566,6 +2684,134 @@ export const TownView = ({
                       })()}
                     </div>
                   </>
+                )}
+              </div>
+            )}
+
+            {hideoutPage === 'DETAIL' && (
+              <div className="bg-stone-900/60 border border-stone-800 rounded p-6 space-y-4 animate-fade-in">
+                {!hideoutInspectTarget ? (
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-400">未选择槽位。</div>
+                    <Button variant="secondary" onClick={() => setHideoutPage('DASHBOARD')}>返回</Button>
+                  </div>
+                ) : (
+                  (() => {
+                    const category = hideoutInspectTarget.category;
+                    const slotIndex = hideoutInspectTarget.slotIndex;
+                    const slots = category === 'FACILITY' ? hideoutFacilitySlots : hideoutDefenseSlots;
+                    const slot = slots[slotIndex];
+                    if (!slot?.type) {
+                      return (
+                        <div className="flex items-center justify-between">
+                          <div className="text-stone-400">该槽位为空。</div>
+                          <Button
+                            variant="secondary"
+                            onClick={() => {
+                              setHideoutBuildTarget({ category, slotIndex });
+                              setHideoutPage('BUILD');
+                            }}
+                          >
+                            去建造
+                          </Button>
+                        </div>
+                      );
+                    }
+                    const spec = getBuildingSpec(slot.type);
+                    const upgradeNext = getUpgradeNextType(slot.type);
+                    const upgrade = upgradeNext ? getUpgradeCostDays(slot.type, upgradeNext) : null;
+                    const isConstructing = !!slot.daysLeft && slot.daysLeft > 0;
+                    const effects = getBuildingEffects(slot.type);
+                    const yields = getBuildingYieldLines(slot.type, hideoutSelectedLayer?.depth ?? 0);
+                    const blockMaze = (slot.type === 'MAZE_I' || slot.type === 'MAZE_II') && (hideoutSelectedLayer?.depth ?? 0) !== 0;
+                    const upgradeDisabled = !upgrade || isConstructing || blockMaze || player.gold < (upgrade?.cost ?? 0);
+                    return (
+                      <>
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                          <div>
+                            <div className="text-stone-200 font-bold">
+                              {category === 'FACILITY' ? '建筑槽' : '防御槽'} · 槽位 {slotIndex + 1}
+                            </div>
+                            <div className="text-stone-500 text-sm mt-1">
+                              {getHideoutSlotLabel(slot)}
+                            </div>
+                          </div>
+                          <Button
+                            variant="secondary"
+                            onClick={() => {
+                              setHideoutInspectTarget(null);
+                              setHideoutPage(category === 'FACILITY' ? 'FACILITIES' : 'DEFENSE');
+                            }}
+                          >
+                            返回槽位
+                          </Button>
+                        </div>
+
+                        {spec && (
+                          <div className="bg-stone-950/40 border border-stone-800 rounded p-4 space-y-2">
+                            <div className="text-stone-200 font-bold">{spec.name}</div>
+                            <div className="text-sm text-stone-400">{spec.description}</div>
+                            <div className="text-xs text-stone-500">建造时间：{spec.days} 天</div>
+                            {isConstructing && (
+                              <div className="text-xs text-amber-300">
+                                施工中：剩余 {slot.daysLeft} 天（总计 {slot.totalDays ?? spec.days} 天）
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {effects.length > 0 && (
+                          <div className="flex flex-wrap gap-2 text-xs text-stone-400">
+                            {effects.map((t, idx) => (
+                              <span key={`detail_eff_${idx}`} className="px-2 py-1 rounded border border-stone-800 bg-stone-900/40">{t}</span>
+                            ))}
+                          </div>
+                        )}
+                        {yields.length > 0 && (
+                          <div className="flex flex-wrap gap-2 text-xs text-stone-400">
+                            {yields.map((t, idx) => (
+                              <span key={`detail_yield_${idx}`} className="px-2 py-1 rounded border border-stone-800 bg-stone-900/40">{t}</span>
+                            ))}
+                          </div>
+                        )}
+
+                        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                          <div className="text-stone-500 text-sm">当前资金：{player.gold} 第纳尔</div>
+                          {upgrade && (
+                            <Button
+                              variant="secondary"
+                              disabled={upgradeDisabled}
+                              onClick={() => {
+                                handleHideoutUpgradeSlot(category, slotIndex);
+                                const id = `upgrade_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+                                setHideoutBuildAnim({ category, slotIndex, id });
+                                setTimeout(() => setHideoutBuildAnim(prev => (prev?.id === id ? null : prev)), 650);
+                                setHideoutInspectTarget(null);
+                                setHideoutPage(category === 'FACILITY' ? 'FACILITIES' : 'DEFENSE');
+                              }}
+                            >
+                              升级为 {upgrade.name}（{upgrade.days}天 / {upgrade.cost}）
+                            </Button>
+                          )}
+                          {!upgrade && (
+                            <Button variant="secondary" disabled>
+                              已满级
+                            </Button>
+                          )}
+                        </div>
+
+                        {upgrade && !isConstructing && player.gold < upgrade.cost && (
+                          <div className="text-xs text-red-300">资金不足</div>
+                        )}
+                        {upgrade && isConstructing && (
+                          <div className="text-xs text-amber-300">施工中无法升级</div>
+                        )}
+                        {upgrade && blockMaze && (
+                          <div className="text-xs text-amber-300">迷宫只能在地面层升级</div>
+                        )}
+                      </>
+                    );
+                  })()
                 )}
               </div>
             )}

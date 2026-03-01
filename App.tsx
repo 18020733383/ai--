@@ -2757,7 +2757,10 @@ export default function App() {
     { type: 'AA_NET_I', name: '防空幕网·I', cost: 520, days: 2, description: '在关键区域布置幕网与诱饵，降低空袭杀伤。' },
     { type: 'AA_NET_II', name: '防空幕网·II', cost: 880, days: 3, description: '更高密度的幕网与诱饵阵列。' },
     { type: 'AA_RADAR_I', name: '预警瞭望链·I', cost: 460, days: 2, description: '改良岗哨与信号传递，提高对空发现与远程命中。' },
-    { type: 'AA_RADAR_II', name: '预警瞭望链·II', cost: 820, days: 3, description: '更完整的预警与引导，显著提升对空命中。' }
+    { type: 'AA_RADAR_II', name: '预警瞭望链·II', cost: 820, days: 3, description: '更完整的预警与引导，显著提升对空命中。' },
+    { type: 'MAZE_I', name: '迷宫·I', cost: 520, days: 2, description: '入口迷阵与岔路陷阱，让敌军在黑暗中迷失。' },
+    { type: 'MAZE_II', name: '迷宫·II', cost: 920, days: 3, description: '更复杂的回廊与诱导路标，将敌军拖入无意义的绕行。' },
+    { type: 'MAZE_III', name: '迷宫·III', cost: 1450, days: 4, description: '成体系的迷宫网络与封闭门闩，把时间榨干。' }
   ];
 
   const getBuildingName = (type: BuildingType) => buildingOptions.find(b => b.type === type)?.name ?? type;
@@ -3637,6 +3640,13 @@ export default function App() {
          const siegeFactionName = siege.attackerFactionId ? (FACTIONS.find(f => f.id === siege.attackerFactionId)?.name ?? siege.attackerName) : siege.attackerName;
 
          if (loc.type === 'HIDEOUT' && loc.owner === 'PLAYER' && loc.hideout && Array.isArray(loc.hideout.layers) && loc.hideout.layers.length > 0) {
+          if (typeof siege.startDay === 'number' && nextDay < siege.startDay) {
+            const remaining = Math.max(1, Math.floor(siege.startDay - nextDay));
+            if (remaining <= 3 || remaining % 2 === 1) {
+              addLocalLog(loc.id, `迷宫延缓：敌军仍在迷阵中摸索（还需 ${remaining} 天）。`);
+            }
+            return { ...loc, activeSiege: siege, isUnderSiege: true };
+          }
           const layerIndexRaw = (siege as any).hideoutLayerIndex ?? loc.hideout.selectedLayer ?? 0;
           const layerIndex = Math.max(0, Math.min(loc.hideout.layers.length - 1, Math.floor(layerIndexRaw)));
           const layer = loc.hideout.layers[layerIndex];
@@ -4230,11 +4240,25 @@ export default function App() {
         }
         const raidTroops = (camp.garrison ?? []).map(t => ({ ...t }));
         const raidPower = calculatePower(raidTroops);
+        const hideoutDelayDays = (() => {
+          if (target.type !== 'HIDEOUT') return 0;
+          const layer0 = target.hideout?.layers?.[0];
+          if (!layer0) return 0;
+          const slots = Array.isArray(layer0.defenseSlots) ? layer0.defenseSlots : [];
+          const built = slots
+            .map(s => ({ type: (s as any)?.type as BuildingType | null, daysLeft: (s as any)?.daysLeft as number | undefined }))
+            .filter(s => !!s.type && !(typeof s.daysLeft === 'number' && s.daysLeft > 0))
+            .map(s => s.type as BuildingType);
+          if (built.includes('MAZE_III')) return 3;
+          if (built.includes('MAZE_II')) return 2;
+          if (built.includes('MAZE_I')) return 1;
+          return 0;
+        })();
         target.activeSiege = {
           attackerName: meta.attackerName,
           attackerFactionId: camp.factionId,
           troops: raidTroops,
-          startDay: nextDay,
+          startDay: nextDay + hideoutDelayDays,
           totalPower: raidPower,
           siegeEngines: ['SIMPLE_LADDER'],
           hideoutLayerIndex: target.type === 'HIDEOUT' ? 0 : undefined
@@ -4244,8 +4268,13 @@ export default function App() {
           target.imposterAlertUntilDay = undefined;
         }
         newLocations[targetIndex] = target;
-        logsToAdd.push(`【行军营地】${meta.attackerName} 抵达 ${target.name}，开始围攻。`);
-        addLocalLog(target.id, `遭到 ${meta.attackerName} 围攻。`);
+        if (target.type === 'HIDEOUT' && hideoutDelayDays > 0) {
+          logsToAdd.push(`【行军营地】${meta.attackerName} 抵达 ${target.name}，进入迷宫，预计 ${hideoutDelayDays} 天后开始围攻。`);
+          addLocalLog(target.id, `遭到 ${meta.attackerName} 围攻（迷宫延缓 ${hideoutDelayDays} 天）。`);
+        } else {
+          logsToAdd.push(`【行军营地】${meta.attackerName} 抵达 ${target.name}，开始围攻。`);
+          addLocalLog(target.id, `遭到 ${meta.attackerName} 围攻。`);
+        }
         if (target.type === 'HIDEOUT' && target.hideout?.layers?.length) {
           const guardianHeroId = target.hideout.layers[0]?.guardianHeroId;
           const guardian = guardianHeroId ? nextHeroes.find(h => h.id === guardianHeroId) ?? null : null;
@@ -5466,6 +5495,9 @@ export default function App() {
     const aaRadar1 = countOf('AA_RADAR_I');
     const aaRadar2 = countOf('AA_RADAR_II');
     const camouflage = countOf('CAMOUFLAGE_STRUCTURE');
+    const maze1 = countOf('MAZE_I');
+    const maze2 = countOf('MAZE_II');
+    const maze3 = countOf('MAZE_III');
     pushMechanism("防空箭塔·I", "加固箭塔与集束瞄具，可稳定压制低空目标。", aaTower1);
     details.antiAirPowerBonus += 0.12 * aaTower1;
     extraMechanismHp += 120 * aaTower1;
@@ -5496,6 +5528,9 @@ export default function App() {
     extraMechanismHp += 200 * aaRadar2;
     extraRangedHit += 0.05 * aaRadar2;
     pushMechanism("伪装结构", "用伪装与隔离降低暴露程度。", camouflage);
+    pushMechanism("迷宫·I", "迷阵与岔路将敌军拖慢。", maze1);
+    pushMechanism("迷宫·II", "更复杂的回廊网络，将敌军拖慢更久。", maze2);
+    pushMechanism("迷宫·III", "成体系的迷宫网络，把时间榨干。", maze3);
 
     const mechanismCount = details.mechanisms.length;
     details.wallHp = Math.max(0, details.wallLevel) * 650 + (hasDefenseBuilding ? 260 : 0);
@@ -8464,7 +8499,7 @@ export default function App() {
         if (baseLoc.type !== 'HIDEOUT') return baseLoc;
         const hideout = baseLoc.hideout;
         const layersRaw = Array.isArray(hideout?.layers) ? hideout!.layers : [];
-        const defenseSet = new Set<BuildingType>(['DEFENSE', 'AA_TOWER_I', 'AA_TOWER_II', 'AA_TOWER_III', 'AA_NET_I', 'AA_NET_II', 'AA_RADAR_I', 'AA_RADAR_II', 'CAMOUFLAGE_STRUCTURE']);
+        const defenseSet = new Set<BuildingType>(['DEFENSE', 'AA_TOWER_I', 'AA_TOWER_II', 'AA_TOWER_III', 'AA_NET_I', 'AA_NET_II', 'AA_RADAR_I', 'AA_RADAR_II', 'CAMOUFLAGE_STRUCTURE', 'MAZE_I', 'MAZE_II', 'MAZE_III']);
         const normalizeSlots = (slots: any[] | undefined, fallbackBuildings: BuildingType[] | undefined, pickDefense: boolean) => {
           const safe = Array.isArray(slots) ? slots : [];
           const base = Array.from({ length: 10 }, (_, i) => {
