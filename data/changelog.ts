@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.35',
+    date: '2026-03-01',
+    items: [
+      '隐匿点位置调整到地图边缘',
+      '隐匿点改为每层10个建筑槽+10个防御槽，可重复建造',
+      '新增神殿/矿石精炼厂/伪装结构与暴露程度系统'
+    ]
+  },
+  {
     version: '0.3.34',
     date: '2026-03-01',
     items: [

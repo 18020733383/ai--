@@ -1242,8 +1242,51 @@ export const TownView = ({
   const builtBuildings = currentLocation.buildings ?? [];
 
   const hideoutLayerCapBase = hideoutSelectedLayer?.garrisonBaseLimit ?? 900;
-  const hideoutLayerHasBarracks = (hideoutSelectedLayer?.buildings ?? []).includes('BARRACKS');
+  const hideoutLayerHasBarracks = (hideoutSelectedLayer?.facilitySlots ?? []).some(s => s.type === 'BARRACKS' && !(s.daysLeft && s.daysLeft > 0));
   const hideoutLayerLimit = hideoutLayerHasBarracks ? Math.floor(hideoutLayerCapBase * 1.5) : hideoutLayerCapBase;
+
+  const normalizeHideoutSlots = (slots: any[] | undefined) => {
+    const safe = Array.isArray(slots) ? slots : [];
+    return Array.from({ length: 10 }, (_, i) => {
+      const raw = safe[i];
+      if (!raw || typeof raw !== 'object') return { type: null as BuildingType | null } as const;
+      const type = (raw as any).type as BuildingType | null;
+      const daysLeft = typeof (raw as any).daysLeft === 'number' ? Math.max(0, Math.floor((raw as any).daysLeft)) : undefined;
+      const totalDays = typeof (raw as any).totalDays === 'number' ? Math.max(0, Math.floor((raw as any).totalDays)) : undefined;
+      return { type: type ?? null, daysLeft, totalDays } as const;
+    });
+  };
+  const isSlotBuilt = (slot: { type: BuildingType | null; daysLeft?: number }) => !!slot.type && !(slot.daysLeft && slot.daysLeft > 0);
+  const hideoutFacilitySlots = normalizeHideoutSlots(hideoutSelectedLayer?.facilitySlots as any);
+  const hideoutDefenseSlots = normalizeHideoutSlots(hideoutSelectedLayer?.defenseSlots as any);
+  const hideoutExposure = Math.max(0, Math.min(100, hideoutState?.exposure ?? 0));
+  const hideoutCamouflageCooldownUntilDay = hideoutState?.camouflageCooldownUntilDay ?? 0;
+
+  const [hideoutFacilityChoices, setHideoutFacilityChoices] = React.useState<Record<number, BuildingType>>({});
+  const [hideoutDefenseChoices, setHideoutDefenseChoices] = React.useState<Record<number, BuildingType>>({});
+  const [hideoutRefineMineralId, setHideoutRefineMineralId] = React.useState<MineralId>('NULL_CRYSTAL');
+  const [hideoutRefineFromPurity, setHideoutRefineFromPurity] = React.useState<MineralPurity>(1);
+  const [hideoutRefineOutputCount, setHideoutRefineOutputCount] = React.useState(1);
+
+  const hideoutFacilityBuildOptions = buildingOptions.filter(b => (
+    b.type === 'HOUSING' ||
+    b.type === 'TRAINING_CAMP' ||
+    b.type === 'BARRACKS' ||
+    b.type === 'RECRUITER' ||
+    b.type === 'SHRINE' ||
+    b.type === 'ORE_REFINERY'
+  ));
+  const hideoutDefenseBuildOptions = buildingOptions.filter(b => (
+    b.type === 'DEFENSE' ||
+    b.type === 'AA_TOWER_I' ||
+    b.type === 'AA_TOWER_II' ||
+    b.type === 'AA_TOWER_III' ||
+    b.type === 'AA_NET_I' ||
+    b.type === 'AA_NET_II' ||
+    b.type === 'AA_RADAR_I' ||
+    b.type === 'AA_RADAR_II' ||
+    b.type === 'CAMOUFLAGE_STRUCTURE'
+  ));
 
   const handleBuySiegeEngine = (engine: { type: SiegeEngineType; name: string; cost: number; days: number }) => {
     if (!isSiegeTarget && !isImposterPortal) return;
@@ -1395,15 +1438,16 @@ export const TownView = ({
       depth: nextDepth,
       name,
       garrison: [],
-      buildings: [],
-      constructionQueue: [],
-      garrisonBaseLimit: 900 + nextDepth * 650
+      garrisonBaseLimit: 900 + nextDepth * 650,
+      facilitySlots: Array.from({ length: 10 }, () => ({ type: null })),
+      defenseSlots: Array.from({ length: 10 }, () => ({ type: null })),
+      refineQueue: []
     };
     setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - cost) }));
     updateLocationState({
       ...currentLocation,
       hideout: {
-        ...(hideout ?? { layers: [], selectedLayer: 0, lastRaidDay: 0 }),
+        ...(hideout ?? { layers: [], selectedLayer: 0, lastRaidDay: 0, exposure: 8, camouflageCooldownUntilDay: 0 }),
         layers: [...layers, nextLayer],
         selectedLayer: nextDepth
       }
@@ -1420,7 +1464,7 @@ export const TownView = ({
     const troop = player.troops.find(t => t.id === troopId);
     if (!troop) return;
     const capBase = layer.garrisonBaseLimit ?? 900;
-    const hasBarracks = (layer.buildings ?? []).includes('BARRACKS');
+    const hasBarracks = (layer.facilitySlots ?? []).some(s => s.type === 'BARRACKS' && !(s.daysLeft && s.daysLeft > 0));
     const limit = hasBarracks ? Math.floor(capBase * 1.5) : capBase;
     const currentCount = (layer.garrison ?? []).reduce((sum, t) => sum + (t.count ?? 0), 0);
     const availableCapacity = limit - currentCount;
@@ -1471,31 +1515,147 @@ export const TownView = ({
     addLog(`已从 ${layer.name} 调回 ${moveCount} 名 ${garrisonTroop.name}。`);
   };
 
-  const handleHideoutStartConstruction = (building: { type: BuildingType; name: string; cost: number; days: number }) => {
+  const handleHideoutBuildInSlot = (category: 'FACILITY' | 'DEFENSE', slotIndex: number, building: { type: BuildingType; name: string; cost: number; days: number }) => {
     if (!isHideout || !isOwnedByPlayer) return;
     const hideout = currentLocation.hideout;
     if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
     const layerIndex = Math.max(0, Math.min(hideout.layers.length - 1, hideout.selectedLayer ?? 0));
     const layer = hideout.layers[layerIndex];
-    if (player.gold < building.cost) {
-      addLog("资金不足，无法建造建筑。");
+    const slots = (category === 'FACILITY' ? layer.facilitySlots : layer.defenseSlots) ?? Array.from({ length: 10 }, () => ({ type: null as BuildingType | null }));
+    const idx = Math.max(0, Math.min(9, Math.floor(slotIndex)));
+    const existing = slots[idx] ?? { type: null };
+    if (existing.type) {
+      addLog("该槽位已占用。");
       return;
     }
-    const alreadyBuilt = (layer.buildings ?? []).includes(building.type);
-    const alreadyQueued = (layer.constructionQueue ?? []).some(q => q.type === building.type);
-    if (alreadyBuilt || alreadyQueued) {
-      addLog("该建筑已存在或正在建造中。");
+    if (category === 'DEFENSE' && building.type === 'CAMOUFLAGE_STRUCTURE' && layer.depth !== 0) {
+      addLog("伪装结构只能在地面层建造。");
+      return;
+    }
+    if (building.type === 'AA_TOWER_II' || building.type === 'AA_TOWER_III' || building.type === 'AA_NET_II' || building.type === 'AA_RADAR_II') {
+      const prereq = building.type === 'AA_TOWER_II'
+        ? 'AA_TOWER_I'
+        : building.type === 'AA_TOWER_III'
+          ? 'AA_TOWER_II'
+          : building.type === 'AA_NET_II'
+            ? 'AA_NET_I'
+            : 'AA_RADAR_I';
+      const present = (layer.defenseSlots ?? []).some(s => s.type === prereq);
+      if (!present) {
+        addLog(`需要先在该层建造 ${getBuildingName(prereq)}。`);
+        return;
+      }
+    }
+    if (building.type === 'CAMOUFLAGE_STRUCTURE') {
+      const hasCamouflage = (layer.defenseSlots ?? []).some(s => s.type === 'CAMOUFLAGE_STRUCTURE');
+      if (hasCamouflage) {
+        addLog("该层已存在伪装结构。");
+        return;
+      }
+    }
+    if (player.gold < building.cost) {
+      addLog("资金不足，无法建造。");
       return;
     }
     setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - building.cost) }));
+    updateHideoutLayer(layerIndex, l => {
+      const emptySlot = { type: null as BuildingType | null, daysLeft: undefined as number | undefined, totalDays: undefined as number | undefined };
+      const nextSlots = [...((category === 'FACILITY' ? l.facilitySlots : l.defenseSlots) ?? Array.from({ length: 10 }, () => ({ ...emptySlot })))];
+      nextSlots[idx] = { type: building.type, daysLeft: building.days, totalDays: building.days };
+      return category === 'FACILITY'
+        ? { ...l, facilitySlots: nextSlots }
+        : { ...l, defenseSlots: nextSlots };
+    });
+    addLog(`开始在 ${layer.name} 建造 ${building.name}（槽位 ${idx + 1}），需要 ${building.days} 天。`);
+  };
+
+  const handleHideoutReduceExposure = () => {
+    if (!isHideout || !isOwnedByPlayer) return;
+    const hideout = currentLocation.hideout;
+    if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
+    const layer0 = hideout.layers[0];
+    const hasCamouflage = (layer0.defenseSlots ?? []).some(s => s.type === 'CAMOUFLAGE_STRUCTURE' && !(s.daysLeft && s.daysLeft > 0));
+    if (!hasCamouflage) {
+      addLog("需要在地面层建造伪装结构。");
+      return;
+    }
+    const cooldownUntil = hideout.camouflageCooldownUntilDay ?? 0;
+    if (player.day < cooldownUntil) {
+      addLog(`伪装结构冷却中（第 ${cooldownUntil} 天可用）。`);
+      return;
+    }
+    const cost = 260;
+    if (player.gold < cost) {
+      addLog("资金不足，无法启动伪装。");
+      return;
+    }
+    const exposure = Math.max(0, Math.min(100, hideout.exposure ?? 0));
+    const reduced = Math.max(0, exposure - 18);
+    setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - cost) }));
+    updateLocationState({
+      ...currentLocation,
+      hideout: {
+        ...hideout,
+        exposure: reduced,
+        camouflageCooldownUntilDay: player.day + 6
+      }
+    });
+    addLog(`伪装结构启动：暴露程度降低 ${Math.round(exposure - reduced)}。`);
+  };
+
+  const handleHideoutStartRefine = () => {
+    if (!isHideout || !isOwnedByPlayer) return;
+    const hideout = currentLocation.hideout;
+    if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
+    const layerIndex = Math.max(0, Math.min(hideout.layers.length - 1, hideout.selectedLayer ?? 0));
+    const layer = hideout.layers[layerIndex];
+    const hasRefinery = (layer.facilitySlots ?? []).some(s => s.type === 'ORE_REFINERY' && !(s.daysLeft && s.daysLeft > 0));
+    if (!hasRefinery) {
+      addLog("需要先在该层建造矿石精炼厂。");
+      return;
+    }
+    const fromPurity = Math.max(1, Math.min(4, Math.floor(hideoutRefineFromPurity))) as MineralPurity;
+    const toPurity = (fromPurity + 1) as MineralPurity;
+    const outputs = Math.max(1, Math.min(50, Math.floor(hideoutRefineOutputCount || 1)));
+    const inputAmount = outputs * 3;
+    const record = mineralInventory[hideoutRefineMineralId] ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    const available = record[fromPurity] ?? 0;
+    if (available < inputAmount) {
+      addLog("矿石不足，无法开始精炼。");
+      return;
+    }
+    const cost = outputs * (40 + toPurity * 25);
+    if (player.gold < cost) {
+      addLog("资金不足，无法开始精炼。");
+      return;
+    }
+    const days = 1 + toPurity;
+    const nextMinerals = {
+      ...mineralInventory,
+      [hideoutRefineMineralId]: {
+        ...record,
+        [fromPurity]: available - inputAmount
+      }
+    };
+    const jobId = `refine_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - cost), minerals: nextMinerals }));
     updateHideoutLayer(layerIndex, l => ({
       ...l,
-      constructionQueue: [
-        ...(l.constructionQueue ?? []),
-        { type: building.type, daysLeft: building.days, totalDays: building.days }
+      refineQueue: [
+        ...((l.refineQueue ?? []) as any[]),
+        {
+          id: jobId,
+          mineralId: hideoutRefineMineralId,
+          fromPurity,
+          toPurity,
+          inputAmount,
+          outputAmount: outputs,
+          daysLeft: days,
+          totalDays: days
+        }
       ]
     }));
-    addLog(`开始在 ${layer.name} 建造 ${building.name}，需要 ${building.days} 天。`);
+    addLog(`开始精炼：${hideoutRefineMineralId} 纯度${fromPurity}×${inputAmount} → 纯度${toPurity}×${outputs}（${days} 天）。`);
   };
 
   const handleHideoutSetGuardian = (heroId: string) => {
@@ -1911,16 +2071,42 @@ export const TownView = ({
                     当前层：{hideoutSelectedLayer?.name ?? '未知'}｜驻军 {hideoutLayerGarrisonCount}/{hideoutLayerLimit}
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <div className="text-sm text-stone-400">扩建新层成本：</div>
-                  <div className="text-amber-400 font-mono">{900 + ((hideoutState?.layers?.length ?? 0)) * 650}</div>
-                  <Button
-                    variant="secondary"
-                    disabled={player.gold < (900 + ((hideoutState?.layers?.length ?? 0)) * 650)}
-                    onClick={handleHideoutExpand}
-                  >
-                    扩建
-                  </Button>
+                <div className="flex flex-col items-end gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm text-stone-400">扩建新层成本：</div>
+                    <div className="text-amber-400 font-mono">{900 + ((hideoutState?.layers?.length ?? 0)) * 650}</div>
+                    <Button
+                      variant="secondary"
+                      disabled={player.gold < (900 + ((hideoutState?.layers?.length ?? 0)) * 650)}
+                      onClick={handleHideoutExpand}
+                    >
+                      扩建
+                    </Button>
+                  </div>
+                  <div className="w-full md:w-[360px]">
+                    <div className="flex items-center justify-between text-xs text-stone-500 mb-1">
+                      <span>暴露程度</span>
+                      <span className="font-mono">{Math.round(hideoutExposure)}%</span>
+                    </div>
+                    <div className="w-full h-3 bg-stone-950 border border-stone-800 rounded overflow-hidden">
+                      <div
+                        className="h-full transition-all"
+                        style={{
+                          width: `${hideoutExposure}%`,
+                          backgroundColor: hideoutExposure >= 85 ? '#ef4444' : hideoutExposure >= 65 ? '#f97316' : hideoutExposure >= 40 ? '#eab308' : '#34d399'
+                        }}
+                      />
+                    </div>
+                    <div className="mt-2 flex items-center justify-end gap-2">
+                      <Button
+                        variant="secondary"
+                        disabled={player.day < hideoutCamouflageCooldownUntilDay || player.gold < 260 || !((hideoutState?.layers?.[0]?.defenseSlots ?? []).some(s => s.type === 'CAMOUFLAGE_STRUCTURE' && !(s.daysLeft && s.daysLeft > 0)))}
+                        onClick={handleHideoutReduceExposure}
+                      >
+                        {player.day < hideoutCamouflageCooldownUntilDay ? `冷却至第${hideoutCamouflageCooldownUntilDay}天` : '降低暴露'}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -2020,79 +2206,162 @@ export const TownView = ({
             </div>
 
             <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4">
-              <div className="text-stone-200 font-bold">该层构筑</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="bg-stone-900 border border-stone-800 p-4 rounded">
-                  <div className="text-stone-200 font-bold mb-2">施工队列</div>
-                  {(hideoutSelectedLayer?.constructionQueue ?? []).length === 0 ? (
-                    <div className="text-stone-500 text-sm">当前没有建筑在施工。</div>
-                  ) : (
-                    <div className="space-y-2">
-                      {(hideoutSelectedLayer?.constructionQueue ?? []).map((item, idx) => (
-                        <div key={`${item.type}-${idx}`} className="flex items-center justify-between text-sm text-stone-300">
-                          <span>{getBuildingName(item.type)}</span>
-                          <span className="text-stone-500">{item.daysLeft} 天</span>
+              <div className="text-stone-200 font-bold">建筑槽（10）</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {hideoutFacilitySlots.map((slot, slotIndex) => {
+                  const isBuilt = isSlotBuilt(slot);
+                  const choice = hideoutFacilityChoices[slotIndex] ?? 'HOUSING';
+                  const selected = hideoutFacilityBuildOptions.find(b => b.type === choice) ?? hideoutFacilityBuildOptions[0];
+                  const canBuild = !slot.type && !!selected && player.gold >= (selected?.cost ?? 0);
+                  return (
+                    <div key={`facility_slot_${slotIndex}`} className="bg-stone-900 border border-stone-800 p-4 rounded">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-stone-300 text-sm font-bold">槽位 {slotIndex + 1}</div>
+                        {slot.type ? (
+                          <span className={`text-xs px-2 py-0.5 rounded border ${isBuilt ? 'bg-emerald-950/30 border-emerald-900/60 text-emerald-200' : 'bg-amber-950/30 border-amber-900/60 text-amber-200'}`}>
+                            {isBuilt ? '已建成' : `施工中 ${slot.daysLeft ?? 0} 天`}
+                          </span>
+                        ) : (
+                          <span className="text-xs px-2 py-0.5 rounded border bg-stone-950/40 border-stone-800 text-stone-500">空</span>
+                        )}
+                      </div>
+                      {slot.type ? (
+                        <div className="text-stone-200 font-bold">{getBuildingName(slot.type)}</div>
+                      ) : (
+                        <div className="space-y-2">
+                          <select
+                            value={choice}
+                            onChange={(e) => setHideoutFacilityChoices(prev => ({ ...prev, [slotIndex]: e.target.value as BuildingType }))}
+                            className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+                          >
+                            {hideoutFacilityBuildOptions.map(opt => (
+                              <option key={`facility_opt_${opt.type}`} value={opt.type}>{opt.name}（{opt.cost} / {opt.days}天）</option>
+                            ))}
+                          </select>
+                          <div className="text-stone-500 text-xs">{selected?.description}</div>
+                          <Button
+                            variant="secondary"
+                            disabled={!canBuild}
+                            onClick={() => selected && handleHideoutBuildInSlot('FACILITY', slotIndex, selected)}
+                          >
+                            建造
+                          </Button>
                         </div>
-                      ))}
+                      )}
                     </div>
-                  )}
-                </div>
-                <div className="bg-stone-900 border border-stone-800 p-4 rounded">
-                  <div className="text-stone-200 font-bold mb-2">已建构筑</div>
-                  {(hideoutSelectedLayer?.buildings ?? []).length === 0 ? (
-                    <div className="text-stone-500 text-sm">尚未建造任何构筑。</div>
-                  ) : (
-                    <div className="flex flex-wrap gap-2">
-                      {(hideoutSelectedLayer?.buildings ?? []).map((item, idx) => (
-                        <span key={`${item}-${idx}`} className="bg-stone-800 text-stone-300 px-2 py-1 rounded text-xs border border-stone-700">
-                          {getBuildingName(item)}
-                        </span>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                  );
+                })}
               </div>
 
-              <div className="text-stone-200 font-bold">可建造构筑</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {buildingOptions
-                  .filter(b => b.type !== 'FACTORY')
-                  .map(building => {
-                    const built = hideoutSelectedLayer?.buildings ?? [];
-                    const queue = hideoutSelectedLayer?.constructionQueue ?? [];
-                    const prereq = building.type === 'AA_TOWER_II'
-                      ? 'AA_TOWER_I'
-                      : building.type === 'AA_TOWER_III'
-                        ? 'AA_TOWER_II'
-                        : building.type === 'AA_NET_II'
-                          ? 'AA_NET_I'
-                          : building.type === 'AA_RADAR_II'
-                            ? 'AA_RADAR_I'
-                            : null;
-                    const superseded = building.type === 'AA_TOWER_I' ? (built.includes('AA_TOWER_II') || built.includes('AA_TOWER_III'))
-                      : building.type === 'AA_TOWER_II' ? built.includes('AA_TOWER_III')
-                        : building.type === 'AA_NET_I' ? built.includes('AA_NET_II')
-                          : building.type === 'AA_RADAR_I' ? built.includes('AA_RADAR_II')
-                            : false;
-                    const missingPrereq = !!prereq && !built.includes(prereq) && !queue.some(q => q.type === prereq);
-                    const disabled = player.gold < building.cost || superseded || built.includes(building.type) || queue.some(q => q.type === building.type) || missingPrereq;
-                    return (
-                      <div key={building.type} className="bg-stone-900 border border-stone-800 p-4 rounded">
-                        <div className="flex items-center justify-between mb-2">
-                          <div className="text-stone-200 font-bold">{building.name}</div>
-                          <span className="text-amber-500 text-sm">{building.cost} 第纳尔</span>
-                        </div>
-                        <div className="text-stone-400 text-xs mb-3">{building.description}（{building.days} 天）</div>
-                        <Button
-                          onClick={() => handleHideoutStartConstruction(building)}
-                          variant="secondary"
-                          disabled={disabled}
-                        >
-                          建造
-                        </Button>
+              <div className="text-stone-200 font-bold mt-2">防御槽（10）</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {hideoutDefenseSlots.map((slot, slotIndex) => {
+                  const isBuilt = isSlotBuilt(slot);
+                  const choice = hideoutDefenseChoices[slotIndex] ?? 'DEFENSE';
+                  const selected = hideoutDefenseBuildOptions.find(b => b.type === choice) ?? hideoutDefenseBuildOptions[0];
+                  const canBuild = !slot.type && !!selected && player.gold >= (selected?.cost ?? 0) && !(selected?.type === 'CAMOUFLAGE_STRUCTURE' && (hideoutSelectedLayer?.depth ?? 0) !== 0);
+                  return (
+                    <div key={`def_slot_${slotIndex}`} className="bg-stone-900 border border-stone-800 p-4 rounded">
+                      <div className="flex items-center justify-between mb-2">
+                        <div className="text-stone-300 text-sm font-bold">槽位 {slotIndex + 1}</div>
+                        {slot.type ? (
+                          <span className={`text-xs px-2 py-0.5 rounded border ${isBuilt ? 'bg-emerald-950/30 border-emerald-900/60 text-emerald-200' : 'bg-amber-950/30 border-amber-900/60 text-amber-200'}`}>
+                            {isBuilt ? '已建成' : `施工中 ${slot.daysLeft ?? 0} 天`}
+                          </span>
+                        ) : (
+                          <span className="text-xs px-2 py-0.5 rounded border bg-stone-950/40 border-stone-800 text-stone-500">空</span>
+                        )}
                       </div>
-                    );
-                  })}
+                      {slot.type ? (
+                        <div className="text-stone-200 font-bold">{getBuildingName(slot.type)}</div>
+                      ) : (
+                        <div className="space-y-2">
+                          <select
+                            value={choice}
+                            onChange={(e) => setHideoutDefenseChoices(prev => ({ ...prev, [slotIndex]: e.target.value as BuildingType }))}
+                            className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+                          >
+                            {hideoutDefenseBuildOptions
+                              .filter(opt => (hideoutSelectedLayer?.depth ?? 0) === 0 ? true : opt.type !== 'CAMOUFLAGE_STRUCTURE')
+                              .map(opt => (
+                                <option key={`def_opt_${opt.type}`} value={opt.type}>{opt.name}（{opt.cost} / {opt.days}天）</option>
+                              ))}
+                          </select>
+                          <div className="text-stone-500 text-xs">{selected?.description}</div>
+                          <Button
+                            variant="secondary"
+                            disabled={!canBuild}
+                            onClick={() => selected && handleHideoutBuildInSlot('DEFENSE', slotIndex, selected)}
+                          >
+                            建造
+                          </Button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="bg-stone-900 border border-stone-800 p-4 rounded">
+                <div className="flex items-center justify-between">
+                  <div className="text-stone-200 font-bold">矿石精炼</div>
+                  <div className="text-stone-500 text-xs">需要该层至少 1 个矿石精炼厂</div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
+                  <div>
+                    <div className="text-xs text-stone-500 mb-1">矿石</div>
+                    <select
+                      value={hideoutRefineMineralId}
+                      onChange={(e) => setHideoutRefineMineralId(e.target.value as MineralId)}
+                      className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+                    >
+                      {(Object.keys(mineralMeta) as MineralId[]).map(id => (
+                        <option key={`min_${id}`} value={id}>{mineralMeta[id]?.name ?? id}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <div className="text-xs text-stone-500 mb-1">输入纯度</div>
+                    <select
+                      value={hideoutRefineFromPurity}
+                      onChange={(e) => setHideoutRefineFromPurity(Number(e.target.value) as MineralPurity)}
+                      className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+                    >
+                      {[1, 2, 3, 4].map(p => (
+                        <option key={`pur_${p}`} value={p}>{p} → {p + 1}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <div className="text-xs text-stone-500 mb-1">产出数量</div>
+                    <input
+                      value={hideoutRefineOutputCount}
+                      onChange={(e) => setHideoutRefineOutputCount(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+                      className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+                      type="number"
+                      min={1}
+                      max={50}
+                    />
+                  </div>
+                  <div className="flex items-end">
+                    <Button variant="secondary" onClick={handleHideoutStartRefine} className="w-full">
+                      开始精炼
+                    </Button>
+                  </div>
+                </div>
+                <div className="mt-3 text-xs text-stone-500">
+                  规则：消耗 输入纯度×3 → 产出更高纯度×1，按产出数量倍增。
+                </div>
+                {((hideoutSelectedLayer?.refineQueue ?? []) as any[]).length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {((hideoutSelectedLayer?.refineQueue ?? []) as any[]).map((job: any) => (
+                      <div key={job.id} className="flex items-center justify-between text-sm text-stone-300">
+                        <span>{mineralMeta[job.mineralId as MineralId]?.name ?? job.mineralId} 纯度{job.fromPurity}→{job.toPurity} ×{job.outputAmount}</span>
+                        <span className="text-stone-500">{job.daysLeft} 天</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -3376,7 +3645,7 @@ export const TownView = ({
             <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4">
               <div className="text-stone-200 font-bold">可建造建筑</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {buildingOptions.map(building => {
+                {buildingOptions.filter(b => b.type !== 'HOUSING' && b.type !== 'SHRINE' && b.type !== 'ORE_REFINERY' && b.type !== 'CAMOUFLAGE_STRUCTURE').map(building => {
                   const prereq = building.type === 'AA_TOWER_II'
                     ? 'AA_TOWER_I'
                     : building.type === 'AA_TOWER_III'

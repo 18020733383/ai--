@@ -392,10 +392,14 @@ export type BattleBrief = {
 
 export type BuildingType =
   | 'FACTORY'
+  | 'HOUSING'
   | 'TRAINING_CAMP'
   | 'BARRACKS'
   | 'DEFENSE'
   | 'RECRUITER'
+  | 'SHRINE'
+  | 'ORE_REFINERY'
+  | 'CAMOUFLAGE_STRUCTURE'
   | 'AA_TOWER_I'
   | 'AA_TOWER_II'
   | 'AA_TOWER_III'
@@ -448,24 +452,45 @@ export type FieldCampMeta = {
   goldMultiplier?: number;
 };
 
+export type HideoutSlot = {
+  type: BuildingType | null;
+  daysLeft?: number;
+  totalDays?: number;
+};
+
+export type HideoutRefineJob = {
+  id: string;
+  mineralId: MineralId;
+  fromPurity: MineralPurity;
+  toPurity: MineralPurity;
+  inputAmount: number;
+  outputAmount: number;
+  daysLeft: number;
+  totalDays: number;
+};
+
 export type HideoutLayer = {
   id: string;
   depth: number;
   name: string;
   garrison: Troop[];
-  buildings: BuildingType[];
-  constructionQueue: ConstructionQueueItem[];
   lastIncomeDay?: number;
   lastTrainingDay?: number;
   lastRecruitDay?: number;
+  lastShrineDay?: number;
   guardianHeroId?: string;
   garrisonBaseLimit?: number;
+  facilitySlots?: HideoutSlot[];
+  defenseSlots?: HideoutSlot[];
+  refineQueue?: HideoutRefineJob[];
 };
 
 export type HideoutState = {
   layers: HideoutLayer[];
   selectedLayer?: number;
   lastRaidDay?: number;
+  exposure?: number;
+  camouflageCooldownUntilDay?: number;
 };
 
 export interface Location {

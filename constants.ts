@@ -5043,7 +5043,7 @@ export const LOCATIONS: Location[] = [
     name: '隐匿点',
     type: 'HIDEOUT',
     description: '你在地表之下挖出的据点入口。向下，是层层叠叠的黑暗与工事。',
-    coordinates: { x: 196, y: 210 },
+    coordinates: { x: 384, y: 340 },
     terrain: 'RUINS',
     lastRefreshDay: 0,
     volunteers: [],
@@ -5061,13 +5061,16 @@ export const LOCATIONS: Location[] = [
           depth: 0,
           name: '地面层',
           garrison: [],
-          buildings: [],
-          constructionQueue: [],
-          garrisonBaseLimit: 900
+          garrisonBaseLimit: 900,
+          facilitySlots: Array.from({ length: 10 }, () => ({ type: null })),
+          defenseSlots: Array.from({ length: 10 }, () => ({ type: null })),
+          refineQueue: []
         }
       ],
       selectedLayer: 0,
-      lastRaidDay: 0
+      lastRaidDay: 0,
+      exposure: 8,
+      camouflageCooldownUntilDay: 0
     }
   },
   {

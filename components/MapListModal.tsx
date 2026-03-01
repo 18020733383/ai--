@@ -88,11 +88,14 @@ export const MapListModal = ({
   const typeOptions = ['ALL', 'MINE', ...Object.keys(typeLabel).filter(type => !mineTypes.includes(type as Location['type']) && type !== 'FIELD_CAMP')] as Array<Location['type'] | 'ALL' | 'MINE'>;
   const query = mapListQuery.trim().toLowerCase();
   const activeType = mapListTypeFilter;
-  const getLocationBgStyle = (loc: Location) => ({
-    backgroundImage: `url("/image/${loc.type}.webp"), url("/image/${loc.type}.png"), url("/image/${loc.type}.jpg"), url("/image/${loc.type}.jpeg")`,
+  const getLocationBgStyle = (loc: Location) => {
+    const type = loc.type === 'HIDEOUT' ? 'RUINS' : loc.type;
+    return {
+      backgroundImage: `url("/image/${type}.webp"), url("/image/${type}.png"), url("/image/${type}.jpg"), url("/image/${type}.jpeg")`,
     backgroundSize: 'cover',
     backgroundPosition: 'center'
-  });
+    };
+  };
 
   const sorted = [...locations]
     .filter(loc => loc.type !== 'FIELD_CAMP')

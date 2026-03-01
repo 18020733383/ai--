@@ -2743,10 +2743,14 @@ export default function App() {
 
   const buildingOptions: { type: BuildingType; name: string; cost: number; days: number; description: string }[] = [
     { type: 'FACTORY', name: '工厂', cost: 600, days: 3, description: '每隔数天带来稳定收益。' },
+    { type: 'HOUSING', name: '民居', cost: 260, days: 2, description: '提供税收来源，也会提高据点的存在感。' },
     { type: 'TRAINING_CAMP', name: '训练营', cost: 500, days: 3, description: '驻军获得经验并自动晋升。' },
     { type: 'BARRACKS', name: '兵营', cost: 800, days: 4, description: '驻军容量提升 50%。' },
     { type: 'DEFENSE', name: '防御建筑', cost: 700, days: 4, description: '增强据点防御强度。' },
     { type: 'RECRUITER', name: '征兵官', cost: 650, days: 3, description: '定期招募新兵加入驻军。' },
+    { type: 'SHRINE', name: '神殿', cost: 720, days: 4, description: '若你已确立宗教，会周期性招募信徒守卫此层。' },
+    { type: 'ORE_REFINERY', name: '矿石精炼厂', cost: 780, days: 4, description: '花钱与时间将低纯度矿石熔炼为更高纯度。' },
+    { type: 'CAMOUFLAGE_STRUCTURE', name: '伪装结构', cost: 680, days: 4, description: '降低隐匿点暴露程度（冷却），仅限地面层。' },
     { type: 'AA_TOWER_I', name: '防空箭塔·I', cost: 420, days: 2, description: '对空火力覆盖，提升守方防空强度。' },
     { type: 'AA_TOWER_II', name: '防空箭塔·II', cost: 760, days: 3, description: '更密集的对空火力与瞄准体系。' },
     { type: 'AA_TOWER_III', name: '防空箭塔·III', cost: 1200, days: 4, description: '成体系的防空火网，压制空袭与制空渗透。' },
@@ -3393,62 +3397,86 @@ export default function App() {
 
         if (updated.owner === 'PLAYER') {
           if (updated.type === 'HIDEOUT' && updated.hideout && Array.isArray(updated.hideout.layers) && updated.hideout.layers.length > 0) {
+            const religionTroopIds = (() => {
+              const altar = newLocations.find(l => l.type === 'ALTAR' && (l.altar?.troopIds ?? []).length > 0 && !!l.altar?.doctrine?.religionName);
+              return altar?.altar?.troopIds ?? [];
+            })();
+            const normalizeSlots = (slots: any[] | undefined) => Array.from({ length: 10 }, (_, i) => {
+              const raw = Array.isArray(slots) ? slots[i] : null;
+              const type = raw && typeof raw === 'object' ? ((raw as any).type as BuildingType | null) : null;
+              const daysLeft = raw && typeof raw === 'object' && typeof (raw as any).daysLeft === 'number' ? Math.max(0, Math.floor((raw as any).daysLeft)) : undefined;
+              const totalDays = raw && typeof raw === 'object' && typeof (raw as any).totalDays === 'number' ? Math.max(0, Math.floor((raw as any).totalDays)) : undefined;
+              return { type: type ?? null, daysLeft, totalDays };
+            });
+            const tickSlots = (slots: Array<{ type: BuildingType | null; daysLeft?: number; totalDays?: number }>, layerName: string) => {
+              return slots.map(s => {
+                if (!s.type) return s;
+                if (typeof s.daysLeft === 'number' && s.daysLeft > 0) {
+                  const next = Math.max(0, s.daysLeft - 1);
+                  if (next === 0) logsToAdd.push(`${updated.name}·${layerName} 的 ${getBuildingName(s.type)} 已建成。`);
+                  return { ...s, daysLeft: next };
+                }
+                return s;
+              });
+            };
+            const builtTypes = (slots: Array<{ type: BuildingType | null; daysLeft?: number }>) => slots
+              .filter(s => !!s.type && !(typeof s.daysLeft === 'number' && s.daysLeft > 0))
+              .map(s => s.type as BuildingType);
             const nextLayers = updated.hideout.layers.map(layer => {
               const nextLayer = { ...layer };
-              const layerQueue = (nextLayer.constructionQueue ?? []).map(q => ({ ...q, daysLeft: q.daysLeft - 1 }));
-              const finished = layerQueue.filter(q => q.daysLeft <= 0);
-              const remaining = layerQueue.filter(q => q.daysLeft > 0);
-              if (finished.length > 0) {
-                const builtTypes = finished.map(q => q.type);
-                const existing = nextLayer.buildings ?? [];
-                nextLayer.buildings = Array.from(new Set([...existing, ...builtTypes]));
-                finished.forEach(b => logsToAdd.push(`${updated.name}·${nextLayer.name} 的 ${getBuildingName(b.type)} 已建成。`));
-              }
-              nextLayer.constructionQueue = remaining;
+              const facilitySlots = tickSlots(normalizeSlots(nextLayer.facilitySlots as any), nextLayer.name);
+              const defenseSlots = tickSlots(normalizeSlots(nextLayer.defenseSlots as any), nextLayer.name);
+              nextLayer.facilitySlots = facilitySlots;
+              nextLayer.defenseSlots = defenseSlots;
 
-              const buildings = nextLayer.buildings ?? [];
-              if (buildings.includes('FACTORY')) {
+              const facilityBuilt = builtTypes(facilitySlots);
+              const countFacility = (t: BuildingType) => facilityBuilt.reduce((acc, x) => acc + (x === t ? 1 : 0), 0);
+              const housingCount = countFacility('HOUSING');
+              const campCount = countFacility('TRAINING_CAMP');
+              const recruiterCount = countFacility('RECRUITER');
+              const shrineCount = countFacility('SHRINE');
+              const hasBarracks = countFacility('BARRACKS') > 0;
+              const baseCap = nextLayer.garrisonBaseLimit ?? 900;
+              const cap = hasBarracks ? Math.floor(baseCap * 1.5) : baseCap;
+
+              if (housingCount > 0) {
                 const lastIncomeDay = nextLayer.lastIncomeDay ?? 0;
                 if (nextDay - lastIncomeDay >= 3) {
-                  const income = 40 + nextLayer.depth * 10;
+                  const income = housingCount * (18 + nextLayer.depth * 4);
                   newGold += income;
                   nextLayer.lastIncomeDay = nextDay;
-                  logsToAdd.push(`【工坊】${updated.name}·${nextLayer.name} 贡献了 ${income} 第纳尔。`);
+                  logsToAdd.push(`【税收】${updated.name}·${nextLayer.name} 征收了 ${income} 第纳尔。`);
                 }
               }
 
-              if (buildings.includes('TRAINING_CAMP')) {
+              if (campCount > 0) {
                 const lastTrainingDay = nextLayer.lastTrainingDay ?? 0;
                 if (nextDay - lastTrainingDay >= 3) {
                   nextLayer.lastTrainingDay = nextDay;
                   if ((nextLayer.garrison ?? []).length > 0) {
-                    nextLayer.garrison = applyGarrisonTraining(nextLayer.garrison ?? [], 4);
+                    const strength = Math.max(4, Math.min(10, 3 + campCount));
+                    nextLayer.garrison = applyGarrisonTraining(nextLayer.garrison ?? [], strength);
                     logsToAdd.push(`【训练营】${updated.name}·${nextLayer.name} 的驻军获得了经验。`);
                   }
                 }
               }
 
-              if (buildings.includes('RECRUITER')) {
+              if (recruiterCount > 0) {
                 const lastRecruitDay = nextLayer.lastRecruitDay ?? 0;
                 if (nextDay - lastRecruitDay >= 4) {
                   nextLayer.lastRecruitDay = nextDay;
-                  const base = nextLayer.garrisonBaseLimit ?? 900;
-                  const limit = Math.floor(base * 1.2 * (buildings.includes('BARRACKS') ? 1.5 : 1));
-                  const garrison = nextLayer.garrison ?? [];
+                  const garrison = (nextLayer.garrison ?? []).map(t => ({ ...t }));
                   const currentCount = getGarrisonCount(garrison);
-                  if (currentCount < limit) {
-                    const recruitCount = 7 + Math.min(8, nextLayer.depth * 2);
-                    const available = Math.min(limit - currentCount, recruitCount);
+                  if (currentCount < cap) {
+                    const recruitCount = recruiterCount * (4 + Math.min(6, nextLayer.depth * 2));
+                    const available = Math.min(cap - currentCount, recruitCount);
                     if (available > 0) {
                       const recruitId = 'militia';
                       const template = getTroopTemplate(recruitId);
                       if (template) {
                         const index = garrison.findIndex(t => t.id === template.id);
-                        if (index >= 0) {
-                          garrison[index] = { ...garrison[index], count: garrison[index].count + available };
-                        } else {
-                          garrison.push({ ...template, count: available, xp: 0 });
-                        }
+                        if (index >= 0) garrison[index] = { ...garrison[index], count: garrison[index].count + available };
+                        else garrison.push({ ...template, count: available, xp: 0 });
                         nextLayer.garrison = garrison;
                         logsToAdd.push(`【征兵官】${updated.name}·${nextLayer.name} 新增了 ${available} 名守军。`);
                       }
@@ -3457,9 +3485,67 @@ export default function App() {
                 }
               }
 
+              if (shrineCount > 0 && religionTroopIds.length > 0) {
+                const lastShrineDay = nextLayer.lastShrineDay ?? 0;
+                if (nextDay - lastShrineDay >= 4) {
+                  nextLayer.lastShrineDay = nextDay;
+                  const garrison = (nextLayer.garrison ?? []).map(t => ({ ...t }));
+                  const currentCount = getGarrisonCount(garrison);
+                  if (currentCount < cap) {
+                    const recruitId = religionTroopIds[0];
+                    const template = getTroopTemplate(recruitId);
+                    const totalAdd = Math.min(cap - currentCount, shrineCount * (3 + Math.min(4, nextLayer.depth)));
+                    if (template && totalAdd > 0) {
+                      const index = garrison.findIndex(t => t.id === template.id);
+                      if (index >= 0) garrison[index] = { ...garrison[index], count: garrison[index].count + totalAdd };
+                      else garrison.push({ ...template, count: totalAdd, xp: 0 });
+                      nextLayer.garrison = garrison;
+                      logsToAdd.push(`【神殿】${updated.name}·${nextLayer.name} 新增了 ${totalAdd} 名信徒守卫。`);
+                    }
+                  }
+                }
+              }
+
+              const refineQueue = Array.isArray(nextLayer.refineQueue) ? nextLayer.refineQueue.map(job => ({ ...job })) : [];
+              const nextRefineQueue: any[] = [];
+              refineQueue.forEach(job => {
+                const daysLeft = Math.max(0, Math.floor((job.daysLeft ?? 0) - 1));
+                if (daysLeft <= 0) {
+                  const mineralId = job.mineralId as MineralId;
+                  const toPurity = job.toPurity as MineralPurity;
+                  const out = Math.max(0, Math.floor(job.outputAmount ?? 0));
+                  if (out > 0) {
+                    const nextMinerals = { ...(nextPlayer.minerals ?? INITIAL_PLAYER_STATE.minerals) };
+                    const record = { ...(nextMinerals[mineralId] ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }) };
+                    record[toPurity] = (record[toPurity] ?? 0) + out;
+                    nextMinerals[mineralId] = record;
+                    nextPlayer = { ...nextPlayer, minerals: nextMinerals };
+                    logsToAdd.push(`【精炼完成】${updated.name}·${nextLayer.name} 产出 ${MINERAL_PURITY_LABELS[toPurity]}${MINERAL_META[mineralId]?.name ?? mineralId}x${out}。`);
+                  }
+                } else {
+                  nextRefineQueue.push({ ...job, daysLeft });
+                }
+              });
+              nextLayer.refineQueue = nextRefineQueue as any;
+
               return nextLayer;
             });
-            updated.hideout = { ...updated.hideout, layers: nextLayers };
+            const totalBuilt = nextLayers.reduce((sum, layer) => {
+              const a = builtTypes(normalizeSlots(layer.facilitySlots as any)).length;
+              const b = builtTypes(normalizeSlots(layer.defenseSlots as any)).length;
+              return sum + a + b;
+            }, 0);
+            const camouflageBuilt = (() => {
+              const layer0 = nextLayers[0];
+              if (!layer0) return 0;
+              return builtTypes(normalizeSlots(layer0.defenseSlots as any)).filter(t => t === 'CAMOUFLAGE_STRUCTURE').length;
+            })();
+            const baseExposure = Math.max(0, Math.min(100, updated.hideout.exposure ?? 0));
+            const depthFactor = Math.max(0, nextLayers.length - 1) * 0.18;
+            const builtFactor = totalBuilt * 0.09;
+            const passive = 0.35 + depthFactor + builtFactor - Math.min(0.6, camouflageBuilt * 0.22);
+            const nextExposure = Math.max(0, Math.min(100, baseExposure + passive));
+            updated.hideout = { ...updated.hideout, layers: nextLayers, exposure: nextExposure };
           }
 
           const buildings = updated.buildings ?? [];
@@ -4161,7 +4247,19 @@ export default function App() {
         if (factionLocations.length === 0) return;
         const source = [...factionLocations].sort((a, b) => getGarrisonCount(getLocationTroops(b)) - getGarrisonCount(getLocationTroops(a)))[0];
         if (!source) return;
-        const target = playerTargets[Math.floor(Math.random() * playerTargets.length)];
+        const target = (() => {
+          const weights = playerTargets.map(t => t.type === 'HIDEOUT'
+            ? 1 + (clampValue(t.hideout?.exposure ?? 0, 0, 100) / 100) * 2.2
+            : 1
+          );
+          const sum = weights.reduce((a, b) => a + b, 0);
+          let roll = Math.random() * (sum > 0 ? sum : playerTargets.length);
+          for (let i = 0; i < playerTargets.length; i++) {
+            roll -= weights[i] ?? 1;
+            if (roll <= 0) return playerTargets[i];
+          }
+          return playerTargets[Math.floor(Math.random() * playerTargets.length)];
+        })();
         if (source.factionRaidTargetId || source.factionRaidEtaDay || target.activeSiege || target.isUnderSiege) return;
         const sourceLordParty = source.lord ? (source.stayParties ?? []).find(p => p.lordId === source.lord?.id) ?? null : null;
         const useLordParty = !!sourceLordParty && sourceLordParty.troops.some(t => t.count > 0);
@@ -4235,30 +4333,34 @@ export default function App() {
       if (hideoutTarget && !hideoutTarget.activeSiege && !hideoutTarget.isUnderSiege && hideoutTarget.hideout) {
         const lastRaidDay = hideoutTarget.hideout.lastRaidDay ?? 0;
         const daysSince = Math.max(0, nextDay - lastRaidDay);
-        const baseChance = daysSince >= 10 ? Math.min(0.18 + (daysSince - 10) * 0.02, 0.5) : 0;
-        if (Math.random() < baseChance) {
+        const exposure = clampValue(hideoutTarget.hideout.exposure ?? 0, 0, 100);
+        const threshold = exposure >= 75 ? 6 : exposure >= 55 ? 8 : 10;
+        const baseChance = daysSince >= threshold ? Math.min(0.14 + (daysSince - threshold) * 0.02, 0.55) : 0;
+        const chance = clampValue(baseChance * (0.55 + (exposure / 100) * 1.8), 0, 0.75);
+        if (Math.random() < chance) {
           const marchDays = 2 + Math.floor(Math.random() * 3);
           const etaDay = nextDay + marchDays;
           const roll = Math.random();
           const attackerName = roll < 0.7 ? '讨伐队' : roll < 0.9 ? '异种讨伐队' : '裂隙猎杀队';
           const leaderName = roll < 0.7 ? '地方武装头目' : roll < 0.9 ? '异种首领' : '裂隙军官';
+          const scale = 1 + (exposure / 100) * 1.6;
           const raidTroops = roll < 0.7
             ? [
-                createTroop('peasant', randomInt(30, 60)),
-                createTroop('militia', randomInt(20, 45)),
-                createTroop('hunter', randomInt(10, 25))
+                createTroop('peasant', Math.max(8, Math.floor(randomInt(30, 60) * scale))),
+                createTroop('militia', Math.max(6, Math.floor(randomInt(20, 45) * scale))),
+                createTroop('hunter', Math.max(3, Math.floor(randomInt(10, 25) * scale)))
               ]
             : roll < 0.9
               ? [
-                  createTroop('goblin_scavenger', randomInt(35, 70)),
-                  createTroop('goblin_spear_urchin', randomInt(25, 55)),
-                  createTroop('goblin_slinger', randomInt(20, 45)),
-                  createTroop('goblin_raider', randomInt(10, 22))
+                  createTroop('goblin_scavenger', Math.max(10, Math.floor(randomInt(35, 70) * scale))),
+                  createTroop('goblin_spear_urchin', Math.max(8, Math.floor(randomInt(25, 55) * scale))),
+                  createTroop('goblin_slinger', Math.max(7, Math.floor(randomInt(20, 45) * scale))),
+                  createTroop('goblin_raider', Math.max(3, Math.floor(randomInt(10, 22) * scale)))
                 ]
               : [
-                  createTroop('imposter_grunt', randomInt(35, 70)),
-                  createTroop('imposter_crossbowman', randomInt(20, 45)),
-                  createTroop('imposter_spear_guard', randomInt(15, 35))
+                  createTroop('imposter_grunt', Math.max(10, Math.floor(randomInt(35, 70) * scale))),
+                  createTroop('imposter_crossbowman', Math.max(7, Math.floor(randomInt(20, 45) * scale))),
+                  createTroop('imposter_spear_guard', Math.max(6, Math.floor(randomInt(15, 35) * scale)))
                 ];
           const campId = `field_camp_hideout_${hideoutTarget.id}_${nextDay}`;
           const dx = randomInt(-24, 24);
@@ -4304,7 +4406,7 @@ export default function App() {
               hideout: { ...hideoutTarget.hideout, lastRaidDay: nextDay }
             };
           }
-          logsToAdd.push(`【讨伐】侦查到有部队在隐匿点周围集结，预计 ${marchDays} 天后发动进攻。`);
+          logsToAdd.push(`【讨伐】侦查到有部队在隐匿点周围集结（暴露${Math.round(exposure)}%），预计 ${marchDays} 天后发动进攻。`);
           addLocalLog(hideoutTarget.id, `侦查到讨伐队集结，预计 ${etaDay} 天后发动进攻。`);
           newLocations.push(camp);
         }
@@ -5316,56 +5418,61 @@ export default function App() {
     const hideoutLayerIndexRaw = (location.activeSiege as any)?.hideoutLayerIndex ?? location.hideout?.selectedLayer ?? 0;
     const hideoutLayers = location.hideout?.layers ?? [];
     const hideoutLayerIndex = Math.max(0, Math.min(hideoutLayers.length - 1, Math.floor(hideoutLayerIndexRaw)));
-    const hideoutLayerBuildings = location.type === 'HIDEOUT' ? (hideoutLayers[hideoutLayerIndex]?.buildings ?? []) : [];
-    const built = location.type === 'HIDEOUT' ? hideoutLayerBuildings : (location.buildings ?? []);
-    const hasDefenseBuilding = built.includes('DEFENSE');
+    const normalizeSlots = (slots: any[] | undefined) => (Array.isArray(slots) ? slots : [])
+      .map(s => ({ type: (s as any)?.type as BuildingType | null, daysLeft: (s as any)?.daysLeft as number | undefined }))
+      .filter(s => !!s.type && !(typeof s.daysLeft === 'number' && s.daysLeft > 0))
+      .map(s => s.type as BuildingType);
+    const built = location.type === 'HIDEOUT'
+      ? normalizeSlots(hideoutLayers[hideoutLayerIndex]?.defenseSlots as any)
+      : (location.buildings ?? []);
+    const countOf = (t: BuildingType) => built.reduce((acc, x) => acc + (x === t ? 1 : 0), 0);
+    const hasDefenseBuilding = countOf('DEFENSE') > 0;
+    const pushMechanism = (name: string, description: string, count: number) => {
+      if (count <= 0) return;
+      details.mechanisms.push({ name: count > 1 ? `${name} x${count}` : name, description });
+    };
     let extraMechanismHp = 0;
     let extraRangedHit = 0;
     let extraRangedDamage = 0;
     let extraMeleeReduction = 0;
-    if (built.includes('AA_TOWER_I')) {
-      details.mechanisms.push({ name: "防空箭塔·I", description: "加固箭塔与集束瞄具，可稳定压制低空目标。" });
-      details.antiAirPowerBonus += 0.12;
-      extraMechanismHp += 120;
-      extraRangedHit += 0.02;
-    }
-    if (built.includes('AA_TOWER_II')) {
-      details.mechanisms.push({ name: "防空箭塔·II", description: "加装连弩与导引标尺，对空火力密度显著提升。" });
-      details.antiAirPowerBonus += 0.22;
-      extraMechanismHp += 220;
-      extraRangedHit += 0.03;
-    }
-    if (built.includes('AA_TOWER_III')) {
-      details.mechanisms.push({ name: "防空箭塔·III", description: "分区火网与齐射号令，对空压制可持续维持。" });
-      details.antiAirPowerBonus += 0.35;
-      extraMechanismHp += 320;
-      extraRangedHit += 0.04;
-      extraRangedDamage += 0.02;
-    }
-    if (built.includes('AA_NET_I')) {
-      details.mechanisms.push({ name: "防空幕网·I", description: "在城防关键点布置幕网与诱饵，降低空袭穿透效率。" });
-      details.airstrikeDamageReduction += 0.12;
-      extraMechanismHp += 160;
-      extraMeleeReduction += 0.01;
-    }
-    if (built.includes('AA_NET_II')) {
-      details.mechanisms.push({ name: "防空幕网·II", description: "更高密度的幕网与诱饵阵列，显著削弱空对地打击。" });
-      details.airstrikeDamageReduction += 0.22;
-      extraMechanismHp += 260;
-      extraMeleeReduction += 0.02;
-    }
-    if (built.includes('AA_RADAR_I')) {
-      details.mechanisms.push({ name: "预警瞭望链·I", description: "岗哨与信号点连成体系，提高提前发现与对空引导。" });
-      details.antiAirPowerBonus += 0.08;
-      extraMechanismHp += 120;
-      extraRangedHit += 0.03;
-    }
-    if (built.includes('AA_RADAR_II')) {
-      details.mechanisms.push({ name: "预警瞭望链·II", description: "更完整的预警与引导网络，对空射击命中显著提升。" });
-      details.antiAirPowerBonus += 0.14;
-      extraMechanismHp += 200;
-      extraRangedHit += 0.05;
-    }
+    const aaTower1 = countOf('AA_TOWER_I');
+    const aaTower2 = countOf('AA_TOWER_II');
+    const aaTower3 = countOf('AA_TOWER_III');
+    const aaNet1 = countOf('AA_NET_I');
+    const aaNet2 = countOf('AA_NET_II');
+    const aaRadar1 = countOf('AA_RADAR_I');
+    const aaRadar2 = countOf('AA_RADAR_II');
+    const camouflage = countOf('CAMOUFLAGE_STRUCTURE');
+    pushMechanism("防空箭塔·I", "加固箭塔与集束瞄具，可稳定压制低空目标。", aaTower1);
+    details.antiAirPowerBonus += 0.12 * aaTower1;
+    extraMechanismHp += 120 * aaTower1;
+    extraRangedHit += 0.02 * aaTower1;
+    pushMechanism("防空箭塔·II", "加装连弩与导引标尺，对空火力密度显著提升。", aaTower2);
+    details.antiAirPowerBonus += 0.22 * aaTower2;
+    extraMechanismHp += 220 * aaTower2;
+    extraRangedHit += 0.03 * aaTower2;
+    pushMechanism("防空箭塔·III", "分区火网与齐射号令，对空压制可持续维持。", aaTower3);
+    details.antiAirPowerBonus += 0.35 * aaTower3;
+    extraMechanismHp += 320 * aaTower3;
+    extraRangedHit += 0.04 * aaTower3;
+    extraRangedDamage += 0.02 * aaTower3;
+    pushMechanism("防空幕网·I", "在城防关键点布置幕网与诱饵，降低空袭穿透效率。", aaNet1);
+    details.airstrikeDamageReduction += 0.12 * aaNet1;
+    extraMechanismHp += 160 * aaNet1;
+    extraMeleeReduction += 0.01 * aaNet1;
+    pushMechanism("防空幕网·II", "更高密度的幕网与诱饵阵列，显著削弱空对地打击。", aaNet2);
+    details.airstrikeDamageReduction += 0.22 * aaNet2;
+    extraMechanismHp += 260 * aaNet2;
+    extraMeleeReduction += 0.02 * aaNet2;
+    pushMechanism("预警瞭望链·I", "岗哨与信号点连成体系，提高提前发现与对空引导。", aaRadar1);
+    details.antiAirPowerBonus += 0.08 * aaRadar1;
+    extraMechanismHp += 120 * aaRadar1;
+    extraRangedHit += 0.03 * aaRadar1;
+    pushMechanism("预警瞭望链·II", "更完整的预警与引导网络，对空射击命中显著提升。", aaRadar2);
+    details.antiAirPowerBonus += 0.14 * aaRadar2;
+    extraMechanismHp += 200 * aaRadar2;
+    extraRangedHit += 0.05 * aaRadar2;
+    pushMechanism("伪装结构", "用伪装与隔离降低暴露程度。", camouflage);
 
     const mechanismCount = details.mechanisms.length;
     details.wallHp = Math.max(0, details.wallLevel) * 650 + (hasDefenseBuilding ? 260 : 0);
@@ -8326,9 +8433,66 @@ export default function App() {
         const normalizedOwner = (loc.owner === 'ENEMY' && loc.factionId && (loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE'))
           ? undefined
           : loc.owner;
-        if (loc.claimFactionId) return normalizedOwner === loc.owner ? loc : { ...loc, owner: normalizedOwner };
-        if (loc.factionId) return { ...loc, owner: normalizedOwner, claimFactionId: loc.factionId };
-        return normalizedOwner === loc.owner ? loc : { ...loc, owner: normalizedOwner };
+        const baseLoc = (() => {
+          if (loc.claimFactionId) return normalizedOwner === loc.owner ? loc : { ...loc, owner: normalizedOwner };
+          if (loc.factionId) return { ...loc, owner: normalizedOwner, claimFactionId: loc.factionId };
+          return normalizedOwner === loc.owner ? loc : { ...loc, owner: normalizedOwner };
+        })();
+        if (baseLoc.type !== 'HIDEOUT') return baseLoc;
+        const hideout = baseLoc.hideout;
+        const layersRaw = Array.isArray(hideout?.layers) ? hideout!.layers : [];
+        const defenseSet = new Set<BuildingType>(['DEFENSE', 'AA_TOWER_I', 'AA_TOWER_II', 'AA_TOWER_III', 'AA_NET_I', 'AA_NET_II', 'AA_RADAR_I', 'AA_RADAR_II', 'CAMOUFLAGE_STRUCTURE']);
+        const normalizeSlots = (slots: any[] | undefined, fallbackBuildings: BuildingType[] | undefined, pickDefense: boolean) => {
+          const safe = Array.isArray(slots) ? slots : [];
+          const base = Array.from({ length: 10 }, (_, i) => {
+            const raw = safe[i];
+            const type = raw && typeof raw === 'object' ? ((raw as any).type as BuildingType | null) : null;
+            const daysLeft = raw && typeof raw === 'object' && typeof (raw as any).daysLeft === 'number' ? Math.max(0, Math.floor((raw as any).daysLeft)) : undefined;
+            const totalDays = raw && typeof raw === 'object' && typeof (raw as any).totalDays === 'number' ? Math.max(0, Math.floor((raw as any).totalDays)) : undefined;
+            return { type: type ?? null, daysLeft, totalDays };
+          });
+          if (!fallbackBuildings || fallbackBuildings.length === 0) return base;
+          const filtered = fallbackBuildings.filter(t => pickDefense ? defenseSet.has(t) : !defenseSet.has(t));
+          let cursor = 0;
+          return base.map(s => {
+            if (s.type) return s;
+            const next = filtered[cursor++];
+            return next ? { type: next } : s;
+          });
+        };
+        const nextLayers = layersRaw.length > 0 ? layersRaw : [{
+          id: 'hideout_layer_0',
+          depth: 0,
+          name: '地面层',
+          garrison: [],
+          garrisonBaseLimit: 900
+        }];
+        const normalizedLayers = nextLayers.map((layer: any, idx: number) => {
+          const depth = typeof layer?.depth === 'number' ? Math.max(0, Math.floor(layer.depth)) : idx;
+          const name = typeof layer?.name === 'string' ? layer.name : (depth === 0 ? '地面层' : `地下${depth}层`);
+          const buildings = Array.isArray(layer?.buildings) ? (layer.buildings as any[]).filter(Boolean) as BuildingType[] : [];
+          return {
+            ...layer,
+            depth,
+            name,
+            garrison: Array.isArray(layer?.garrison) ? layer.garrison : [],
+            garrisonBaseLimit: typeof layer?.garrisonBaseLimit === 'number' ? layer.garrisonBaseLimit : (900 + depth * 650),
+            facilitySlots: normalizeSlots(layer?.facilitySlots, buildings, false),
+            defenseSlots: normalizeSlots(layer?.defenseSlots, buildings, true),
+            refineQueue: Array.isArray(layer?.refineQueue) ? layer.refineQueue : []
+          };
+        });
+        return ({
+          ...baseLoc,
+          owner: 'PLAYER' as const,
+          hideout: {
+            layers: normalizedLayers,
+            selectedLayer: Math.max(0, Math.min(normalizedLayers.length - 1, Math.floor(hideout?.selectedLayer ?? 0))),
+            lastRaidDay: typeof hideout?.lastRaidDay === 'number' ? hideout!.lastRaidDay : 0,
+            exposure: typeof hideout?.exposure === 'number' ? Math.max(0, Math.min(100, hideout!.exposure)) : 8,
+            camouflageCooldownUntilDay: typeof hideout?.camouflageCooldownUntilDay === 'number' ? hideout!.camouflageCooldownUntilDay : 0
+          }
+        } as Location);
       });
       const finalLords = Array.isArray(nextLords) && nextLords.length > 0
         ? nextLords
