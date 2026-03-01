@@ -1224,6 +1224,10 @@ export const TownView = ({
   const visibleStayParties = mergedStayParties.filter(party => party.troops.some(troop => troop.count > 0));
   const getPartyCount = (troops: Troop[]) => troops.reduce((sum, troop) => sum + troop.count, 0);
   const hideoutState = currentLocation.hideout;
+  const hideoutSiegeLayerIndex = isHideout && currentLocation.activeSiege
+    ? Math.max(0, Math.floor((currentLocation.activeSiege as any).hideoutLayerIndex ?? 0))
+    : 0;
+  const hideoutHasFallenLayers = isHideout && !!currentLocation.activeSiege && !!currentLocation.isUnderSiege && hideoutSiegeLayerIndex > 0;
   const hideoutSelectedLayerIndex = Math.max(0, Math.min((hideoutState?.layers?.length ?? 1) - 1, hideoutState?.selectedLayer ?? 0));
   const hideoutSelectedLayer = hideoutState?.layers?.[hideoutSelectedLayerIndex];
   const hideoutLayerTroops = (hideoutSelectedLayer?.garrison ?? []).filter(t => (t.count ?? 0) > 0);
@@ -1514,6 +1518,10 @@ export const TownView = ({
     const hideout = currentLocation.hideout;
     if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
     const safeIndex = Math.max(0, Math.min(hideout.layers.length - 1, Math.floor(layerIndex)));
+    if (hideoutHasFallenLayers && safeIndex < hideoutSiegeLayerIndex) {
+      addLog("该层已失守，暂时无法进入。");
+      return;
+    }
     updateLocationState({ ...currentLocation, hideout: { ...hideout, selectedLayer: safeIndex } });
   };
 
@@ -2297,7 +2305,8 @@ export const TownView = ({
                   <button
                     key={layer.id}
                     onClick={() => handleHideoutSelectLayer(idx)}
-                    className={`px-3 py-1 rounded border text-sm ${idx === hideoutSelectedLayerIndex ? 'bg-emerald-900/40 border-emerald-700 text-emerald-200' : 'bg-stone-900/60 border-stone-700 text-stone-400 hover:border-stone-500'}`}
+                    disabled={hideoutHasFallenLayers && idx < hideoutSiegeLayerIndex}
+                    className={`px-3 py-1 rounded border text-sm ${idx === hideoutSelectedLayerIndex ? 'bg-emerald-900/40 border-emerald-700 text-emerald-200' : hideoutHasFallenLayers && idx < hideoutSiegeLayerIndex ? 'bg-stone-950/40 border-stone-900 text-stone-600 cursor-not-allowed' : 'bg-stone-900/60 border-stone-700 text-stone-400 hover:border-stone-500'}`}
                   >
                     L{layer.depth} {layer.name}
                   </button>

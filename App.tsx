@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState } from './types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState } from './types';
 import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { Button } from './components/Button';
@@ -3022,6 +3022,36 @@ export default function App() {
       }
 
       const nextDay = nextPlayer.day + 1;
+      const woundedList = Array.isArray(nextPlayer.woundedTroops) ? nextPlayer.woundedTroops.map(x => ({ ...x })) : [];
+      if (woundedList.length > 0) {
+        const recovered = woundedList.filter(e => (e.recoverDay ?? 0) <= nextDay && (e.count ?? 0) > 0);
+        const remaining = woundedList.filter(e => (e.recoverDay ?? 0) > nextDay && (e.count ?? 0) > 0);
+        if (recovered.length > 0) {
+          const troopMap = new Map(nextPlayer.troops.map(t => [t.id, { ...t }]));
+          recovered.forEach(e => {
+            const count = Math.max(0, Math.floor(e.count ?? 0));
+            if (count <= 0) return;
+            const existing = troopMap.get(e.troopId);
+            if (existing) troopMap.set(e.troopId, { ...existing, count: existing.count + count });
+            else {
+              const tmpl = getTroopTemplate(e.troopId);
+              if (tmpl) troopMap.set(e.troopId, { ...tmpl, count, xp: 0 });
+            }
+          });
+          const recoveredByName = recovered.reduce<Record<string, number>>((acc, e) => {
+            const tmpl = getTroopTemplate(e.troopId);
+            const name = tmpl?.name ?? e.troopId;
+            acc[name] = (acc[name] ?? 0) + Math.max(0, Math.floor(e.count ?? 0));
+            return acc;
+          }, {});
+          Object.entries(recoveredByName).forEach(([name, count]) => {
+            if (count > 0) logsToAdd.push(`伤兵恢复：${name} x${count} 重新归队。`);
+          });
+          nextPlayer = { ...nextPlayer, troops: Array.from(troopMap.values()).filter(t => t.count > 0), woundedTroops: remaining };
+        } else {
+          nextPlayer = { ...nextPlayer, woundedTroops: remaining };
+        }
+      }
       const getGarrisonCap = (loc: Location) => Math.floor((loc.garrisonBaseLimit ?? getDefaultGarrisonBaseLimit(loc)) * 1.2);
       const appendLocalLog = (loc: Location, text: string) => {
         const safe = String(text ?? '').trim();
@@ -3772,6 +3802,25 @@ export default function App() {
           }
 
           if (defenderHoldCount <= 0) {
+            const isLastLayer = layerIndex >= loc.hideout.layers.length - 1;
+            if (isLastLayer) {
+              logsToAdd.push(`【隐匿点沦陷】敌军攻入最深处，隐匿点被攻破。`);
+              addLocalLog(loc.id, `隐匿点沦陷，游戏结束。`);
+              nextPlayer = {
+                ...nextPlayer,
+                story: {
+                  ...(nextPlayer.story ?? {}),
+                  gameOverReason: 'HIDEOUT_FALLEN'
+                }
+              };
+              setView('GAME_OVER');
+              return {
+                ...loc,
+                hideout: nextHideout,
+                activeSiege: undefined,
+                isUnderSiege: false
+              };
+            }
             if (attackerHoldCount <= 0) {
               logsToAdd.push(`【围攻解除】隐匿点 ${layer.name} 守军溃散，但 ${siegeFactionName} 无法继续推进，选择撤离。`);
               addLocalLog(loc.id, `守军溃散，围城方撤离（${layer.name}）。`);
@@ -3793,22 +3842,6 @@ export default function App() {
                 isUnderSiege: true
               };
             }
-            logsToAdd.push(`【隐匿点沦陷】敌军攻入最深处，隐匿点被攻破。`);
-            addLocalLog(loc.id, `隐匿点沦陷，游戏结束。`);
-            nextPlayer = {
-              ...nextPlayer,
-              story: {
-                ...(nextPlayer.story ?? {}),
-                gameOverReason: 'HIDEOUT_FALLEN'
-              }
-            };
-            setView('GAME_OVER');
-            return {
-              ...loc,
-              hideout: nextHideout,
-              activeSiege: undefined,
-              isUnderSiege: false
-            };
           }
 
           if (attackerCount <= 0 || attackerHoldCount <= 0) {
@@ -7054,6 +7087,8 @@ export default function App() {
 
         // Apply Casualties with Medicine Check
         const medicineSaveChance = prev.attributes.medicine * 0.05; // 5% per point
+        const woundedRecoveryDays = Math.max(3, 8 - Math.floor((prev.attributes.medicine ?? 0) / 4));
+        const newWoundedTroops: WoundedTroopEntry[] = [];
         
         let remainingCasualties = { ...totalPlayerCasualties };
 
@@ -7083,20 +7118,21 @@ export default function App() {
         }
 
         const survivingTroopsMeta = prev.troops.map(t => {
-          let lostCount = remainingCasualties[t.name] || 0;
-
+          const casualties = Math.max(0, Math.floor(remainingCasualties[t.name] || 0));
           let savedCount = 0;
-          for (let i = 0; i < lostCount; i++) {
+          for (let i = 0; i < casualties; i++) {
             if (Math.random() < medicineSaveChance) savedCount++;
           }
-          if (savedCount > 0) logsToAdd.push(`医术救回了 ${savedCount} 名 ${t.name}。`);
-          lostCount -= savedCount;
-
-          const remainingCount = Math.max(0, t.count - lostCount);
-          if (remainingCount <= 0) return null;
+          savedCount = Math.min(savedCount, casualties);
+          if (savedCount > 0) {
+            newWoundedTroops.push({ troopId: t.id, count: savedCount, recoverDay: prev.day + woundedRecoveryDays });
+            logsToAdd.push(`医术救回了 ${savedCount} 名 ${t.name}（重伤，预计 ${woundedRecoveryDays} 天恢复）。`);
+          }
+          const activeCount = Math.max(0, t.count - casualties);
+          if (activeCount <= 0) return null;
           const isRoach = t.id.startsWith('roach_');
           const isMaxed = !t.upgradeTargetId;
-          return { troop: t, remainingCount, isRoach, isMaxed };
+          return { troop: t, remainingCount: activeCount, isRoach, isMaxed };
         }).filter((item): item is { troop: Troop; remainingCount: number; isRoach: boolean; isMaxed: boolean } => item !== null);
 
         const deadHeroRecords: FallenHeroRecord[] = [];
@@ -7186,6 +7222,26 @@ export default function App() {
           gold: newGold,
           renown: newRenown,
           troops: survivingTroops,
+          woundedTroops: (() => {
+            const existing = Array.isArray(prev.woundedTroops) ? prev.woundedTroops.map(x => ({ ...x })) : [];
+            const map = new Map<string, WoundedTroopEntry>();
+            const keyOf = (e: WoundedTroopEntry) => `${e.troopId}__${e.recoverDay}`;
+            existing.forEach(e => {
+              if (e.count <= 0) return;
+              map.set(keyOf(e), { ...e, count: Math.floor(e.count) });
+            });
+            newWoundedTroops.forEach(e => {
+              if (e.count <= 0) return;
+              const k = keyOf(e);
+              const cur = map.get(k);
+              if (cur) map.set(k, { ...cur, count: cur.count + Math.floor(e.count) });
+              else map.set(k, { troopId: e.troopId, count: Math.floor(e.count), recoverDay: Math.floor(e.recoverDay) });
+            });
+            return Array.from(map.values())
+              .filter(e => e.count > 0)
+              .sort((a, b) => a.recoverDay - b.recoverDay)
+              .slice(0, 80);
+          })(),
           currentHp: newHp,
           status: newStatus as 'ACTIVE' | 'INJURED',
           fallenRecords: [...prev.fallenRecords, ...newFallenRecords],

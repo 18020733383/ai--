@@ -52,6 +52,8 @@ export const PartyView = ({
     return acc;
   }, {} as Record<string, number>);
   const totalTroops = player.troops.reduce((sum, troop) => sum + troop.count, 0);
+  const woundedTroops = Array.isArray(player.woundedTroops) ? player.woundedTroops : [];
+  const woundedTotal = woundedTroops.reduce((sum, e) => sum + (e.count ?? 0), 0);
   const raceEntries = Object.entries(raceSummary)
     .map(([race, count]) => ({
       race,
@@ -134,6 +136,28 @@ export const PartyView = ({
           );
         })}
       </div>
+
+      {woundedTroops.length > 0 && (
+        <div className="mt-6 bg-stone-900/60 border border-stone-700 p-4 rounded shadow-lg">
+          <h3 className="text-stone-200 font-bold flex items-center gap-2 mb-3"><Heart size={16} /> 重伤士兵（不可参战）</h3>
+          <div className="text-xs text-stone-500 mb-2">总计 {woundedTotal}</div>
+          <div className="flex flex-wrap gap-2 text-xs text-stone-400">
+            {woundedTroops
+              .slice(0, 24)
+              .sort((a, b) => (a.recoverDay ?? 0) - (b.recoverDay ?? 0))
+              .map((e, idx) => {
+                const tmpl = getTroopTemplate(e.troopId);
+                const name = tmpl?.name ?? e.troopId;
+                const daysLeft = Math.max(0, Math.floor((e.recoverDay ?? player.day) - player.day));
+                return (
+                  <span key={`wounded_${idx}_${e.troopId}_${e.recoverDay}`} className="px-2 py-1 rounded border border-stone-800 bg-stone-950/40">
+                    {name} x{e.count}（{daysLeft}天）
+                  </span>
+                );
+              })}
+          </div>
+        </div>
+      )}
 
       <div className="mt-6 bg-stone-900/60 border border-stone-700 p-4 rounded shadow-lg">
         <h3 className="text-stone-200 font-bold flex items-center gap-2 mb-3"><Star size={16} /> 随行英雄</h3>

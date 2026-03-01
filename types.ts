@@ -216,10 +216,17 @@ export interface Hero {
   chatRounds: number;
 }
 
+export type WoundedTroopEntry = {
+  troopId: string;
+  count: number;
+  recoverDay: number;
+};
+
 export interface PlayerState {
   gold: number;
   renown: number;
   troops: Troop[];
+  woundedTroops?: WoundedTroopEntry[];
   parrots: Parrot[];
   fallenRecords: FallenRecord[]; // Record of dead soldiers
   fallenHeroes?: FallenHeroRecord[];
