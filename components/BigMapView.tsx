@@ -6,10 +6,12 @@ import { Button } from './Button';
 
 type WorkState = {
   isActive: boolean;
+  locationId: string;
+  contractId: string;
+  contractTitle: string;
   totalDays: number;
   daysPassed: number;
-  dailyIncome: number;
-  accumulatedIncome: number;
+  totalPay: number;
 };
 
 type MiningState = {
@@ -195,8 +197,9 @@ export const BigMapView = ({
           <div className="bg-stone-900/90 border-2 border-amber-600 rounded-lg p-6 shadow-2xl flex flex-col items-center gap-4 min-w-[280px] animate-fade-in">
             <div className="flex items-center gap-2 text-amber-500 text-xl font-bold font-serif">
               <Coins className="animate-pulse" />
-              <span>打工中...</span>
+              <span>委托中...</span>
             </div>
+            <div className="text-stone-300 text-sm">{workState.contractTitle}</div>
             <div className="flex items-center gap-6">
               <div className="text-center">
                 <div className="text-xs text-stone-500 uppercase tracking-wider mb-1">当前天数</div>
@@ -209,10 +212,10 @@ export const BigMapView = ({
                 </div>
               </div>
               <div className="text-center">
-                <div className="text-xs text-stone-500 uppercase tracking-wider mb-1">累计收入</div>
+                <div className="text-xs text-stone-500 uppercase tracking-wider mb-1">委托报酬</div>
                 <div className="bg-black border border-stone-700 rounded px-3 py-2 min-w-[80px]">
                   <div className="text-3xl font-mono text-yellow-500 font-bold">
-                    {workState.accumulatedIncome}
+                    {workState.totalPay}
                   </div>
                 </div>
               </div>
@@ -226,6 +229,7 @@ export const BigMapView = ({
             <div className="text-xs text-stone-400">
               进度：{workState.daysPassed} / {workState.totalDays} 天
             </div>
+            <div className="text-xs text-stone-500">中途退出：进度过半才有报酬，且只有 1/5。</div>
             <Button variant="danger" size="sm" onClick={onAbortWork}>
               中止
             </Button>

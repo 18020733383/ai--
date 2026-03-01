@@ -108,7 +108,15 @@ export const BattleView = ({
   let taggedGarrisonTroops: Troop[] = [];
   if (pendingBattleMeta?.mode === 'DEFENSE_AID' && pendingBattleMeta.targetLocationId) {
     const loc = locations.find(l => l.id === pendingBattleMeta.targetLocationId);
-    garrisonTroops = loc?.garrison ?? [];
+    if (loc?.type === 'HIDEOUT') {
+      const hideout = loc.hideout;
+      const layers = hideout?.layers ?? [];
+      const layerIndex = loc.activeSiege?.hideoutLayerIndex ?? hideout?.selectedLayer ?? 0;
+      const layer = layers[Math.max(0, Math.min(layers.length - 1, Math.floor(layerIndex)))];
+      garrisonTroops = layer?.garrison ?? [];
+    } else {
+      garrisonTroops = loc?.garrison ?? [];
+    }
     taggedGarrisonTroops = garrisonTroops.map(t => ({ ...t, id: `garrison_${t.id}` }));
   }
 

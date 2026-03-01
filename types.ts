@@ -510,6 +510,19 @@ export type HideoutState = {
   camouflageCooldownUntilDay?: number;
 };
 
+export type WorkContract = {
+  id: string;
+  title: string;
+  tier: number;
+  days: number;
+  pay: number;
+};
+
+export type WorkBoard = {
+  lastRefreshDay: number;
+  contracts: WorkContract[];
+};
+
 export interface Location {
   id: string;
   name: string;
@@ -555,6 +568,7 @@ export interface Location {
   garrisonBaseLimit?: number;
   localLogs?: LocalLogEntry[];
   hideout?: HideoutState;
+  workBoard?: WorkBoard;
   activeSiege?: {
     attackerName: string;
     attackerFactionId?: FactionId;

@@ -6,6 +6,16 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.5.0',
+    date: '2026-03-01',
+    items: [
+      '打工改为城市委托：固定耗时、等级报酬、可中途退出结算',
+      '修复隐匿点加入守城时未带入当前层驻军参战',
+      '修复隐匿点沦陷时未正确触发结局并结束游戏',
+      '修复主菜单结局回放被序章自动跳转打断'
+    ]
+  },
+  {
     version: '0.4.0',
     date: '2026-03-01',
     items: [

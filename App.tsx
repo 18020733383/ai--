@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState } from './types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
 import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { Button } from './components/Button';
@@ -731,9 +731,46 @@ export default function App() {
       return { ...hero, locationId: cityId, stayDays };
     });
   };
+  const buildWorkContractsForCity = (loc: Location, day: number): WorkContract[] => {
+    const pools: { tier: number; titles: string[]; daysRange: [number, number]; payRange: [number, number] }[] = [
+      { tier: 1, titles: ['搬运货箱', '跑腿送信', '码头清点', '修补栅栏', '护送学徒'], daysRange: [2, 2], payRange: [70, 120] },
+      { tier: 2, titles: ['城门巡逻', '商队随行', '仓库盘点', '清剿鼠患', '押送囚犯'], daysRange: [3, 4], payRange: [160, 260] },
+      { tier: 3, titles: ['护送贵客', '处理纠纷', '围剿盗匪', '护卫货队', '追缴欠款'], daysRange: [4, 5], payRange: [320, 520] },
+      { tier: 4, titles: ['暗线侦查', '断粮破坏', '护送密使', '追捕逃犯', '封存物证'], daysRange: [6, 7], payRange: [620, 980] },
+      { tier: 5, titles: ['裂隙巡查', '异常清剿', '秘密护送', '高危镇压', '禁区采样'], daysRange: [8, 10], payRange: [1100, 1650] }
+    ];
+    const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
+    const rollInt = (min: number, max: number) => Math.floor(min + Math.random() * (max - min + 1));
+    const rollTier = () => {
+      const r = Math.random();
+      if (r < 0.48) return 1;
+      if (r < 0.78) return 2;
+      if (r < 0.93) return 3;
+      if (r < 0.985) return 4;
+      return 5;
+    };
+    const count = 4;
+    const used = new Set<string>();
+    const result: WorkContract[] = [];
+    for (let i = 0; i < count; i++) {
+      const tier = rollTier();
+      const pool = pools.find(p => p.tier === tier) ?? pools[0];
+      let title = pick(pool.titles);
+      let guard = 0;
+      while (used.has(title) && guard < 10) {
+        title = pick(pool.titles);
+        guard++;
+      }
+      used.add(title);
+      const days = rollInt(pool.daysRange[0], pool.daysRange[1]);
+      const pay = rollInt(pool.payRange[0], pool.payRange[1]);
+      result.push({ id: `WORK_${loc.id}_${day}_${i}_${Math.floor(Math.random() * 10000)}`, title, tier, days, pay });
+    }
+    return result;
+  };
   const [player, setPlayer] = useState<PlayerState>(INITIAL_PLAYER_STATE);
   const [heroes, setHeroes] = useState<Hero[]>(() => buildRandomizedHeroes());
-  const [locations, setLocations] = useState<Location[]>(() => initialWorld.locations);
+  const [locations, setLocations] = useState<Location[]>(() => initialWorld.locations.map(l => l.type === 'CITY' ? { ...l, workBoard: { lastRefreshDay: INITIAL_PLAYER_STATE.day, contracts: buildWorkContractsForCity(l, INITIAL_PLAYER_STATE.day) } } : l));
   const [lords, setLords] = useState<Lord[]>(() => initialWorld.lords);
   const [view, setView] = useState<GameView>('MAIN_MENU');
   const [endingReturnView, setEndingReturnView] = useState<GameView>('GAME_OVER');
@@ -917,10 +954,12 @@ export default function App() {
   // Work State
   const [workState, setWorkState] = useState<{
     isActive: boolean;
+    locationId: string;
+    contractId: string;
+    contractTitle: string;
     totalDays: number;
     daysPassed: number;
-    dailyIncome: number;
-    accumulatedIncome: number;
+    totalPay: number;
   } | null>(null);
   const [habitatStayState, setHabitatStayState] = useState<{
     isActive: boolean;
@@ -968,37 +1007,34 @@ export default function App() {
     setNegotiationError(null);
   }, [activeEnemy?.id, activeEnemy?.name, activeEnemy?.troops?.length]);
 
-    // Work Loop
     useEffect(() => {
-        if (!workState?.isActive) return;
-        
-        if (workState.daysPassed >= workState.totalDays) {
-          const finishTimer = setTimeout(() => {
-            addLog(`打工结束，共获得 ${workState.accumulatedIncome} 第纳尔。`);
-            setWorkState(null);
-            
-            // Return to town view after work is finished
-            if (currentLocation) {
-              setView('TOWN');
-              setTownTab('WORK');
-            }
-          }, 1500);
-          return () => clearTimeout(finishTimer);
-        }
-    
-        const timer = setTimeout(() => {
-          if (!currentLocation) return;
-          processDailyCycle(currentLocation, 0, 1, workState.dailyIncome, true);
-          
-          setWorkState(prev => prev ? {
-            ...prev,
-            daysPassed: prev.daysPassed + 1,
-            accumulatedIncome: prev.accumulatedIncome + prev.dailyIncome
-          } : null);
-        }, 1200); // 1.2s per day
-    
-        return () => clearTimeout(timer);
-    }, [workState]);
+      if (!workState?.isActive) return;
+      if (!currentLocation) return;
+      if (currentLocation.id !== workState.locationId) return;
+
+      if (workState.daysPassed >= workState.totalDays) {
+        const finishTimer = setTimeout(() => {
+          const earned = Math.max(0, Math.floor(workState.totalPay));
+          if (earned > 0) setPlayer(prev => ({ ...prev, gold: prev.gold + earned }));
+          addLog(`委托完成，获得 ${earned} 第纳尔。`);
+          setWorkState(null);
+          if (currentLocation) {
+            setView('TOWN');
+            setTownTab('WORK');
+          }
+        }, 650);
+        return () => clearTimeout(finishTimer);
+      }
+
+      const timer = setTimeout(() => {
+        if (!currentLocation) return;
+        if (currentLocation.id !== workState.locationId) return;
+        processDailyCycle(currentLocation, 0, 1, 0, true);
+        setWorkState(prev => prev ? { ...prev, daysPassed: prev.daysPassed + 1 } : null);
+      }, 1200);
+
+      return () => clearTimeout(timer);
+    }, [workState, currentLocation]);
 
     useEffect(() => {
       if (!miningState?.isActive) return;
@@ -3073,6 +3109,15 @@ export default function App() {
       }
 
       const nextDay = nextPlayer.day + 1;
+      newLocations = newLocations.map(loc => {
+        if (loc.type !== 'CITY') return loc;
+        const board = loc.workBoard;
+        const last = typeof board?.lastRefreshDay === 'number' ? board.lastRefreshDay : 0;
+        const contracts = Array.isArray(board?.contracts) ? board!.contracts : [];
+        const intervalDays = 3;
+        if (contracts.length > 0 && nextDay - last < intervalDays) return loc;
+        return { ...loc, workBoard: { lastRefreshDay: nextDay, contracts: buildWorkContractsForCity(loc, nextDay) } };
+      });
       const stayLoc = location ? (newLocations.find(l => l.id === location.id) ?? location) : null;
       const hospitalLevel = (() => {
         if (!stayLoc || stayLoc.type !== 'HIDEOUT' || stayLoc.owner !== 'PLAYER') return 0;
@@ -3232,7 +3277,7 @@ export default function App() {
         hpUpdate = { currentHp: newHp, status: newStatus as 'ACTIVE' | 'INJURED' };
       }
 
-      let newGold = Math.max(0, nextPlayer.gold - rentCost) + workIncomePerDay;
+      let newGold = Math.max(0, nextPlayer.gold - rentCost);
 
       const cityPool = newLocations.filter(l => l.type === 'CITY');
       const cityIds = cityPool.map(l => l.id);
@@ -4967,7 +5012,6 @@ export default function App() {
       }
 
       if (rentCost > 0) logsToAdd.push(`在城内休息一天（-${rentCost} 第纳尔）。`);
-      if (workIncomePerDay > 0) logsToAdd.push(`打工收入 +${workIncomePerDay} 第纳尔。`);
 
       nextPlayer = { 
         ...nextPlayer, 
@@ -4987,6 +5031,12 @@ export default function App() {
     setWorldDiplomacy(nextWorldDiplomacy);
     setBattleTimeline(nextBattleTimeline.slice(-60));
     logsToAdd.forEach(addLog);
+
+    if ((nextPlayer.story?.endingId ?? '') === 'HIDEOUT_FALLEN') {
+      setEndingReturnView('GAME_OVER');
+      setView('ENDING');
+      return;
+    }
 
     const finalLocation = location ? syncedLocations.find(l => l.id === location.id) ?? location : undefined;
     if (!suppressEncounter && finalLocation && finalLocation.type !== 'TRAINING_GROUNDS' && finalLocation.type !== 'ASYLUM' && finalLocation.type !== 'CITY' && finalLocation.type !== 'MARKET' && finalLocation.type !== 'HOTPOT_RESTAURANT' && finalLocation.type !== 'BANDIT_CAMP' && finalLocation.type !== 'MYSTERIOUS_CAVE' && finalLocation.type !== 'COFFEE' && finalLocation.type !== 'IMPOSTER_PORTAL' && finalLocation.type !== 'WORLD_BOARD' && finalLocation.type !== 'ROACH_NEST' && finalLocation.type !== 'MAGICIAN_LIBRARY') {
@@ -8695,7 +8745,7 @@ export default function App() {
   useEffect(() => {
     if ((player.story?.introSeen ?? false) === true) return;
     if (player.day > 1) return;
-    if (view === 'MAIN_MENU') return;
+    if (view === 'MAIN_MENU' || view === 'ENDING') return;
     setView(prev => (prev === 'INTRO' ? prev : 'INTRO'));
   }, [player.day, player.story?.introSeen, view]);
 
@@ -10086,7 +10136,7 @@ export default function App() {
     const freshWorld = buildInitialWorld();
     setPlayer(INITIAL_PLAYER_STATE);
     setHeroes(buildRandomizedHeroes());
-    setLocations(freshWorld.locations);
+    setLocations(freshWorld.locations.map(l => l.type === 'CITY' ? { ...l, workBoard: { lastRefreshDay: INITIAL_PLAYER_STATE.day, contracts: buildWorkContractsForCity(l, INITIAL_PLAYER_STATE.day) } } : l));
     setLords(freshWorld.lords);
     setCurrentLocation(null);
     setView('MAIN_MENU');
@@ -10251,7 +10301,10 @@ export default function App() {
             hideoutStayState={hideoutStayState}
             onAbortWork={() => {
               if (!workState?.isActive) return;
-              addLog('你中止了打工。');
+              const ratio = workState.totalDays > 0 ? workState.daysPassed / workState.totalDays : 0;
+              const earned = ratio < 0.5 ? 0 : Math.max(0, Math.floor(workState.totalPay / 5));
+              if (earned > 0) setPlayer(prev => ({ ...prev, gold: prev.gold + earned }));
+              addLog(earned > 0 ? `你中止了委托，领取了 ${earned} 第纳尔。` : '你中止了委托，但进度不足一半，拿不到报酬。');
               setWorkState(null);
             }}
             onAbortMining={() => {

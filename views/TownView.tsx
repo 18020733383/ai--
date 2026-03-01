@@ -10,10 +10,12 @@ type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' 
 
 type WorkState = {
   isActive: boolean;
+  locationId: string;
+  contractId: string;
+  contractTitle: string;
   totalDays: number;
   daysPassed: number;
-  dailyIncome: number;
-  accumulatedIncome: number;
+  totalPay: number;
 };
 
 type MiningState = {
@@ -1016,17 +1018,31 @@ export const TownView = ({
     }
     processDailyCycle(currentLocation, cityRestCost);
   };
-  const handleWork = () => {
+  const handleStartWorkContract = (contractId: string) => {
     if (!isCity) return;
-    const days = Math.max(1, Math.floor(workDays));
-    setWorkDays(days);
-
+    if (!!workState?.isActive) return;
+    const board = currentLocation.workBoard;
+    const contracts = board?.contracts ?? [];
+    const contract = contracts.find(c => c.id === contractId);
+    if (!contract) {
+      addLog('委托已失效。');
+      return;
+    }
+    updateLocationState({
+      ...currentLocation,
+      workBoard: {
+        lastRefreshDay: board?.lastRefreshDay ?? player.day,
+        contracts: contracts.filter(c => c.id !== contractId)
+      }
+    });
     setWorkState({
       isActive: true,
-      totalDays: days,
+      locationId: currentLocation.id,
+      contractId: contract.id,
+      contractTitle: contract.title,
+      totalDays: Math.max(1, Math.floor(contract.days)),
       daysPassed: 0,
-      dailyIncome: workIncomePerDay,
-      accumulatedIncome: 0
+      totalPay: Math.max(0, Math.floor(contract.pay))
     });
     onBackToMap();
   };
@@ -3354,24 +3370,35 @@ export const TownView = ({
         {isCity && activeTownTab === 'WORK' && (
           <div className="space-y-6 animate-fade-in">
             <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
-              <p className="text-stone-400 text-sm">在城里打工可以获得稳定但不多的收入。时间越长收入越高。</p>
+              <p className="text-stone-400 text-sm">城里会定期发布不同等级的委托。接下委托后时间会自动快进，你可以中途退出。</p>
             </div>
-            <div className="bg-stone-900/60 p-6 rounded border border-stone-800 flex flex-col md:flex-row md:items-center gap-6">
-              <div className="flex items-center gap-3">
-                <span className="text-stone-300">打工天数</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={30}
-                  value={workDays}
-                  onChange={(e) => setWorkDays(Math.max(1, Math.min(30, Number(e.target.value) || 1)))}
-                  className="w-20 bg-stone-800 border border-stone-700 text-stone-200 px-2 py-1 rounded"
-                />
-              </div>
-              <div className="text-stone-400">预计收入：{workDays * workIncomePerDay} 第纳尔（{workIncomePerDay}/天）</div>
-              <Button onClick={handleWork} variant="gold" className="flex items-center gap-2">
-                <Coins size={16} /> 开始打工
-              </Button>
+            <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4">
+              {((currentLocation.workBoard?.contracts ?? []).length <= 0) ? (
+                <div className="text-stone-500 text-sm">目前没有可接的委托。</div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {(currentLocation.workBoard?.contracts ?? []).map(c => (
+                    <div key={c.id} className="bg-stone-950/40 border border-stone-800 rounded p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-stone-200 font-bold">{c.title}</div>
+                          <div className="text-xs text-stone-500 mt-1">等级 {c.tier} · 耗时 {c.days} 天 · 报酬 {c.pay}</div>
+                        </div>
+                        <Button
+                          onClick={() => handleStartWorkContract(c.id)}
+                          variant="gold"
+                          disabled={!!workState?.isActive || !!miningState?.isActive || !!roachLureState?.isActive}
+                        >
+                          接取
+                        </Button>
+                      </div>
+                      <div className="text-xs text-stone-500 mt-2">
+                        中途退出：进度过半才有报酬，且只有 1/5。
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         )}
