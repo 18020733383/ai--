@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.3.34',
+    date: '2026-03-01',
+    items: [
+      '新增玩家据点“隐匿点”：分层扩建、分层驻军、分层构筑与守护者',
+      '隐匿点支持讨伐队集结并分层围攻，最深层失守将游戏结束'
+    ]
+  },
+  {
     version: '0.3.33',
     date: '2026-02-28',
     items: [

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Brain, Coffee, Coins, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Utensils, Zap } from 'lucide-react';
+import { AlertTriangle, Brain, Coffee, Coins, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, Shield, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Utensils, Zap } from 'lucide-react';
 import { Location, MineralId, MineralPurity, PlayerState } from '../types';
 import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../constants';
 import { Button } from './Button';
@@ -492,6 +492,7 @@ export const BigMapView = ({
                   loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={20} /> :
                   loc.type === 'SOURCE_RECOMPILER' ? <Brain className="text-fuchsia-300" size={20} /> :
                   loc.type === 'HABITAT' ? <MapPin className="text-emerald-300" size={20} /> :
+                  loc.type === 'HIDEOUT' ? <Shield className="text-emerald-300" size={20} /> :
                   <Tent className="text-green-500" size={16} />}
                 {loc.factionId && loc.owner !== 'PLAYER' && (
                   <span

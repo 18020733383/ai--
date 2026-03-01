@@ -791,7 +791,7 @@ export default function App() {
   const [trainInputEnemy, setTrainInputEnemy] = useState({ id: 'peasant', count: 10 });
 
   // Town View State
-  const [townTab, setTownTab] = useState<'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER' | 'HABITAT'>('RECRUIT');
+  const [townTab, setTownTab] = useState<'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER' | 'HABITAT' | 'HIDEOUT'>('RECRUIT');
   const [workDays, setWorkDays] = useState(1);
   const [miningDays, setMiningDays] = useState(2);
   const [roachLureDays, setRoachLureDays] = useState(2);
@@ -3392,6 +3392,76 @@ export default function App() {
         // }
 
         if (updated.owner === 'PLAYER') {
+          if (updated.type === 'HIDEOUT' && updated.hideout && Array.isArray(updated.hideout.layers) && updated.hideout.layers.length > 0) {
+            const nextLayers = updated.hideout.layers.map(layer => {
+              const nextLayer = { ...layer };
+              const layerQueue = (nextLayer.constructionQueue ?? []).map(q => ({ ...q, daysLeft: q.daysLeft - 1 }));
+              const finished = layerQueue.filter(q => q.daysLeft <= 0);
+              const remaining = layerQueue.filter(q => q.daysLeft > 0);
+              if (finished.length > 0) {
+                const builtTypes = finished.map(q => q.type);
+                const existing = nextLayer.buildings ?? [];
+                nextLayer.buildings = Array.from(new Set([...existing, ...builtTypes]));
+                finished.forEach(b => logsToAdd.push(`${updated.name}·${nextLayer.name} 的 ${getBuildingName(b.type)} 已建成。`));
+              }
+              nextLayer.constructionQueue = remaining;
+
+              const buildings = nextLayer.buildings ?? [];
+              if (buildings.includes('FACTORY')) {
+                const lastIncomeDay = nextLayer.lastIncomeDay ?? 0;
+                if (nextDay - lastIncomeDay >= 3) {
+                  const income = 40 + nextLayer.depth * 10;
+                  newGold += income;
+                  nextLayer.lastIncomeDay = nextDay;
+                  logsToAdd.push(`【工坊】${updated.name}·${nextLayer.name} 贡献了 ${income} 第纳尔。`);
+                }
+              }
+
+              if (buildings.includes('TRAINING_CAMP')) {
+                const lastTrainingDay = nextLayer.lastTrainingDay ?? 0;
+                if (nextDay - lastTrainingDay >= 3) {
+                  nextLayer.lastTrainingDay = nextDay;
+                  if ((nextLayer.garrison ?? []).length > 0) {
+                    nextLayer.garrison = applyGarrisonTraining(nextLayer.garrison ?? [], 4);
+                    logsToAdd.push(`【训练营】${updated.name}·${nextLayer.name} 的驻军获得了经验。`);
+                  }
+                }
+              }
+
+              if (buildings.includes('RECRUITER')) {
+                const lastRecruitDay = nextLayer.lastRecruitDay ?? 0;
+                if (nextDay - lastRecruitDay >= 4) {
+                  nextLayer.lastRecruitDay = nextDay;
+                  const base = nextLayer.garrisonBaseLimit ?? 900;
+                  const limit = Math.floor(base * 1.2 * (buildings.includes('BARRACKS') ? 1.5 : 1));
+                  const garrison = nextLayer.garrison ?? [];
+                  const currentCount = getGarrisonCount(garrison);
+                  if (currentCount < limit) {
+                    const recruitCount = 7 + Math.min(8, nextLayer.depth * 2);
+                    const available = Math.min(limit - currentCount, recruitCount);
+                    if (available > 0) {
+                      const recruitId = 'militia';
+                      const template = getTroopTemplate(recruitId);
+                      if (template) {
+                        const index = garrison.findIndex(t => t.id === template.id);
+                        if (index >= 0) {
+                          garrison[index] = { ...garrison[index], count: garrison[index].count + available };
+                        } else {
+                          garrison.push({ ...template, count: available, xp: 0 });
+                        }
+                        nextLayer.garrison = garrison;
+                        logsToAdd.push(`【征兵官】${updated.name}·${nextLayer.name} 新增了 ${available} 名守军。`);
+                      }
+                    }
+                  }
+                }
+              }
+
+              return nextLayer;
+            });
+            updated.hideout = { ...updated.hideout, layers: nextLayers };
+          }
+
           const buildings = updated.buildings ?? [];
 
           if (buildings.includes('FACTORY')) {
@@ -3467,6 +3537,185 @@ export default function App() {
            ? 'HUMAN'
            : (inferredRace && inferredRace !== 'UNKNOWN' ? (inferredRace as RaceId) : null);
          const siegeFactionName = siege.attackerFactionId ? (FACTIONS.find(f => f.id === siege.attackerFactionId)?.name ?? siege.attackerName) : siege.attackerName;
+
+         if (loc.type === 'HIDEOUT' && loc.owner === 'PLAYER' && loc.hideout && Array.isArray(loc.hideout.layers) && loc.hideout.layers.length > 0) {
+          const layerIndexRaw = (siege as any).hideoutLayerIndex ?? loc.hideout.selectedLayer ?? 0;
+          const layerIndex = Math.max(0, Math.min(loc.hideout.layers.length - 1, Math.floor(layerIndexRaw)));
+          const layer = loc.hideout.layers[layerIndex];
+          let garrison = (layer.garrison ?? []).map(t => ({ ...t })).filter(t => t.count > 0);
+          let attackers = [...siege.troops];
+
+          const defense = getLocationDefenseDetails({ ...loc, activeSiege: { ...siege, hideoutLayerIndex: layerIndex } });
+          const wallBonus = 1 + (defense.wallLevel * 0.2);
+          const guardianHeroId = layer.guardianHeroId;
+          const guardian = guardianHeroId ? nextHeroes.find(h => h.id === guardianHeroId) ?? null : null;
+          const guardianFactor = guardian ? clampValue(1 + guardian.level * 0.03 + guardian.attributes.attack * 0.004 + guardian.attributes.hp * 0.001, 1, 1.75) : 1;
+
+          const getProfile = (troop: Troop) => {
+            const tmpl = getTroopTemplate(troop.id);
+            const normalizedId = troop.id.startsWith('garrison_') ? troop.id.slice('garrison_'.length) : troop.id;
+            const inferredDomain: 'GROUND' | 'AIR' | 'HYBRID' = tmpl?.combatDomain ?? troop.combatDomain ?? (
+              normalizedId.includes('aerial') ? 'AIR' : 'GROUND'
+            );
+            const attrs = tmpl?.attributes ?? troop.attributes;
+            const range = attrs?.range ?? 0;
+            const airValue = typeof (attrs as any)?.air === 'number'
+              ? Number((attrs as any).air)
+              : inferredDomain === 'AIR' ? 180 : inferredDomain === 'HYBRID' ? 130 : 0;
+            let antiAirValue = typeof (attrs as any)?.antiAir === 'number'
+              ? Number((attrs as any).antiAir)
+              : Math.round(Math.max(0, range) * 0.85 + 10);
+            const tier = tmpl?.tier ?? troop.tier ?? 1;
+            const isRoach = normalizedId.startsWith('roach_');
+            const isRoachGlide = isRoach && !normalizedId.includes('aerial') && tier <= 2;
+            if (isRoachGlide) antiAirValue = Math.max(antiAirValue, 65);
+            const clamp01 = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+            const attackVsAir = typeof (tmpl?.attackVsAir ?? troop.attackVsAir) === 'number'
+              ? (tmpl?.attackVsAir ?? troop.attackVsAir) as number
+              : clamp01(0.18 + (antiAirValue / 210) + (inferredDomain !== 'GROUND' ? airValue / 520 : 0), 0.15, 1.25);
+            const attackVsGround = typeof (tmpl?.attackVsGround ?? troop.attackVsGround) === 'number'
+              ? (tmpl?.attackVsGround ?? troop.attackVsGround) as number
+              : inferredDomain === 'AIR'
+                ? clamp01(0.75 + (airValue / 520), 0.75, 1.25)
+                : 1.0;
+            const canCapture = typeof (tmpl?.canCapture ?? troop.canCapture) === 'boolean'
+              ? (tmpl?.canCapture ?? troop.canCapture) as boolean
+              : inferredDomain !== 'AIR';
+            return { domain: inferredDomain, attackVsAir, attackVsGround, canCapture };
+          };
+          const isAirCapable = (t: Troop) => {
+            const d = getProfile(t).domain;
+            return d === 'AIR' || d === 'HYBRID';
+          };
+          const isGroundCapable = (t: Troop) => {
+            const d = getProfile(t).domain;
+            return d === 'GROUND' || d === 'HYBRID';
+          };
+          const calcAttackPower = (troops: Troop[], target: 'AIR' | 'GROUND') => troops.reduce((acc, t) => {
+            const bonusRatio = (t.enchantments ?? []).reduce((sum, e) => sum + e.powerBonus, 0);
+            const profile = getProfile(t);
+            const weight = target === 'AIR' ? profile.attackVsAir : profile.attackVsGround;
+            if (t.id === 'player_main' || t.id.startsWith('hero_')) return acc + t.basePower * (1 + bonusRatio) * weight;
+            return acc + t.count * t.tier * 10 * (1 + bonusRatio) * weight;
+          }, 0);
+          const applyLossSelective = (troops: Troop[], rate: number, predicate: (t: Troop) => boolean) => {
+            if (rate <= 0) return troops;
+            return troops
+              .map(t => {
+                if (!predicate(t)) return t;
+                return { ...t, count: Math.max(0, Math.floor(t.count * (1 - rate))) };
+              })
+              .filter(t => t.count > 0);
+          };
+
+          const phaseLoss = () => 0.03 + (Math.random() * 0.03);
+          const clampRate = (n: number, max: number) => Math.max(0, Math.min(max, n));
+
+          const attackersAir = attackers.filter(isAirCapable);
+          const defendersAir = garrison.filter(isAirCapable);
+          const aaLoss = phaseLoss();
+          const airAirAP = calcAttackPower(attackersAir, 'AIR');
+          const airAirDP = calcAttackPower(defendersAir, 'AIR') * guardianFactor;
+          const airAirRatio = airAirDP > 0 ? airAirAP / airAirDP : airAirAP > 0 ? 10 : 0;
+          const defenderAirLossRate = airAirRatio > 0 ? clampRate(aaLoss * airAirRatio, 0.35) : 0;
+          const attackerAirLossRate = airAirRatio > 0 ? clampRate(aaLoss * (1 / airAirRatio), 0.35) : 0;
+          garrison = applyLossSelective(garrison, defenderAirLossRate, isAirCapable);
+          attackers = applyLossSelective(attackers, attackerAirLossRate, isAirCapable);
+
+          const agLoss = 0.035 + (Math.random() * 0.035);
+          const airToGroundAP = calcAttackPower(attackers.filter(isAirCapable), 'GROUND');
+          const defenderGroundPower = calculatePower(garrison.filter(isGroundCapable)) * wallBonus * guardianFactor;
+          const airToGroundRatio = defenderGroundPower > 0 ? airToGroundAP / defenderGroundPower : airToGroundAP > 0 ? 10 : 0;
+          const defenderGroundLossRate = airToGroundRatio > 0
+            ? clampRate(agLoss * airToGroundRatio, 0.4) * (1 - (defense as any).airstrikeDamageReduction)
+            : 0;
+          garrison = applyLossSelective(garrison, defenderGroundLossRate, isGroundCapable);
+
+          const gaLoss = 0.035 + (Math.random() * 0.035);
+          const groundToAirDP = calcAttackPower(garrison.filter(isGroundCapable), 'AIR') * guardianFactor * (1 + (defense as any).antiAirPowerBonus);
+          const attackerAirPower = calculatePower(attackers.filter(isAirCapable));
+          const groundToAirRatio = attackerAirPower > 0 ? groundToAirDP / attackerAirPower : groundToAirDP > 0 ? 10 : 0;
+          const attackerAirLossRate2 = groundToAirRatio > 0 ? clampRate(gaLoss * groundToAirRatio, 0.4) : 0;
+          attackers = applyLossSelective(attackers, attackerAirLossRate2, isAirCapable);
+
+          const groundLoss = 0.04 + (Math.random() * 0.04);
+          const attackerGroundPower = calculatePower(attackers.filter(isGroundCapable)) + calcAttackPower(attackers.filter(isAirCapable), 'GROUND') * 0.35;
+          const defenderGroundPower2 = (calculatePower(garrison.filter(isGroundCapable)) + calcAttackPower(garrison.filter(isAirCapable), 'GROUND') * 0.15) * wallBonus * guardianFactor;
+          const groundRatio = defenderGroundPower2 > 0 ? attackerGroundPower / defenderGroundPower2 : attackerGroundPower > 0 ? 10 : 0;
+          const defenderGroundLossRate2 = clampRate(groundLoss * groundRatio, 0.5);
+          const attackerGroundLossRate2 = clampRate(groundLoss * (groundRatio > 0 ? (1 / groundRatio) : 1), 0.5);
+          garrison = applyLossSelective(garrison, defenderGroundLossRate2, isGroundCapable);
+          attackers = applyLossSelective(attackers, attackerGroundLossRate2, isGroundCapable);
+
+          const garrisonCount = getGarrisonCount(garrison);
+          const attackerCount = getGarrisonCount(attackers);
+          const defenderHoldCount = getGarrisonCount(garrison.filter(t => getProfile(t).canCapture));
+          const attackerHoldCount = getGarrisonCount(attackers.filter(t => getProfile(t).canCapture));
+
+          const nextLayers = loc.hideout.layers.map((l, idx) => idx === layerIndex ? { ...l, garrison } : l);
+          const nextHideout = { ...loc.hideout, layers: nextLayers, selectedLayer: layerIndex };
+
+          if ((nextDay - siege.startDay) % 2 === 0) {
+            addLocalLog(loc.id, `隐匿点遭围攻：攻${attackerCount} 守${garrisonCount}（${layer.name}）。`);
+          }
+
+          if (defenderHoldCount <= 0) {
+            if (attackerHoldCount <= 0) {
+              logsToAdd.push(`【围攻解除】隐匿点 ${layer.name} 守军溃散，但 ${siegeFactionName} 无法继续推进，选择撤离。`);
+              addLocalLog(loc.id, `守军溃散，围城方撤离（${layer.name}）。`);
+              return {
+                ...loc,
+                hideout: { ...nextHideout, layers: nextLayers.map((l, idx) => idx === layerIndex ? { ...l, garrison: [] } : l) },
+                activeSiege: undefined,
+                isUnderSiege: false
+              };
+            }
+            if (layerIndex < loc.hideout.layers.length - 1) {
+              const nextLayerIndex = layerIndex + 1;
+              logsToAdd.push(`【隐匿点告急】${layer.name} 失守，敌军深入下一层！`);
+              addLocalLog(loc.id, `第 ${layer.depth} 层失守，敌军深入。`);
+              return {
+                ...loc,
+                hideout: { ...nextHideout, selectedLayer: nextLayerIndex },
+                activeSiege: { ...siege, troops: attackers, hideoutLayerIndex: nextLayerIndex },
+                isUnderSiege: true
+              };
+            }
+            logsToAdd.push(`【隐匿点沦陷】敌军攻入最深处，隐匿点被攻破。`);
+            addLocalLog(loc.id, `隐匿点沦陷，游戏结束。`);
+            nextPlayer = {
+              ...nextPlayer,
+              story: {
+                ...(nextPlayer.story ?? {}),
+                gameOverReason: 'HIDEOUT_FALLEN'
+              }
+            };
+            setView('GAME_OVER');
+            return {
+              ...loc,
+              hideout: nextHideout,
+              activeSiege: undefined,
+              isUnderSiege: false
+            };
+          }
+
+          if (attackerCount <= 0 || attackerHoldCount <= 0) {
+            logsToAdd.push(`【围攻解除】隐匿点 ${layer.name} 击退了 ${siegeFactionName}。`);
+            addLocalLog(loc.id, `围攻被击退（${layer.name}）。`);
+            return {
+              ...loc,
+              hideout: nextHideout,
+              activeSiege: undefined,
+              isUnderSiege: false
+            };
+          }
+
+          return {
+            ...loc,
+            hideout: nextHideout,
+            activeSiege: { ...siege, troops: attackers, hideoutLayerIndex: layerIndex }
+          };
+         }
          let garrison = loc.garrison && loc.garrison.length > 0 ? [...loc.garrison] : buildGarrisonTroops(loc);
          const stayParties = (loc.stayParties ?? []).map(party => ({
            ...party,
@@ -3885,7 +4134,8 @@ export default function App() {
           troops: raidTroops,
           startDay: nextDay,
           totalPower: raidPower,
-          siegeEngines: ['SIMPLE_LADDER']
+          siegeEngines: ['SIMPLE_LADDER'],
+          hideoutLayerIndex: target.type === 'HIDEOUT' ? 0 : undefined
         };
         target.isUnderSiege = true;
         if (meta.kind === 'IMPOSTER_RAID') {
@@ -3900,7 +4150,7 @@ export default function App() {
       const playerTargets = newLocations.filter(loc => (
         loc.owner === 'PLAYER' &&
         !loc.activeSiege &&
-        (loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE')
+        (loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE' || loc.type === 'HIDEOUT')
       ));
       hostileFactions.forEach(faction => {
         if (playerTargets.length === 0) return;
@@ -3980,6 +4230,85 @@ export default function App() {
         }
         newLocations.push(camp);
       });
+
+      const hideoutTarget = newLocations.find(loc => loc.type === 'HIDEOUT' && loc.owner === 'PLAYER');
+      if (hideoutTarget && !hideoutTarget.activeSiege && !hideoutTarget.isUnderSiege && hideoutTarget.hideout) {
+        const lastRaidDay = hideoutTarget.hideout.lastRaidDay ?? 0;
+        const daysSince = Math.max(0, nextDay - lastRaidDay);
+        const baseChance = daysSince >= 10 ? Math.min(0.18 + (daysSince - 10) * 0.02, 0.5) : 0;
+        if (Math.random() < baseChance) {
+          const marchDays = 2 + Math.floor(Math.random() * 3);
+          const etaDay = nextDay + marchDays;
+          const roll = Math.random();
+          const attackerName = roll < 0.7 ? '讨伐队' : roll < 0.9 ? '异种讨伐队' : '裂隙猎杀队';
+          const leaderName = roll < 0.7 ? '地方武装头目' : roll < 0.9 ? '异种首领' : '裂隙军官';
+          const raidTroops = roll < 0.7
+            ? [
+                createTroop('peasant', randomInt(30, 60)),
+                createTroop('militia', randomInt(20, 45)),
+                createTroop('hunter', randomInt(10, 25))
+              ]
+            : roll < 0.9
+              ? [
+                  createTroop('goblin_scavenger', randomInt(35, 70)),
+                  createTroop('goblin_spear_urchin', randomInt(25, 55)),
+                  createTroop('goblin_slinger', randomInt(20, 45)),
+                  createTroop('goblin_raider', randomInt(10, 22))
+                ]
+              : [
+                  createTroop('imposter_grunt', randomInt(35, 70)),
+                  createTroop('imposter_crossbowman', randomInt(20, 45)),
+                  createTroop('imposter_spear_guard', randomInt(15, 35))
+                ];
+          const campId = `field_camp_hideout_${hideoutTarget.id}_${nextDay}`;
+          const dx = randomInt(-24, 24);
+          const dy = randomInt(-24, 24);
+          const initialCoordinates = {
+            x: clampValue(hideoutTarget.coordinates.x + dx, 0, MAP_WIDTH),
+            y: clampValue(hideoutTarget.coordinates.y + dy, 0, MAP_HEIGHT)
+          };
+          const camp: Location = {
+            id: campId,
+            name: `${attackerName}·集结地`,
+            type: 'FIELD_CAMP',
+            description: `一支正在集结的讨伐队。目标：${hideoutTarget.name}。`,
+            coordinates: initialCoordinates,
+            terrain: hideoutTarget.terrain,
+            factionId: undefined,
+            lastRefreshDay: 0,
+            volunteers: [],
+            mercenaries: [],
+            owner: 'ENEMY',
+            isUnderSiege: false,
+            siegeProgress: 0,
+            siegeEngines: [],
+            garrison: raidTroops.map(t => ({ ...t })),
+            buildings: ['DEFENSE'],
+            constructionQueue: [],
+            siegeEngineQueue: [],
+            lastIncomeDay: 0,
+            camp: {
+              kind: 'FACTION_RAID',
+              sourceLocationId: 'unknown_raiders',
+              targetLocationId: hideoutTarget.id,
+              totalDays: marchDays,
+              daysLeft: marchDays,
+              attackerName,
+              leaderName
+            }
+          };
+          const hideoutIndex = newLocations.findIndex(loc => loc.id === hideoutTarget.id);
+          if (hideoutIndex >= 0) {
+            newLocations[hideoutIndex] = {
+              ...hideoutTarget,
+              hideout: { ...hideoutTarget.hideout, lastRaidDay: nextDay }
+            };
+          }
+          logsToAdd.push(`【讨伐】侦查到有部队在隐匿点周围集结，预计 ${marchDays} 天后发动进攻。`);
+          addLocalLog(hideoutTarget.id, `侦查到讨伐队集结，预计 ${etaDay} 天后发动进攻。`);
+          newLocations.push(camp);
+        }
+      }
 
       if (nextDay % 7 === 0) {
         const councilFactions = FACTIONS.filter(faction => getFactionLocations(faction.id, newLocations).length > 0);
@@ -4877,6 +5206,20 @@ export default function App() {
           { name: "岗哨旗台", description: "升起旗帜、传递信号，便于组织防御。" }
         ];
         details.flavorText = "行军中的部队在此扎营，警戒森严。";
+    } else if (location.type === 'HIDEOUT') {
+        const layerIndexRaw = (location.activeSiege as any)?.hideoutLayerIndex ?? location.hideout?.selectedLayer ?? 0;
+        const layers = location.hideout?.layers ?? [];
+        const layerIndex = Math.max(0, Math.min(layers.length - 1, Math.floor(layerIndexRaw)));
+        const layer = layers[layerIndex];
+        const depth = layer?.depth ?? layerIndex;
+        details.wallLevel = Math.min(6, 1 + depth);
+        details.wallName = depth === 0 ? "地表入口工事" : `地下防线·第${depth}层`;
+        details.wallDesc = "地表与地层之间的狭窄通道，易守难攻。";
+        details.mechanisms = [
+          { name: "暗道闸门", description: "通道狭窄且多处可封闭，敌军难以展开。" },
+          { name: "陷阱回廊", description: "地刺、落石与爆燃装置布在转角处。" }
+        ];
+        details.flavorText = "向下，是层层叠叠的黑暗与工事。";
     } else if (location.type === 'ASYLUM') {
         details.wallLevel = 4;
         details.wallName = "高压电网";
@@ -4970,8 +5313,12 @@ export default function App() {
         details.flavorText = "这里是世界的伤口，任何靠近的人都会被存在本身排斥。在这里，物理法则只是建议，不是铁律。";
     }
 
-    const hasDefenseBuilding = (location.buildings ?? []).includes('DEFENSE');
-    const built = location.buildings ?? [];
+    const hideoutLayerIndexRaw = (location.activeSiege as any)?.hideoutLayerIndex ?? location.hideout?.selectedLayer ?? 0;
+    const hideoutLayers = location.hideout?.layers ?? [];
+    const hideoutLayerIndex = Math.max(0, Math.min(hideoutLayers.length - 1, Math.floor(hideoutLayerIndexRaw)));
+    const hideoutLayerBuildings = location.type === 'HIDEOUT' ? (hideoutLayers[hideoutLayerIndex]?.buildings ?? []) : [];
+    const built = location.type === 'HIDEOUT' ? hideoutLayerBuildings : (location.buildings ?? []);
+    const hasDefenseBuilding = built.includes('DEFENSE');
     let extraMechanismHp = 0;
     let extraRangedHit = 0;
     let extraRangedDamage = 0;

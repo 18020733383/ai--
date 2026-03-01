@@ -244,6 +244,7 @@ export interface PlayerState {
     introSeen?: boolean;
     mainQuest?: string;
     mainQuestStage?: number;
+    gameOverReason?: string;
   };
 }
 
@@ -447,10 +448,30 @@ export type FieldCampMeta = {
   goldMultiplier?: number;
 };
 
+export type HideoutLayer = {
+  id: string;
+  depth: number;
+  name: string;
+  garrison: Troop[];
+  buildings: BuildingType[];
+  constructionQueue: ConstructionQueueItem[];
+  lastIncomeDay?: number;
+  lastTrainingDay?: number;
+  lastRecruitDay?: number;
+  guardianHeroId?: string;
+  garrisonBaseLimit?: number;
+};
+
+export type HideoutState = {
+  layers: HideoutLayer[];
+  selectedLayer?: number;
+  lastRaidDay?: number;
+};
+
 export interface Location {
   id: string;
   name: string;
-  type: 'VILLAGE' | 'CASTLE' | 'CITY' | 'RUINS' | 'TRAINING_GROUNDS' | 'ASYLUM' | 'GRAVEYARD' | 'MARKET' | 'HOTPOT_RESTAURANT' | 'BANDIT_CAMP' | 'MYSTERIOUS_CAVE' | 'COFFEE' | 'IMPOSTER_PORTAL' | 'WORLD_BOARD' | 'VOID_BUFFER_MINE' | 'MEMORY_OVERFLOW_MINE' | 'LOGIC_PARADOX_MINE' | 'HERO_CRYSTAL_MINE' | 'BLACKSMITH' | 'ROACH_NEST' | 'HEAVY_TRIAL_GROUNDS' | 'ALTAR' | 'MAGICIAN_LIBRARY' | 'SOURCE_RECOMPILER' | 'FIELD_CAMP' | 'HABITAT';
+  type: 'VILLAGE' | 'CASTLE' | 'CITY' | 'RUINS' | 'TRAINING_GROUNDS' | 'ASYLUM' | 'GRAVEYARD' | 'MARKET' | 'HOTPOT_RESTAURANT' | 'BANDIT_CAMP' | 'MYSTERIOUS_CAVE' | 'COFFEE' | 'IMPOSTER_PORTAL' | 'WORLD_BOARD' | 'VOID_BUFFER_MINE' | 'MEMORY_OVERFLOW_MINE' | 'LOGIC_PARADOX_MINE' | 'HERO_CRYSTAL_MINE' | 'BLACKSMITH' | 'ROACH_NEST' | 'HEAVY_TRIAL_GROUNDS' | 'ALTAR' | 'MAGICIAN_LIBRARY' | 'SOURCE_RECOMPILER' | 'FIELD_CAMP' | 'HABITAT' | 'HIDEOUT';
   description: string;
   coordinates: { x: number; y: number };
   terrain: TerrainType;
@@ -491,6 +512,7 @@ export interface Location {
   lord?: Lord;
   garrisonBaseLimit?: number;
   localLogs?: LocalLogEntry[];
+  hideout?: HideoutState;
   activeSiege?: {
     attackerName: string;
     attackerFactionId?: FactionId;
@@ -498,6 +520,7 @@ export interface Location {
     startDay: number;
     totalPower: number;
     siegeEngines?: SiegeEngineType[];
+    hideoutLayerIndex?: number;
   };
   camp?: FieldCampMeta;
 }

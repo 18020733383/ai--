@@ -5039,6 +5039,38 @@ export const LOCATIONS: Location[] = [
     mercenaries: []
   },
   {
+    id: 'hideout_underground',
+    name: '隐匿点',
+    type: 'HIDEOUT',
+    description: '你在地表之下挖出的据点入口。向下，是层层叠叠的黑暗与工事。',
+    coordinates: { x: 196, y: 210 },
+    terrain: 'RUINS',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: [],
+    owner: 'PLAYER',
+    garrison: [],
+    buildings: [],
+    constructionQueue: [],
+    siegeEngines: [],
+    siegeEngineQueue: [],
+    hideout: {
+      layers: [
+        {
+          id: 'hideout_layer_0',
+          depth: 0,
+          name: '地面层',
+          garrison: [],
+          buildings: [],
+          constructionQueue: [],
+          garrisonBaseLimit: 900
+        }
+      ],
+      selectedLayer: 0,
+      lastRaidDay: 0
+    }
+  },
+  {
     id: 'altar_whisper',
     name: '低语祭坛',
     type: 'ALTAR',

@@ -6,7 +6,7 @@ import { chatWithAltar, chatWithCampLeader, chatWithLord, proposeHeroPromotion, 
 import { ANOMALY_CATALOG, getTroopRace, TROOP_RACE_LABELS } from '../constants';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, StayParty, Troop, TroopTier } from '../types';
 
-type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER' | 'HABITAT';
+type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER' | 'HABITAT' | 'HIDEOUT';
 
 type WorkState = {
   isActive: boolean;
@@ -233,7 +233,7 @@ export const TownView = ({
 
   const getBgImageStyle = () => {
     const type = currentLocation.type;
-    const bgType = type === 'FIELD_CAMP' ? 'BANDIT_CAMP' : type;
+    const bgType = type === 'FIELD_CAMP' ? 'BANDIT_CAMP' : type === 'HIDEOUT' ? 'RUINS' : type;
     return {
       backgroundImage: `url("/image/${bgType}.webp"), url("/image/${bgType}.png"), url("/image/${bgType}.jpg"), url("/image/${bgType}.jpeg")`,
       backgroundSize: 'cover',
@@ -251,6 +251,7 @@ export const TownView = ({
   const isHotpot = currentLocation.type === 'HOTPOT_RESTAURANT';
   const isCoffee = currentLocation.type === 'COFFEE';
   const isHabitat = currentLocation.type === 'HABITAT';
+  const isHideout = currentLocation.type === 'HIDEOUT';
   const isHeavyTrialGrounds = currentLocation.type === 'HEAVY_TRIAL_GROUNDS';
   const isImposterPortal = currentLocation.type === 'IMPOSTER_PORTAL';
   const isAltar = currentLocation.type === 'ALTAR';
@@ -269,7 +270,9 @@ export const TownView = ({
   const restrictedTabs = ['RECRUIT', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'OWNED', 'MINING', 'FORGE', 'ROACH_LURE', 'LORD', 'MAGICIAN_LIBRARY', 'RECOMPILER'];
   const specialHiddenTabs = ['RECRUIT', 'GARRISON', 'LOCAL_GARRISON', 'DEFENSE', 'SIEGE', 'OWNED', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'LORD'];
   const specialFallbackTab = isMine ? 'MINING' : isBlacksmith ? 'FORGE' : isAltar ? 'ALTAR' : isMagicianLibrary ? 'MAGICIAN_LIBRARY' : isRecompiler ? 'RECOMPILER' : 'LOCAL_GARRISON';
-  const activeTownTab = (isOwnedByPlayer && townTab === 'LORD')
+  const activeTownTab = isHideout
+    ? 'HIDEOUT'
+    : (isOwnedByPlayer && townTab === 'LORD')
     ? 'LOCAL_GARRISON'
     : (isFieldCamp && townTab !== 'SIEGE' && townTab !== 'DEFENSE' && townTab !== 'LORD')
       ? 'SIEGE'
@@ -1220,8 +1223,14 @@ export const TownView = ({
   const mergedStayParties = [playerStayParty, ...stayParties.filter(party => party.id !== playerStayParty.id)];
   const visibleStayParties = mergedStayParties.filter(party => party.troops.some(troop => troop.count > 0));
   const getPartyCount = (troops: Troop[]) => troops.reduce((sum, troop) => sum + troop.count, 0);
-  const totalGarrisonCount = localGarrison.reduce((sum, unit) => sum + unit.count, 0);
-  const totalGarrisonPower = localGarrison.reduce((sum, unit) => sum + unit.count * unit.troop.basePower, 0);
+  const hideoutState = currentLocation.hideout;
+  const hideoutSelectedLayerIndex = Math.max(0, Math.min((hideoutState?.layers?.length ?? 1) - 1, hideoutState?.selectedLayer ?? 0));
+  const hideoutSelectedLayer = hideoutState?.layers?.[hideoutSelectedLayerIndex];
+  const hideoutLayerTroops = (hideoutSelectedLayer?.garrison ?? []).filter(t => (t.count ?? 0) > 0);
+  const hideoutLayerGarrisonCount = hideoutLayerTroops.reduce((sum, t) => sum + (t.count ?? 0), 0);
+  const hideoutLayerGarrisonPower = hideoutLayerTroops.reduce((sum, t) => sum + (t.count ?? 0) * (t.basePower ?? 0), 0);
+  const totalGarrisonCount = isHideout ? hideoutLayerGarrisonCount : localGarrison.reduce((sum, unit) => sum + unit.count, 0);
+  const totalGarrisonPower = isHideout ? hideoutLayerGarrisonPower : localGarrison.reduce((sum, unit) => sum + unit.count * unit.troop.basePower, 0);
   const isImposterAlerted = (currentLocation.imposterAlertUntilDay ?? 0) >= player.day;
   const isSacked = (currentLocation.sackedUntilDay ?? 0) >= player.day;
   const localDefenseDetails = getLocationDefenseDetails(currentLocation);
@@ -1231,6 +1240,10 @@ export const TownView = ({
   const siegeEngineQueue = currentLocation.siegeEngineQueue ?? [];
   const constructionQueue = currentLocation.constructionQueue ?? [];
   const builtBuildings = currentLocation.buildings ?? [];
+
+  const hideoutLayerCapBase = hideoutSelectedLayer?.garrisonBaseLimit ?? 900;
+  const hideoutLayerHasBarracks = (hideoutSelectedLayer?.buildings ?? []).includes('BARRACKS');
+  const hideoutLayerLimit = hideoutLayerHasBarracks ? Math.floor(hideoutLayerCapBase * 1.5) : hideoutLayerCapBase;
 
   const handleBuySiegeEngine = (engine: { type: SiegeEngineType; name: string; cost: number; days: number }) => {
     if (!isSiegeTarget && !isImposterPortal) return;
@@ -1347,6 +1360,151 @@ export const TownView = ({
     setPlayer(prev => ({ ...prev, troops: updatedPlayerTroops }));
     updateLocationState({ ...currentLocation, garrison: updatedGarrison });
     addLog(`已调回 ${moveCount} 名 ${garrisonTroop.name}。`);
+  };
+
+  const updateHideoutLayer = (layerIndex: number, updater: (layer: NonNullable<Location['hideout']>['layers'][number]) => NonNullable<Location['hideout']>['layers'][number]) => {
+    if (!isHideout || !isOwnedByPlayer) return;
+    const hideout = currentLocation.hideout;
+    if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
+    const safeIndex = Math.max(0, Math.min(hideout.layers.length - 1, Math.floor(layerIndex)));
+    const nextLayers = hideout.layers.map((layer, idx) => idx === safeIndex ? updater(layer) : layer);
+    updateLocationState({ ...currentLocation, hideout: { ...hideout, layers: nextLayers, selectedLayer: safeIndex } });
+  };
+
+  const handleHideoutSelectLayer = (layerIndex: number) => {
+    if (!isHideout || !isOwnedByPlayer) return;
+    const hideout = currentLocation.hideout;
+    if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
+    const safeIndex = Math.max(0, Math.min(hideout.layers.length - 1, Math.floor(layerIndex)));
+    updateLocationState({ ...currentLocation, hideout: { ...hideout, selectedLayer: safeIndex } });
+  };
+
+  const handleHideoutExpand = () => {
+    if (!isHideout || !isOwnedByPlayer) return;
+    const hideout = currentLocation.hideout;
+    const layers = hideout?.layers ?? [];
+    const nextDepth = layers.length;
+    const cost = 900 + nextDepth * 650;
+    if (player.gold < cost) {
+      addLog("资金不足，无法扩建新层。");
+      return;
+    }
+    const name = nextDepth === 0 ? '地面层' : `地下${nextDepth}层`;
+    const nextLayer = {
+      id: `hideout_layer_${nextDepth}`,
+      depth: nextDepth,
+      name,
+      garrison: [],
+      buildings: [],
+      constructionQueue: [],
+      garrisonBaseLimit: 900 + nextDepth * 650
+    };
+    setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - cost) }));
+    updateLocationState({
+      ...currentLocation,
+      hideout: {
+        ...(hideout ?? { layers: [], selectedLayer: 0, lastRaidDay: 0 }),
+        layers: [...layers, nextLayer],
+        selectedLayer: nextDepth
+      }
+    });
+    addLog(`隐匿点已扩建：${name}。`);
+  };
+
+  const handleHideoutDepositToGarrison = (troopId: string, amount: number) => {
+    if (!isHideout || !isOwnedByPlayer) return;
+    const hideout = currentLocation.hideout;
+    if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
+    const layerIndex = Math.max(0, Math.min(hideout.layers.length - 1, hideout.selectedLayer ?? 0));
+    const layer = hideout.layers[layerIndex];
+    const troop = player.troops.find(t => t.id === troopId);
+    if (!troop) return;
+    const capBase = layer.garrisonBaseLimit ?? 900;
+    const hasBarracks = (layer.buildings ?? []).includes('BARRACKS');
+    const limit = hasBarracks ? Math.floor(capBase * 1.5) : capBase;
+    const currentCount = (layer.garrison ?? []).reduce((sum, t) => sum + (t.count ?? 0), 0);
+    const availableCapacity = limit - currentCount;
+    const moveCount = Math.min(amount, troop.count, availableCapacity);
+    if (moveCount <= 0) {
+      addLog("该层驻军已达上限。");
+      return;
+    }
+    const updatedPlayerTroops = player.troops
+      .map(t => t.id === troopId ? { ...t, count: t.count - moveCount } : t)
+      .filter(t => t.count > 0);
+    const nextGarrison = [...(layer.garrison ?? [])];
+    const idx = nextGarrison.findIndex(t => t.id === troopId);
+    if (idx >= 0) nextGarrison[idx] = { ...nextGarrison[idx], count: nextGarrison[idx].count + moveCount };
+    else nextGarrison.push({ ...troop, count: moveCount });
+    setPlayer(prev => ({ ...prev, troops: updatedPlayerTroops }));
+    updateHideoutLayer(layerIndex, l => ({ ...l, garrison: nextGarrison }));
+    addLog(`已调入 ${moveCount} 名 ${troop.name} 到 ${layer.name}。`);
+  };
+
+  const handleHideoutWithdrawFromGarrison = (troopId: string, amount: number) => {
+    if (!isHideout || !isOwnedByPlayer) return;
+    const hideout = currentLocation.hideout;
+    if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
+    const layerIndex = Math.max(0, Math.min(hideout.layers.length - 1, hideout.selectedLayer ?? 0));
+    const layer = hideout.layers[layerIndex];
+    const garrisonTroop = (layer.garrison ?? []).find(t => t.id === troopId);
+    if (!garrisonTroop) return;
+    const currentCount = player.troops.reduce((a, b) => a + b.count, 0);
+    const availableSpace = getMaxTroops() - currentCount;
+    const moveCount = Math.min(amount, garrisonTroop.count, availableSpace);
+    if (moveCount <= 0) {
+      addLog("队伍人数已满，无法调回。");
+      return;
+    }
+    const updatedGarrison = (layer.garrison ?? [])
+      .map(t => t.id === troopId ? { ...t, count: t.count - moveCount } : t)
+      .filter(t => t.count > 0);
+    const updatedPlayerTroops = [...player.troops];
+    const idx = updatedPlayerTroops.findIndex(t => t.id === troopId);
+    if (idx >= 0) updatedPlayerTroops[idx] = { ...updatedPlayerTroops[idx], count: updatedPlayerTroops[idx].count + moveCount };
+    else {
+      const template = getTroopTemplate(troopId);
+      if (template) updatedPlayerTroops.push({ ...template, count: moveCount, xp: 0 });
+    }
+    setPlayer(prev => ({ ...prev, troops: updatedPlayerTroops }));
+    updateHideoutLayer(layerIndex, l => ({ ...l, garrison: updatedGarrison }));
+    addLog(`已从 ${layer.name} 调回 ${moveCount} 名 ${garrisonTroop.name}。`);
+  };
+
+  const handleHideoutStartConstruction = (building: { type: BuildingType; name: string; cost: number; days: number }) => {
+    if (!isHideout || !isOwnedByPlayer) return;
+    const hideout = currentLocation.hideout;
+    if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
+    const layerIndex = Math.max(0, Math.min(hideout.layers.length - 1, hideout.selectedLayer ?? 0));
+    const layer = hideout.layers[layerIndex];
+    if (player.gold < building.cost) {
+      addLog("资金不足，无法建造建筑。");
+      return;
+    }
+    const alreadyBuilt = (layer.buildings ?? []).includes(building.type);
+    const alreadyQueued = (layer.constructionQueue ?? []).some(q => q.type === building.type);
+    if (alreadyBuilt || alreadyQueued) {
+      addLog("该建筑已存在或正在建造中。");
+      return;
+    }
+    setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - building.cost) }));
+    updateHideoutLayer(layerIndex, l => ({
+      ...l,
+      constructionQueue: [
+        ...(l.constructionQueue ?? []),
+        { type: building.type, daysLeft: building.days, totalDays: building.days }
+      ]
+    }));
+    addLog(`开始在 ${layer.name} 建造 ${building.name}，需要 ${building.days} 天。`);
+  };
+
+  const handleHideoutSetGuardian = (heroId: string) => {
+    if (!isHideout || !isOwnedByPlayer) return;
+    const hideout = currentLocation.hideout;
+    if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
+    const layerIndex = Math.max(0, Math.min(hideout.layers.length - 1, hideout.selectedLayer ?? 0));
+    updateHideoutLayer(layerIndex, l => ({ ...l, guardianHeroId: heroId || undefined }));
+    addLog(heroId ? "已更换该层守护者。" : "已撤下该层守护者。");
   };
 
   const renderRecruitCard = (offer: RecruitOffer, type: 'VOLUNTEER' | 'MERCENARY') => {
@@ -1487,7 +1645,7 @@ export const TownView = ({
               </h3>
               <p className="text-stone-400 text-sm mt-1">
                 <span className="text-red-300">{currentLocation.activeSiege.attackerName}</span> ({getGarrisonCount(currentLocation.activeSiege.troops)}人) 正在围攻据点。
-                守军剩余: <span className="text-green-300">{getGarrisonCount(currentLocation.garrison ?? [])}人</span>。
+                守军剩余: <span className="text-green-300">{isHideout ? hideoutLayerGarrisonCount : getGarrisonCount(currentLocation.garrison ?? [])}人</span>。
               </p>
             </div>
           </div>
@@ -1556,6 +1714,16 @@ export const TownView = ({
           </>
         )}
         {!isFieldCamp && (
+          <>
+        {isHideout && isOwnedByPlayer && (
+          <button
+            onClick={() => setTownTab('HIDEOUT')}
+            className={`px-6 py-3 font-serif font-bold text-sm whitespace-nowrap ${activeTownTab === 'HIDEOUT' ? 'bg-stone-800 text-emerald-300 border-t-2 border-emerald-500' : 'text-stone-500 hover:text-stone-300'}`}
+          >
+            <Shield size={16} className="inline mr-2" /> 隐匿点
+          </button>
+        )}
+        {!isHideout && (
           <>
         {!isImposterPortal && !isRestricted && !isSpecialLocation && !isRoachNest && (
           <button
@@ -1728,9 +1896,207 @@ export const TownView = ({
         )}
           </>
         )}
+          </>
+        )}
       </div>
 
       <div className="min-h-[400px]">
+        {activeTownTab === 'HIDEOUT' && isHideout && isOwnedByPlayer && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-stone-900/60 p-6 rounded border border-emerald-900/40">
+              <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                <div>
+                  <div className="text-stone-200 font-bold">隐匿点分层</div>
+                  <div className="text-stone-400 text-sm mt-1">
+                    当前层：{hideoutSelectedLayer?.name ?? '未知'}｜驻军 {hideoutLayerGarrisonCount}/{hideoutLayerLimit}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="text-sm text-stone-400">扩建新层成本：</div>
+                  <div className="text-amber-400 font-mono">{900 + ((hideoutState?.layers?.length ?? 0)) * 650}</div>
+                  <Button
+                    variant="secondary"
+                    disabled={player.gold < (900 + ((hideoutState?.layers?.length ?? 0)) * 650)}
+                    onClick={handleHideoutExpand}
+                  >
+                    扩建
+                  </Button>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap gap-2">
+                {(hideoutState?.layers ?? []).map((layer, idx) => (
+                  <button
+                    key={layer.id}
+                    onClick={() => handleHideoutSelectLayer(idx)}
+                    className={`px-3 py-1 rounded border text-sm ${idx === hideoutSelectedLayerIndex ? 'bg-emerald-900/40 border-emerald-700 text-emerald-200' : 'bg-stone-900/60 border-stone-700 text-stone-400 hover:border-stone-500'}`}
+                  >
+                    L{layer.depth} {layer.name}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4">
+              <div className="text-stone-200 font-bold">该层守护者</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+                <div>
+                  <label className="block text-xs text-stone-500 mb-1">选择英雄</label>
+                  <select
+                    value={hideoutSelectedLayer?.guardianHeroId ?? ''}
+                    onChange={(e) => handleHideoutSetGuardian(e.target.value)}
+                    className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+                  >
+                    <option value="">（无）</option>
+                    {heroes
+                      .filter(h => h.recruited && h.status !== 'DEAD')
+                      .map(h => (
+                        <option key={h.id} value={h.id}>{h.title}{h.name} (Lv.{h.level})</option>
+                      ))}
+                  </select>
+                </div>
+                <div className="text-sm text-stone-400">
+                  {hideoutSelectedLayer?.guardianHeroId
+                    ? `守护者：${(heroes.find(h => h.id === hideoutSelectedLayer.guardianHeroId)?.title ?? '')}${heroes.find(h => h.id === hideoutSelectedLayer.guardianHeroId)?.name ?? hideoutSelectedLayer.guardianHeroId}`
+                    : '未设置守护者。'}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+              <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-stone-200 font-bold">该层驻军</div>
+                  <div className="text-xs text-stone-500">容量 {hideoutLayerGarrisonCount}/{hideoutLayerLimit}</div>
+                </div>
+                {hideoutLayerTroops.length === 0 ? (
+                  <div className="text-stone-500 text-sm">该层暂无驻军。</div>
+                ) : (
+                  <div className="space-y-3">
+                    {hideoutLayerTroops.map((unit, idx) => (
+                      <TroopCard
+                        key={`${unit.id}-${idx}`}
+                        troop={unit}
+                        count={unit.count}
+                        countLabel="驻军"
+                        actionLabel="调回10"
+                        onAction={() => handleHideoutWithdrawFromGarrison(unit.id, 10)}
+                        secondaryActionLabel="调回1"
+                        onSecondaryAction={() => handleHideoutWithdrawFromGarrison(unit.id, 1)}
+                        disabled={maxTroops - currentTroopCount <= 0}
+                        secondaryDisabled={maxTroops - currentTroopCount <= 0}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-stone-200 font-bold">部队调入该层</div>
+                  <div className="text-xs text-stone-500">队伍 {currentTroopCount}/{maxTroops}</div>
+                </div>
+                {player.troops.length === 0 ? (
+                  <div className="text-stone-500 text-sm">没有可调入的部队。</div>
+                ) : (
+                  <div className="space-y-3">
+                    {player.troops.map((unit, idx) => (
+                      <TroopCard
+                        key={`${unit.id}-${idx}`}
+                        troop={unit}
+                        count={unit.count}
+                        countLabel="部队"
+                        actionLabel="调入10"
+                        onAction={() => handleHideoutDepositToGarrison(unit.id, 10)}
+                        secondaryActionLabel="调入1"
+                        onSecondaryAction={() => handleHideoutDepositToGarrison(unit.id, 1)}
+                        disabled={hideoutLayerGarrisonCount >= hideoutLayerLimit}
+                        secondaryDisabled={hideoutLayerGarrisonCount >= hideoutLayerLimit}
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4">
+              <div className="text-stone-200 font-bold">该层构筑</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="bg-stone-900 border border-stone-800 p-4 rounded">
+                  <div className="text-stone-200 font-bold mb-2">施工队列</div>
+                  {(hideoutSelectedLayer?.constructionQueue ?? []).length === 0 ? (
+                    <div className="text-stone-500 text-sm">当前没有建筑在施工。</div>
+                  ) : (
+                    <div className="space-y-2">
+                      {(hideoutSelectedLayer?.constructionQueue ?? []).map((item, idx) => (
+                        <div key={`${item.type}-${idx}`} className="flex items-center justify-between text-sm text-stone-300">
+                          <span>{getBuildingName(item.type)}</span>
+                          <span className="text-stone-500">{item.daysLeft} 天</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div className="bg-stone-900 border border-stone-800 p-4 rounded">
+                  <div className="text-stone-200 font-bold mb-2">已建构筑</div>
+                  {(hideoutSelectedLayer?.buildings ?? []).length === 0 ? (
+                    <div className="text-stone-500 text-sm">尚未建造任何构筑。</div>
+                  ) : (
+                    <div className="flex flex-wrap gap-2">
+                      {(hideoutSelectedLayer?.buildings ?? []).map((item, idx) => (
+                        <span key={`${item}-${idx}`} className="bg-stone-800 text-stone-300 px-2 py-1 rounded text-xs border border-stone-700">
+                          {getBuildingName(item)}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="text-stone-200 font-bold">可建造构筑</div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {buildingOptions
+                  .filter(b => b.type !== 'FACTORY')
+                  .map(building => {
+                    const built = hideoutSelectedLayer?.buildings ?? [];
+                    const queue = hideoutSelectedLayer?.constructionQueue ?? [];
+                    const prereq = building.type === 'AA_TOWER_II'
+                      ? 'AA_TOWER_I'
+                      : building.type === 'AA_TOWER_III'
+                        ? 'AA_TOWER_II'
+                        : building.type === 'AA_NET_II'
+                          ? 'AA_NET_I'
+                          : building.type === 'AA_RADAR_II'
+                            ? 'AA_RADAR_I'
+                            : null;
+                    const superseded = building.type === 'AA_TOWER_I' ? (built.includes('AA_TOWER_II') || built.includes('AA_TOWER_III'))
+                      : building.type === 'AA_TOWER_II' ? built.includes('AA_TOWER_III')
+                        : building.type === 'AA_NET_I' ? built.includes('AA_NET_II')
+                          : building.type === 'AA_RADAR_I' ? built.includes('AA_RADAR_II')
+                            : false;
+                    const missingPrereq = !!prereq && !built.includes(prereq) && !queue.some(q => q.type === prereq);
+                    const disabled = player.gold < building.cost || superseded || built.includes(building.type) || queue.some(q => q.type === building.type) || missingPrereq;
+                    return (
+                      <div key={building.type} className="bg-stone-900 border border-stone-800 p-4 rounded">
+                        <div className="flex items-center justify-between mb-2">
+                          <div className="text-stone-200 font-bold">{building.name}</div>
+                          <span className="text-amber-500 text-sm">{building.cost} 第纳尔</span>
+                        </div>
+                        <div className="text-stone-400 text-xs mb-3">{building.description}（{building.days} 天）</div>
+                        <Button
+                          onClick={() => handleHideoutStartConstruction(building)}
+                          variant="secondary"
+                          disabled={disabled}
+                        >
+                          建造
+                        </Button>
+                      </div>
+                    );
+                  })}
+              </div>
+            </div>
+          </div>
+        )}
         {activeTownTab === 'RECRUIT' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
             <div className="col-span-1 md:col-span-2 bg-stone-900/40 p-4 rounded border border-stone-800 mb-4">

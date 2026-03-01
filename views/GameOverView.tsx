@@ -14,7 +14,19 @@ export const GameOverView = ({ player, onRestart }: GameOverViewProps) => {
       <div className="text-center animate-fade-in p-8">
         <Skull size={80} className="mx-auto text-red-900 mb-6" />
         <h1 className="text-6xl font-serif text-red-600 mb-4 tracking-widest">YOU DIED</h1>
-        <p className="text-stone-500 text-xl mb-8">你的传说到此为止。所有的士兵都已阵亡，你的名字将被遗忘。</p>
+        <p className="text-stone-500 text-xl mb-8">
+          {player.story?.gameOverReason === 'HIDEOUT_FALLEN'
+            ? (
+              <>
+                隐匿点被攻破，你失去了最后的退路。回家的路径被异常吞没。
+              </>
+            )
+            : (
+              <>
+                你的传说到此为止。所有的士兵都已阵亡，你的名字将被遗忘。
+              </>
+            )}
+        </p>
 
         <div className="bg-stone-900 p-6 rounded border border-stone-800 max-w-md mx-auto mb-8 text-left">
           <div className="flex justify-between border-b border-stone-800 pb-2 mb-2">
