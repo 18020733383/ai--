@@ -1,12 +1,12 @@
 import { spawn } from 'child_process';
 
-const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
-
-const start = (name, args) => {
-  const child = spawn(npmCmd, args, {
+const start = (name, command) => {
+  const child = spawn(command, {
     stdio: 'inherit',
     env: process.env,
-    cwd: process.cwd()
+    cwd: process.cwd(),
+    shell: true,
+    windowsHide: false
   });
   child.on('exit', (code) => {
     if (code && code !== 0) process.exitCode = code;
@@ -14,12 +14,12 @@ const start = (name, args) => {
   return child;
 };
 
-const dev = start('dev', ['run', 'dev']);
-const manager = start('hero-manager', ['run', 'hero-manager']);
+const dev = start('dev', 'npm run dev');
+const manager = start('hero-manager', 'npm run hero-manager');
 
 const shutdown = () => {
-  dev.kill('SIGINT');
-  manager.kill('SIGINT');
+  dev.kill();
+  manager.kill();
 };
 
 process.on('SIGINT', shutdown);

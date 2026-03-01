@@ -6,6 +6,13 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.7.1',
+    date: '2026-03-01',
+    items: [
+      '修复 npm run dev:all 在 Windows 下无法启动的问题'
+    ]
+  },
+  {
     version: '0.7.0',
     date: '2026-03-01',
     items: [
