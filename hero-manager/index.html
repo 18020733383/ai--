@@ -259,8 +259,8 @@
       const fetchTroops = async () => {
         const res = await fetch('/api/troops');
         const data = await res.json();
-        const troopIds = data.troopIds || [];
-        troopSelect.innerHTML = troopIds.map(id => `<option value="${id}">${id}</option>`).join('');
+        const troops = data.troops || [];
+        troopSelect.innerHTML = troops.map(t => `<option value="${t.id}">${t.name}（${t.id}）</option>`).join('');
       };
 
       const fetchTroopFiles = async () => {

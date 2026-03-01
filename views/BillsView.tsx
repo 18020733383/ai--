@@ -15,6 +15,11 @@ export const BillsView = ({ player, locations, getTroopTemplate, onBack }: Bills
   const today = player.day;
   const leadership = Math.max(0, Math.floor(player.attributes.leadership ?? 0));
   const leadershipRate = Math.min(0.4, leadership * 0.01);
+  const daysUntilNextWage = (() => {
+    const mod = ((today % 7) + 7) % 7;
+    const d = 7 - mod;
+    return d <= 0 ? 7 : d;
+  })();
 
   const tierWageTable: Record<number, number> = { 1: 1, 2: 2, 3: 4, 4: 7, 5: 11, 6: 16 };
   const getUnitWage = (troop: { id: string; tier?: TroopTier; category?: string; heavyTier?: number }) => {
@@ -132,6 +137,7 @@ export const BillsView = ({ player, locations, getTroopTemplate, onBack }: Bills
           <div className="text-xs text-stone-500 mt-2">
             下月结算次数：{wageEvents} 次 · 周军饷：{weekly.afterLeadership}
           </div>
+          <div className="text-xs text-stone-500 mt-1">距离下次结算：{daysUntilNextWage} 天</div>
           <div className="text-xs text-stone-600 mt-2">
             统御 {leadership}：-{Math.round(leadershipRate * 100)}%
           </div>

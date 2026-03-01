@@ -53,7 +53,7 @@ const listHeroFiles = async (heroId) => {
   }
 };
 
-const listTroopIdsFromConstants = async () => {
+const listTroopsFromConstants = async () => {
   try {
     const constantsPath = path.join(rootDir, 'constants.ts');
     const text = await readFile(constantsPath, 'utf8');
@@ -67,14 +67,21 @@ const listTroopIdsFromConstants = async () => {
     const bodyEnd = block.lastIndexOf('};');
     if (bodyStart < 0 || bodyEnd < 0 || bodyEnd <= bodyStart) return [];
     const raw = block.slice(bodyStart + 1, bodyEnd);
-    const ids = [];
-    const re = /^\s*([a-zA-Z0-9_]+)\s*:\s*\{/gm;
-    let m;
-    while ((m = re.exec(raw)) !== null) {
-      const id = m[1];
-      if (id) ids.push(id);
+    const matches = Array.from(raw.matchAll(/^\s*([a-zA-Z0-9_]+)\s*:\s*\{/gm));
+    const entries = [];
+    const seen = new Set();
+    for (let i = 0; i < matches.length; i++) {
+      const id = matches[i]?.[1];
+      if (!id || seen.has(id)) continue;
+      seen.add(id);
+      const start = matches[i].index ?? 0;
+      const end = i + 1 < matches.length ? (matches[i + 1].index ?? raw.length) : raw.length;
+      const chunk = raw.slice(start, end);
+      const nameMatch = chunk.match(/name\s*:\s*(['"])(.*?)\1/);
+      const name = nameMatch ? String(nameMatch[2] ?? '').trim() : '';
+      entries.push({ id, name: name || id });
     }
-    return Array.from(new Set(ids)).sort();
+    return entries.sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id, 'zh-CN'));
   } catch {
     return [];
   }
@@ -126,10 +133,10 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/troops') {
-    const troopIds = await listTroopIdsFromConstants();
+    const troops = await listTroopsFromConstants();
     const files = await listTroopFiles();
     const existing = files.map(f => f.replace(/\.(png|jpg|jpeg)$/i, ''));
-    return sendJson(res, 200, { troopIds, existing: Array.from(new Set(existing)).sort() });
+    return sendJson(res, 200, { troops, existing: Array.from(new Set(existing)).sort() });
   }
 
   if (req.method === 'GET' && url.pathname.startsWith('/api/hero/')) {

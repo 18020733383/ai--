@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.7.2',
+    date: '2026-03-01',
+    items: [
+      '修复加入守城战败后驻军未结算战损的问题（隐匿点最深层失守将触发结局）',
+      '账单新增“距离下次军饷结算还有几天”',
+      '兵种图片管理器下拉选择改为显示中文兵种名'
+    ]
+  },
+  {
     version: '0.7.1',
     date: '2026-03-01',
     items: [

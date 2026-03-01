@@ -6981,10 +6981,21 @@ export default function App() {
     let battleTroops = getBattleTroops(currentPlayer, currentHeroes);
 
     if (meta.mode === 'DEFENSE_AID' && meta.targetLocationId) {
-        const loc = locations.find(l => l.id === meta.targetLocationId);
-        const supportTroops = meta.supportTroops ?? loc?.garrison ?? [];
-        const taggedGarrison = supportTroops.map(t => ({ ...t, id: `garrison_${t.id}` }));
-        battleTroops = [...battleTroops, ...taggedGarrison];
+      const loc = locations.find(l => l.id === meta.targetLocationId);
+      const supportTroops = (() => {
+        if (!loc) return [];
+        if (meta.supportTroops) return meta.supportTroops;
+        if (loc.type === 'HIDEOUT') {
+          const hideout = loc.hideout;
+          const layers = hideout?.layers ?? [];
+          const layerIndex = loc.activeSiege?.hideoutLayerIndex ?? hideout?.selectedLayer ?? 0;
+          const layer = layers[Math.max(0, Math.min(layers.length - 1, Math.floor(layerIndex)))];
+          return layer?.garrison ?? [];
+        }
+        return loc.garrison ?? [];
+      })();
+      const taggedGarrison = supportTroops.map(t => ({ ...t, id: `garrison_${t.id}` }));
+      battleTroops = [...battleTroops, ...taggedGarrison];
     }
 
     const deploymentContext = buildDeploymentContext(currentPlayer, currentHeroes, enemy, battleTroops);
@@ -7026,10 +7037,21 @@ export default function App() {
     let battleTroops = getBattleTroops(currentPlayer, heroesRef.current);
 
     if (battleInfo.mode === 'DEFENSE_AID' && battleInfo.targetLocationId) {
-        const loc = locations.find(l => l.id === battleInfo.targetLocationId);
-        const supportTroops = battleInfo.supportTroops ?? loc?.garrison ?? [];
-        const taggedGarrison = supportTroops.map(t => ({ ...t, id: `garrison_${t.id}` }));
-        battleTroops = [...battleTroops, ...taggedGarrison];
+      const loc = locations.find(l => l.id === battleInfo.targetLocationId);
+      const supportTroops = (() => {
+        if (!loc) return [];
+        if (battleInfo.supportTroops) return battleInfo.supportTroops;
+        if (loc.type === 'HIDEOUT') {
+          const hideout = loc.hideout;
+          const layers = hideout?.layers ?? [];
+          const layerIndex = loc.activeSiege?.hideoutLayerIndex ?? hideout?.selectedLayer ?? 0;
+          const layer = layers[Math.max(0, Math.min(layers.length - 1, Math.floor(layerIndex)))];
+          return layer?.garrison ?? [];
+        }
+        return loc.garrison ?? [];
+      })();
+      const taggedGarrison = supportTroops.map(t => ({ ...t, id: `garrison_${t.id}` }));
+      battleTroops = [...battleTroops, ...taggedGarrison];
     }
 
     const battleLocationText = (() => {
@@ -7746,6 +7768,7 @@ export default function App() {
 
     if (battleMeta?.mode === 'DEFENSE_AID' && battleMeta.targetLocationId) {
       const target = locations.find(l => l.id === battleMeta.targetLocationId);
+      let endTriggered = false;
       if (target && battleResult) {
         const relationTarget = getLocationRelationTarget(target);
         const supportLabel = battleMeta.supportLabel || `${target.name}援军`;
@@ -7777,13 +7800,49 @@ export default function App() {
            }
            defenseAidMetaRef.current = null;
         } else {
-           if (target.activeSiege) {
-             addLog(`战斗失利，${target.name} 的围攻仍在继续。`);
-             addLocationLog(target.id, `围攻仍在继续，防线吃紧。`);
-           } else {
-             addLog(`战斗失利，${supportLabel} 未能挡住敌军。`);
-             addLocationLog(target.id, `援军被击退，战况不利。`);
-           }
+          if (target.activeSiege) {
+            if (target.type === 'HIDEOUT') {
+              const hideout = target.hideout;
+              const layers = hideout?.layers ?? [];
+              const idx = target.activeSiege?.hideoutLayerIndex ?? hideout?.selectedLayer ?? 0;
+              const layerIndex = Math.max(0, Math.min(layers.length - 1, Math.floor(idx)));
+              const nextLayers = layers.map((layer, i) => i === layerIndex ? { ...layer, garrison: [] } : layer);
+              const isLast = layers.length > 0 && layerIndex >= layers.length - 1;
+              const nextHideout = hideout ? { ...hideout, layers: nextLayers, selectedLayer: Math.min(layerIndex + 1, Math.max(0, layers.length - 1)) } : hideout;
+              if (isLast) {
+                updateLocationState({ ...target, hideout: nextHideout, activeSiege: undefined, isUnderSiege: false });
+                setPlayer(prev => ({
+                  ...prev,
+                  story: { ...(prev.story ?? {}), gameOverReason: 'HIDEOUT_FALLEN', endingId: 'HIDEOUT_FALLEN' }
+                }));
+                addLog(`战斗失利，${target.name} 最后一层失守。`);
+                addLocationLog(target.id, `最后防线失守，隐匿点沦陷。`);
+                setEndingReturnView('GAME_OVER');
+                setView('ENDING');
+                endTriggered = true;
+              } else {
+                const nextSiege = { ...target.activeSiege, hideoutLayerIndex: layerIndex + 1 };
+                updateLocationState({ ...target, hideout: nextHideout, activeSiege: nextSiege, isUnderSiege: true });
+                addLog(`战斗失利，${target.name} 的守军全灭，第 ${layerIndex + 1} 层失守，围攻向更深处推进。`);
+                addLocationLog(target.id, `守军全灭，第 ${layerIndex + 1} 层失守。`);
+              }
+            } else {
+              const attackerFactionId = target.activeSiege?.attackerFactionId;
+              updateLocationState({
+                ...target,
+                owner: 'ENEMY',
+                factionId: attackerFactionId ?? target.factionId,
+                garrison: [],
+                activeSiege: undefined,
+                isUnderSiege: false
+              });
+              addLog(`战斗失利，${target.name} 守军全灭。据点陷落。`);
+              addLocationLog(target.id, `守军全灭，据点陷落。`);
+            }
+          } else {
+            addLog(`战斗失利，${supportLabel} 未能挡住敌军。`);
+            addLocationLog(target.id, `援军被击退，战况不利。`);
+          }
         }
       }
       defenseAidMetaRef.current = null;
@@ -7796,7 +7855,7 @@ export default function App() {
       setBattleSnapshot(null);
       setPendingBattleMeta(null);
       setPendingBattleIsTraining(false);
-      setView('TOWN');
+      if (!endTriggered) setView('TOWN');
       return;
     }
 
