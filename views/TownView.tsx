@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Beer, Brain, Coins, Ghost, Hammer, History, Home, MapPin, MessageCircle, Mountain, Plus, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, X, Zap } from 'lucide-react';
+import { AlertTriangle, Beer, Brain, Coins, Ghost, Hammer, History, Home, MapPin, MessageCircle, Mountain, Plus, Scroll, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, Zap } from 'lucide-react';
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
 import { chatWithAltar, chatWithCampLeader, chatWithLord, proposeHeroPromotion, type HeroPromotionDraft } from '../services/geminiService';
@@ -1265,8 +1265,9 @@ export const TownView = ({
   const [hideoutRefineMineralId, setHideoutRefineMineralId] = React.useState<MineralId>('NULL_CRYSTAL');
   const [hideoutRefineFromPurity, setHideoutRefineFromPurity] = React.useState<MineralPurity>(1);
   const [hideoutRefineOutputCount, setHideoutRefineOutputCount] = React.useState(1);
-  const [hideoutPage, setHideoutPage] = React.useState<'DASHBOARD' | 'GARRISON' | 'GUARDIAN' | 'FACILITIES' | 'DEFENSE' | 'REFINERY'>('DASHBOARD');
-  const [hideoutSlotMenu, setHideoutSlotMenu] = React.useState<{ category: 'FACILITY' | 'DEFENSE'; slotIndex: number } | null>(null);
+  const [hideoutPage, setHideoutPage] = React.useState<'DASHBOARD' | 'GARRISON' | 'GUARDIAN' | 'FACILITIES' | 'DEFENSE' | 'REFINERY' | 'LOGS' | 'BUILD'>('DASHBOARD');
+  const [hideoutBuildTarget, setHideoutBuildTarget] = React.useState<{ category: 'FACILITY' | 'DEFENSE'; slotIndex: number } | null>(null);
+  const [hideoutBuildAnim, setHideoutBuildAnim] = React.useState<{ category: 'FACILITY' | 'DEFENSE'; slotIndex: number; id: string } | null>(null);
 
   const hideoutFacilityBuildOptions = buildingOptions.filter(b => (
     b.type === 'HOUSING' ||
@@ -1295,53 +1296,33 @@ export const TownView = ({
     return getBuildingName(slot.type);
   };
 
-  const renderHideoutRadial = (category: 'FACILITY' | 'DEFENSE', slotIndex: number) => {
-    const isOpen = hideoutSlotMenu?.category === category && hideoutSlotMenu?.slotIndex === slotIndex;
-    if (!isOpen) return null;
-    const depth = hideoutSelectedLayer?.depth ?? 0;
-    const rawOptions = category === 'FACILITY' ? hideoutFacilityBuildOptions : hideoutDefenseBuildOptions;
-    const options = rawOptions.filter(opt => depth === 0 ? true : opt.type !== 'CAMOUFLAGE_STRUCTURE');
-    const radius = 74;
-    const centerStyle: React.CSSProperties = { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' };
-    return (
-      <div className="absolute inset-0 z-30 animate-fade-in">
-        <button
-          className="absolute inset-0 bg-black/70 rounded"
-          onClick={() => setHideoutSlotMenu(null)}
-        />
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute" style={centerStyle}>
-            <button
-              className="pointer-events-auto w-10 h-10 rounded-full border border-stone-700 bg-stone-950/80 text-stone-200 flex items-center justify-center shadow"
-              onClick={() => setHideoutSlotMenu(null)}
-            >
-              <X size={16} />
-            </button>
-          </div>
-          {options.map((opt, i) => {
-            const angle = (i / Math.max(1, options.length)) * Math.PI * 2 - Math.PI / 2;
-            const x = Math.round(Math.cos(angle) * radius);
-            const y = Math.round(Math.sin(angle) * radius);
-            const disabled = player.gold < opt.cost;
-            return (
-              <button
-                key={`${category}_${slotIndex}_${opt.type}`}
-                title={`${opt.name}（${opt.cost} / ${opt.days}天）`}
-                className={`pointer-events-auto absolute w-12 h-12 rounded-full border shadow flex items-center justify-center transition-all duration-200 animate-fade-in ${disabled ? 'border-stone-800 bg-stone-950/30 text-stone-600 cursor-not-allowed' : 'border-emerald-900/60 bg-stone-950/80 text-emerald-200 hover:border-emerald-600 hover:text-emerald-100'}`}
-                style={{ left: '50%', top: '50%', transform: `translate(-50%, -50%) translate(${x}px, ${y}px)` }}
-                disabled={disabled}
-                onClick={() => {
-                  setHideoutSlotMenu(null);
-                  handleHideoutBuildInSlot(category, slotIndex, opt);
-                }}
-              >
-                <span className="text-[11px] font-bold">{opt.name.slice(0, 2)}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    );
+  const addHideoutLocalLog = (text: string) => {
+    if (!isHideout) return;
+    const safe = String(text ?? '').trim();
+    if (!safe) return;
+    const entry = { day: player.day, text: safe };
+    const existing = currentLocation.localLogs ?? [];
+    const nextLogs = [entry, ...existing].slice(0, 30);
+    updateLocationState({ ...currentLocation, localLogs: nextLogs });
+  };
+
+  const getBuildingEffects = (type: BuildingType) => {
+    if (type === 'HOUSING') return ['每 3 天征税一次（与数量叠加）', '会提高暴露程度上升速度'];
+    if (type === 'TRAINING_CAMP') return ['每 3 天训练一次（与数量叠加）', '提升该层驻军经验'];
+    if (type === 'BARRACKS') return ['该层驻军上限 +50%'];
+    if (type === 'RECRUITER') return ['每 4 天征募一次（与数量叠加）', '优先补满驻军空位'];
+    if (type === 'SHRINE') return ['若已确立宗教：每 4 天招募信徒守卫', '驻军不足时优先补充'];
+    if (type === 'ORE_REFINERY') return ['解锁该层“矿石精炼”', '低纯度×3 → 高一档纯度×1（需要时间+费用）'];
+    if (type === 'DEFENSE') return ['提升防御强度（可叠加）'];
+    if (type === 'AA_TOWER_I') return ['提升防空强度与远程命中（可叠加）'];
+    if (type === 'AA_TOWER_II') return ['需要 AA_TOWER_I', '提升防空强度（可叠加）'];
+    if (type === 'AA_TOWER_III') return ['需要 AA_TOWER_II', '提升防空强度（可叠加）'];
+    if (type === 'AA_NET_I') return ['提升空袭减伤（可叠加）'];
+    if (type === 'AA_NET_II') return ['需要 AA_NET_I', '提升空袭减伤（可叠加）'];
+    if (type === 'AA_RADAR_I') return ['提升防空强度与远程命中（可叠加）'];
+    if (type === 'AA_RADAR_II') return ['需要 AA_RADAR_I', '提升防空强度与远程命中（可叠加）'];
+    if (type === 'CAMOUFLAGE_STRUCTURE') return ['仅地面层可建', '可花钱降低暴露（冷却）', '被动减缓暴露上升'];
+    return [];
   };
 
   const handleBuySiegeEngine = (engine: { type: SiegeEngineType; name: string; cost: number; days: number }) => {
@@ -1623,6 +1604,7 @@ export const TownView = ({
         : { ...l, defenseSlots: nextSlots };
     });
     addLog(`开始在 ${layer.name} 建造 ${building.name}（槽位 ${idx + 1}），需要 ${building.days} 天。`);
+    addHideoutLocalLog(`开工：${layer.name} 槽位${idx + 1} 开始建造 ${building.name}。`);
   };
 
   const handleHideoutReduceExposure = () => {
@@ -1719,8 +1701,22 @@ export const TownView = ({
     const hideout = currentLocation.hideout;
     if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
     const layerIndex = Math.max(0, Math.min(hideout.layers.length - 1, hideout.selectedLayer ?? 0));
+    const layerName = hideout.layers[layerIndex]?.name ?? `第${layerIndex}层`;
     updateHideoutLayer(layerIndex, l => ({ ...l, guardianHeroId: heroId || undefined }));
-    addLog(heroId ? "已更换该层守护者。" : "已撤下该层守护者。");
+    setHeroes(prev => prev.map(h => {
+      if (h.id !== heroId && h.id !== (hideout.layers[layerIndex]?.guardianHeroId ?? '')) return h;
+      if (h.status === 'DEAD' || !h.recruited) return h;
+      if (h.id === heroId) return { ...h, locationId: currentLocation.id, stayDays: undefined };
+      return { ...h, locationId: undefined, stayDays: undefined };
+    }));
+    if (heroId) {
+      const name = heroes.find(h => h.id === heroId)?.name ?? heroId;
+      addLog("已更换该层守护者。");
+      addHideoutLocalLog(`守护者更替：${name} 前往 ${layerName} 驻守。`);
+    } else {
+      addLog("已撤下该层守护者。");
+      addHideoutLocalLog(`守护者撤离：${layerName} 的守护者已返回随行队伍。`);
+    }
   };
 
   const renderRecruitCard = (offer: RecruitOffer, type: 'VOLUNTEER' | 'MERCENARY') => {
@@ -2186,12 +2182,13 @@ export const TownView = ({
                 { id: 'GUARDIAN', label: '守护者' },
                 { id: 'FACILITIES', label: '建筑槽' },
                 { id: 'DEFENSE', label: '防御槽' },
-                { id: 'REFINERY', label: '精炼' }
+                { id: 'REFINERY', label: '精炼' },
+                { id: 'LOGS', label: '据点日志' }
               ] as const).map(item => (
                 <button
                   key={item.id}
                   onClick={() => {
-                    setHideoutSlotMenu(null);
+                    setHideoutBuildTarget(null);
                     setHideoutPage(item.id);
                   }}
                   className={`px-3 py-2 rounded border text-sm ${hideoutPage === item.id ? 'bg-emerald-900/30 border-emerald-700 text-emerald-200' : 'bg-stone-900/60 border-stone-700 text-stone-400 hover:border-stone-500'}`}
@@ -2235,7 +2232,7 @@ export const TownView = ({
                     <div className="text-stone-200 font-bold">建筑槽</div>
                     <Home size={16} className="text-emerald-300" />
                   </div>
-                  <div className="text-stone-400 text-sm mt-2">点击空槽位，圆盘选择建造。</div>
+                  <div className="text-stone-400 text-sm mt-2">点击空槽位，进入建造列表。</div>
                 </button>
                 <button
                   onClick={() => setHideoutPage('DEFENSE')}
@@ -2265,6 +2262,18 @@ export const TownView = ({
                   </div>
                   <div className="text-stone-400 text-sm mt-2">当前 {Math.round(hideoutExposure)}%｜越高越危险。</div>
                 </div>
+                <button
+                  onClick={() => setHideoutPage('LOGS')}
+                  className="text-left bg-stone-900/60 border border-stone-800 rounded p-5 hover:border-stone-600 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-200 font-bold">据点日志</div>
+                    <Scroll size={16} className="text-emerald-300" />
+                  </div>
+                  <div className="text-stone-400 text-sm mt-2">
+                    {(currentLocation.localLogs ?? []).length > 0 ? (currentLocation.localLogs ?? [])[0]?.text : '暂无记录'}
+                  </div>
+                </button>
               </div>
             )}
 
@@ -2359,8 +2368,15 @@ export const TownView = ({
                 {hideoutFacilitySlots.map((slot, slotIndex) => (
                   <div
                     key={`facility_slot_${slotIndex}`}
-                    className={`relative bg-stone-900/60 border rounded p-3 min-h-[96px] ${slot.type ? 'border-stone-800' : 'border-stone-800 hover:border-emerald-700'} ${hideoutSlotMenu?.category === 'FACILITY' && hideoutSlotMenu?.slotIndex === slotIndex ? 'z-20' : ''}`}
+                    className={`relative bg-stone-900/60 border rounded p-3 min-h-[96px] ${slot.type ? 'border-stone-800' : 'border-stone-800 hover:border-emerald-700'}`}
                   >
+                    {hideoutBuildAnim?.category === 'FACILITY' && hideoutBuildAnim.slotIndex === slotIndex && (
+                      <div key={hideoutBuildAnim.id} className="absolute inset-0 bg-black/55 rounded flex items-center justify-center z-10">
+                        <div className="w-12 h-12 rounded-full border border-amber-700 bg-stone-950/80 flex items-center justify-center animate-bounce">
+                          <Hammer size={18} className="text-amber-300" />
+                        </div>
+                      </div>
+                    )}
                     {slot.type ? (
                       <div className="space-y-2">
                         <div className="text-xs text-stone-500">槽位 {slotIndex + 1}</div>
@@ -2369,14 +2385,16 @@ export const TownView = ({
                     ) : (
                       <button
                         className="w-full h-full flex flex-col items-center justify-center gap-2 text-stone-400 hover:text-emerald-200 transition-colors"
-                        onClick={() => setHideoutSlotMenu({ category: 'FACILITY', slotIndex })}
+                        onClick={() => {
+                          setHideoutBuildTarget({ category: 'FACILITY', slotIndex });
+                          setHideoutPage('BUILD');
+                        }}
                         title="点击建造"
                       >
                         <Plus size={18} />
                         <span className="text-xs">空槽</span>
                       </button>
                     )}
-                    {renderHideoutRadial('FACILITY', slotIndex)}
                   </div>
                 ))}
               </div>
@@ -2387,8 +2405,15 @@ export const TownView = ({
                 {hideoutDefenseSlots.map((slot, slotIndex) => (
                   <div
                     key={`def_slot_${slotIndex}`}
-                    className={`relative bg-stone-900/60 border rounded p-3 min-h-[96px] ${slot.type ? 'border-stone-800' : 'border-stone-800 hover:border-emerald-700'} ${hideoutSlotMenu?.category === 'DEFENSE' && hideoutSlotMenu?.slotIndex === slotIndex ? 'z-20' : ''}`}
+                    className={`relative bg-stone-900/60 border rounded p-3 min-h-[96px] ${slot.type ? 'border-stone-800' : 'border-stone-800 hover:border-emerald-700'}`}
                   >
+                    {hideoutBuildAnim?.category === 'DEFENSE' && hideoutBuildAnim.slotIndex === slotIndex && (
+                      <div key={hideoutBuildAnim.id} className="absolute inset-0 bg-black/55 rounded flex items-center justify-center z-10">
+                        <div className="w-12 h-12 rounded-full border border-amber-700 bg-stone-950/80 flex items-center justify-center animate-bounce">
+                          <Hammer size={18} className="text-amber-300" />
+                        </div>
+                      </div>
+                    )}
                     {slot.type ? (
                       <div className="space-y-2">
                         <div className="text-xs text-stone-500">槽位 {slotIndex + 1}</div>
@@ -2397,16 +2422,118 @@ export const TownView = ({
                     ) : (
                       <button
                         className="w-full h-full flex flex-col items-center justify-center gap-2 text-stone-400 hover:text-emerald-200 transition-colors"
-                        onClick={() => setHideoutSlotMenu({ category: 'DEFENSE', slotIndex })}
+                        onClick={() => {
+                          setHideoutBuildTarget({ category: 'DEFENSE', slotIndex });
+                          setHideoutPage('BUILD');
+                        }}
                         title="点击建造"
                       >
                         <Plus size={18} />
                         <span className="text-xs">空槽</span>
                       </button>
                     )}
-                    {renderHideoutRadial('DEFENSE', slotIndex)}
                   </div>
                 ))}
+              </div>
+            )}
+
+            {hideoutPage === 'BUILD' && (
+              <div className="bg-stone-900/60 border border-stone-800 rounded p-6 space-y-4 animate-fade-in">
+                {!hideoutBuildTarget ? (
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-400">未选择槽位。</div>
+                    <Button variant="secondary" onClick={() => setHideoutPage('DASHBOARD')}>返回</Button>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div>
+                        <div className="text-stone-200 font-bold">
+                          {hideoutBuildTarget.category === 'FACILITY' ? '建筑槽建造' : '防御槽建造'} · 槽位 {hideoutBuildTarget.slotIndex + 1}
+                        </div>
+                        <div className="text-stone-500 text-sm mt-1">当前资金：{player.gold} 第纳尔</div>
+                      </div>
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          setHideoutBuildTarget(null);
+                          setHideoutPage(hideoutBuildTarget.category === 'FACILITY' ? 'FACILITIES' : 'DEFENSE');
+                        }}
+                      >
+                        返回槽位
+                      </Button>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {(() => {
+                        const depth = hideoutSelectedLayer?.depth ?? 0;
+                        const slotIndex = hideoutBuildTarget.slotIndex;
+                        const category = hideoutBuildTarget.category;
+                        const slots = category === 'FACILITY' ? hideoutFacilitySlots : hideoutDefenseSlots;
+                        const currentSlot = slots[slotIndex];
+                        if (currentSlot?.type) {
+                          return (
+                            <div className="md:col-span-2 bg-stone-950/40 border border-stone-800 rounded p-4 text-stone-400">
+                              该槽位已占用：{getHideoutSlotLabel(currentSlot)}
+                            </div>
+                          );
+                        }
+                        const options = (category === 'FACILITY' ? hideoutFacilityBuildOptions : hideoutDefenseBuildOptions)
+                          .filter(opt => depth === 0 ? true : opt.type !== 'CAMOUFLAGE_STRUCTURE');
+                        const defenseBuilt = hideoutDefenseSlots.filter(s => s.type && isSlotBuilt(s)).map(s => s.type as BuildingType);
+                        const canBuildType = (type: BuildingType) => {
+                          if (category === 'DEFENSE' && type === 'CAMOUFLAGE_STRUCTURE' && depth !== 0) return { ok: false, reason: '仅地面层可建造' };
+                          if (type === 'AA_TOWER_II' && !defenseBuilt.includes('AA_TOWER_I')) return { ok: false, reason: '需要 AA_TOWER_I' };
+                          if (type === 'AA_TOWER_III' && !defenseBuilt.includes('AA_TOWER_II')) return { ok: false, reason: '需要 AA_TOWER_II' };
+                          if (type === 'AA_NET_II' && !defenseBuilt.includes('AA_NET_I')) return { ok: false, reason: '需要 AA_NET_I' };
+                          if (type === 'AA_RADAR_II' && !defenseBuilt.includes('AA_RADAR_I')) return { ok: false, reason: '需要 AA_RADAR_I' };
+                          if (type === 'CAMOUFLAGE_STRUCTURE' && hideoutDefenseSlots.some(s => s.type === 'CAMOUFLAGE_STRUCTURE')) return { ok: false, reason: '已存在伪装结构' };
+                          return { ok: true as const, reason: '' };
+                        };
+                        return options.map(opt => {
+                          const prereq = canBuildType(opt.type);
+                          const affordable = player.gold >= opt.cost;
+                          const ready = prereq.ok && affordable;
+                          const effects = getBuildingEffects(opt.type);
+                          return (
+                            <div key={`build_${opt.type}`} className="bg-stone-950/40 border border-stone-800 rounded p-4 space-y-3">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="text-stone-200 font-bold">{opt.name}</div>
+                                  <div className="text-xs text-stone-500 mt-1">{opt.days} 天 · {opt.cost} 第纳尔</div>
+                                </div>
+                                <Button
+                                  variant="secondary"
+                                  disabled={!ready}
+                                  onClick={() => {
+                                    handleHideoutBuildInSlot(category, slotIndex, opt);
+                                    const id = `build_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+                                    setHideoutBuildAnim({ category, slotIndex, id });
+                                    setTimeout(() => setHideoutBuildAnim(prev => (prev?.id === id ? null : prev)), 650);
+                                    setHideoutBuildTarget(null);
+                                    setHideoutPage(category === 'FACILITY' ? 'FACILITIES' : 'DEFENSE');
+                                  }}
+                                >
+                                  建造
+                                </Button>
+                              </div>
+                              <div className="text-sm text-stone-400">{opt.description}</div>
+                              {effects.length > 0 && (
+                                <div className="flex flex-wrap gap-2 text-xs text-stone-400">
+                                  {effects.map((t, idx) => (
+                                    <span key={`${opt.type}_eff_${idx}`} className="px-2 py-1 rounded border border-stone-800 bg-stone-900/40">{t}</span>
+                                  ))}
+                                </div>
+                              )}
+                              {!affordable && <div className="text-xs text-red-300">资金不足</div>}
+                              {affordable && !prereq.ok && <div className="text-xs text-amber-300">{prereq.reason}</div>}
+                            </div>
+                          );
+                        });
+                      })()}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 
@@ -2481,6 +2608,27 @@ export const TownView = ({
                       </div>
                     )}
                   </>
+                )}
+              </div>
+            )}
+
+            {hideoutPage === 'LOGS' && (
+              <div className="bg-stone-900/60 border border-stone-800 rounded p-6 space-y-4 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <div className="text-stone-200 font-bold">据点日志</div>
+                  <Button variant="secondary" onClick={() => setHideoutPage('DASHBOARD')}>返回仪表盘</Button>
+                </div>
+                {(currentLocation.localLogs ?? []).length === 0 ? (
+                  <div className="text-stone-500 text-sm">暂无日志。</div>
+                ) : (
+                  <div className="space-y-2">
+                    {(currentLocation.localLogs ?? []).slice(0, 20).map((entry, idx) => (
+                      <div key={`hideout_log_${idx}`} className="flex items-start gap-3 bg-stone-950/40 border border-stone-800 rounded px-3 py-2">
+                        <span className="text-xs text-stone-500 font-mono shrink-0">Day {entry.day}</span>
+                        <span className="text-sm text-stone-300 leading-relaxed">{entry.text}</span>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
             )}

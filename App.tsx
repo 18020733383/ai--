@@ -3546,6 +3546,18 @@ export default function App() {
             const passive = 0.35 + depthFactor + builtFactor - Math.min(0.6, camouflageBuilt * 0.22);
             const nextExposure = Math.max(0, Math.min(100, baseExposure + passive));
             updated.hideout = { ...updated.hideout, layers: nextLayers, exposure: nextExposure };
+            if (!updated.isUnderSiege && !updated.activeSiege) {
+              const visitorChance = clampValue(0.015 + (nextExposure / 100) * 0.06, 0.01, 0.08);
+              if (Math.random() < visitorChance) {
+                const roll = Math.random();
+                const text = roll < 0.45
+                  ? '有人在入口附近徘徊，似乎在寻找什么。'
+                  : roll < 0.75
+                    ? '一支小队路过废墟，朝隐匿点方向张望了许久。'
+                    : '可疑的侦察痕迹出现在外围，可能有人在绘制路线。';
+                addLocalLog(updated.id, text);
+              }
+            }
           }
 
           const buildings = updated.buildings ?? [];
@@ -3742,7 +3754,11 @@ export default function App() {
           const nextHideout = { ...loc.hideout, layers: nextLayers, selectedLayer: layerIndex };
 
           if ((nextDay - siege.startDay) % 2 === 0) {
-            addLocalLog(loc.id, `隐匿点遭围攻：攻${attackerCount} 守${garrisonCount}（${layer.name}）。`);
+            const guardianName = guardian ? `${guardian.title ?? ''}${guardian.name}` : '';
+            addLocalLog(loc.id, guardianName
+              ? `${guardianName}记录：隐匿点遭围攻，攻${attackerCount} 守${garrisonCount}（${layer.name}）。`
+              : `隐匿点遭围攻：攻${attackerCount} 守${garrisonCount}（${layer.name}）。`
+            );
           }
 
           if (defenderHoldCount <= 0) {
@@ -4230,6 +4246,13 @@ export default function App() {
         newLocations[targetIndex] = target;
         logsToAdd.push(`【行军营地】${meta.attackerName} 抵达 ${target.name}，开始围攻。`);
         addLocalLog(target.id, `遭到 ${meta.attackerName} 围攻。`);
+        if (target.type === 'HIDEOUT' && target.hideout?.layers?.length) {
+          const guardianHeroId = target.hideout.layers[0]?.guardianHeroId;
+          const guardian = guardianHeroId ? nextHeroes.find(h => h.id === guardianHeroId) ?? null : null;
+          if (guardian) {
+            addLocalLog(target.id, `${guardian.title ?? ''}${guardian.name}记录：敌军已到达入口，开始围攻。`);
+          }
+        }
       });
 
       const hostileFactions = FACTIONS.filter(faction => getRelationValue(playerRef.current, 'FACTION', faction.id) <= -40);

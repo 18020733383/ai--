@@ -34,7 +34,7 @@ export const PartyView = ({
   onOpenHeroChat,
   onBackToMap
 }: PartyViewProps) => {
-  const recruitedHeroes = heroes.filter(hero => hero.recruited);
+  const recruitedHeroes = heroes.filter(hero => hero.recruited && !hero.locationId);
   const partyCategoryLabel: Record<PartyCategoryFilter, string> = {
     ALL: '全部',
     NORMAL: '常规',
