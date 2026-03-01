@@ -27,6 +27,7 @@ import { GameOverView } from './views/GameOverView';
 import { IntroCinematicView } from './views/IntroCinematicView';
 import { EndingCinematicView } from './views/EndingCinematicView';
 import { MainMenuView } from './views/MainMenuView';
+import { BillsView } from './views/BillsView';
 import { 
   Map as MapIcon, MapPin, Coins, Trophy, Users, ShieldAlert, Skull, ArrowRight, Home, Swords, 
   Trees, Mountain, Snowflake, Sun, Tent, Shield, Ghost, Crosshair, Zap, 
@@ -5011,6 +5012,54 @@ export default function App() {
         nextBattleTimeline[nextBattleTimeline.length - 1] = { day: nextDay, count: activeBattleCount };
       }
 
+      if (nextDay % 7 === 0) {
+        const tierWageTable: Record<number, number> = { 1: 1, 2: 2, 3: 4, 4: 7, 5: 11, 6: 16 };
+        const getUnitWage = (troop: { id: string; tier?: TroopTier; category?: string; heavyTier?: number }) => {
+          const tier = (troop.tier ?? getTroopTemplate(troop.id)?.tier ?? 3) as unknown as number;
+          let wage = tierWageTable[tier] ?? 4;
+          const isHeavy = troop.category === 'HEAVY' || (troop.heavyTier ?? 0) > 0;
+          if (isHeavy) wage = Math.round(wage * 2);
+          return Math.max(0, Math.floor(wage));
+        };
+
+        const armyTroops = nextTroops ?? [];
+        const armyWage = armyTroops.reduce((sum, t) => sum + getUnitWage(t) * Math.max(0, Math.floor(t.count ?? 0)), 0);
+        const wounded = Array.isArray(woundedList) ? woundedList : [];
+        const woundedWage = wounded.reduce((sum, e) => {
+          const count = Math.max(0, Math.floor(e.count ?? 0));
+          if (count <= 0) return sum;
+          const tmpl = getTroopTemplate(e.troopId);
+          const unit = getUnitWage({ id: e.troopId, tier: tmpl?.tier, category: tmpl?.category, heavyTier: tmpl?.heavyTier });
+          return sum + unit * count;
+        }, 0);
+
+        const stationedTroops: Troop[] = [];
+        newLocations.forEach(loc => {
+          if (loc.owner !== 'PLAYER') return;
+          if (loc.type === 'HIDEOUT') {
+            const layers = loc.hideout?.layers ?? [];
+            layers.forEach(layer => {
+              (layer.garrison ?? []).forEach(t => stationedTroops.push({ ...t }));
+            });
+            return;
+          }
+          (loc.garrison ?? []).forEach(t => stationedTroops.push({ ...t }));
+        });
+        const stationedWage = stationedTroops.reduce((sum, t) => sum + getUnitWage(t) * Math.max(0, Math.floor(t.count ?? 0)), 0);
+        const stationedDiscounted = Math.floor(stationedWage / 5);
+
+        const leadership = Math.max(0, Math.floor(nextPlayer.attributes.leadership ?? 0));
+        const leadershipRate = Math.min(0.4, leadership * 0.01);
+        const baseTotal = armyWage + woundedWage + stationedDiscounted;
+        const discounted = Math.floor(baseTotal * (1 - leadershipRate));
+        const due = Math.max(0, Math.floor(discounted));
+        const paid = Math.min(Math.max(0, Math.floor(newGold)), due);
+        newGold = Math.max(0, Math.floor(newGold - paid));
+
+        logsToAdd.push(`【军饷】本周应付 ${due} 第纳尔（统御 ${leadership}：-${Math.round(leadershipRate * 100)}%，驻军 1/5）。`);
+        if (paid < due) logsToAdd.push(`【军饷不足】仅支付 ${paid} / ${due} 第纳尔。`);
+      }
+
       if (rentCost > 0) logsToAdd.push(`在城内休息一天（-${rentCost} 第纳尔）。`);
 
       nextPlayer = { 
@@ -8608,7 +8657,7 @@ export default function App() {
   const normalizeView = (raw: unknown, hasLocation: boolean): GameView => {
     const value = typeof raw === 'string' ? raw : 'MAP';
     const safe = value as GameView;
-    const allowed: GameView[] = ['MAIN_MENU', 'INTRO', 'MAP', 'TOWN', 'PARTY', 'CHARACTER', 'TRAINING', 'ASYLUM', 'MARKET', 'BANDIT_ENCOUNTER', 'CAVE', 'BATTLE', 'BATTLE_RESULT', 'ENDING', 'GAME_OVER', 'HERO_CHAT', 'WORLD_BOARD', 'TROOP_ARCHIVE', 'RELATIONS'];
+    const allowed: GameView[] = ['MAIN_MENU', 'INTRO', 'MAP', 'TOWN', 'PARTY', 'CHARACTER', 'BILLS', 'TRAINING', 'ASYLUM', 'MARKET', 'BANDIT_ENCOUNTER', 'CAVE', 'BATTLE', 'BATTLE_RESULT', 'ENDING', 'GAME_OVER', 'HERO_CHAT', 'WORLD_BOARD', 'TROOP_ARCHIVE', 'RELATIONS'];
     if (!allowed.includes(safe)) return 'MAP';
     if (safe === 'ENDING' || safe === 'GAME_OVER' || safe === 'BATTLE' || safe === 'BATTLE_RESULT') return 'MAP';
     if (safe === 'TOWN' && !hasLocation) return 'MAP';
@@ -9312,6 +9361,13 @@ export default function App() {
             className="flex items-center gap-1 text-stone-200 hover:text-white px-2 rounded transition-colors" 
           >
              <Users size={14} /> <span>{player.troops.reduce((a, b) => a + b.count, 0) + (player.woundedTroops ?? []).reduce((sum, e) => sum + (e.count ?? 0), 0)} / {getMaxTroops()}</span>
+          </button>
+          <button
+            onClick={() => setView(view === 'BILLS' ? 'MAP' : 'BILLS')}
+            className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
+            title="账单"
+          >
+            <Scroll size={14} /> <span className="hidden md:inline">账单</span>
           </button>
           <button
             onClick={() => setIsMapListOpen(true)}
@@ -10286,6 +10342,14 @@ export default function App() {
               }));
               setView('ENDING');
             }}
+          />
+        )}
+        {view === 'BILLS' && (
+          <BillsView
+            player={player}
+            locations={locations}
+            getTroopTemplate={getTroopTemplate}
+            onBack={() => setView('MAP')}
           />
         )}
         {view === 'MAP' && (

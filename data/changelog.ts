@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.6.0',
+    date: '2026-03-01',
+    items: [
+      '城市委托报酬加入商业技能加成并在UI展示',
+      '新增每周军饷：高阶兵更贵、驻军仅 1/5、统御可减免',
+      '导航栏新增账单：可查看下月预计收入/开支与净收支'
+    ]
+  },
+  {
     version: '0.5.0',
     date: '2026-03-01',
     items: [

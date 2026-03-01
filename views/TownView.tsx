@@ -1028,6 +1028,9 @@ export const TownView = ({
       addLog('委托已失效。');
       return;
     }
+    const commerce = Math.max(0, player.attributes.commerce ?? 0);
+    const commerceBonusRate = Math.min(0.5, commerce * 0.01);
+    const payWithBonus = Math.max(0, Math.floor(contract.pay * (1 + commerceBonusRate)));
     updateLocationState({
       ...currentLocation,
       workBoard: {
@@ -1042,7 +1045,7 @@ export const TownView = ({
       contractTitle: contract.title,
       totalDays: Math.max(1, Math.floor(contract.days)),
       daysPassed: 0,
-      totalPay: Math.max(0, Math.floor(contract.pay))
+      totalPay: payWithBonus
     });
     onBackToMap();
   };
@@ -3379,10 +3382,18 @@ export const TownView = ({
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   {(currentLocation.workBoard?.contracts ?? []).map(c => (
                     <div key={c.id} className="bg-stone-950/40 border border-stone-800 rounded p-4">
+                      {(() => {
+                        const commerce = Math.max(0, player.attributes.commerce ?? 0);
+                        const commerceBonusRate = Math.min(0.5, commerce * 0.01);
+                        const payWithBonus = Math.max(0, Math.floor(c.pay * (1 + commerceBonusRate)));
+                        return (
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="text-stone-200 font-bold">{c.title}</div>
-                          <div className="text-xs text-stone-500 mt-1">等级 {c.tier} · 耗时 {c.days} 天 · 报酬 {c.pay}</div>
+                          <div className="text-xs text-stone-500 mt-1">
+                            等级 {c.tier} · 耗时 {c.days} 天 · 报酬 {payWithBonus}
+                            {commerce > 0 ? `（商业 ${commerce}：+${Math.round(commerceBonusRate * 100)}%）` : ''}
+                          </div>
                         </div>
                         <Button
                           onClick={() => handleStartWorkContract(c.id)}
@@ -3392,6 +3403,8 @@ export const TownView = ({
                           接取
                         </Button>
                       </div>
+                        );
+                      })()}
                       <div className="text-xs text-stone-500 mt-2">
                         中途退出：进度过半才有报酬，且只有 1/5。
                       </div>
