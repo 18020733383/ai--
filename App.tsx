@@ -8510,10 +8510,10 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [player.day, player.gold, player.renown, player.level, player.story?.endingId, view]);
 
-  const createSaveFromAuto = () => {
+  const createSaveFromAuto = (): string | null => {
     try {
       const raw = localStorage.getItem(`${SAVE_DATA_PREFIX}${AUTO_SAVE_ID}`);
-      if (!raw) return;
+      if (!raw) return null;
       const payload = JSON.parse(raw) as SaveGame;
       const now = Date.now();
       payload.meta = { ...payload.meta, timestamp: now, createdAt: new Date(now).toISOString() };
@@ -8521,7 +8521,9 @@ export default function App() {
       const label = `存档 ${new Date(now).toLocaleString('zh-CN', { hour12: false })}`;
       writeSavePayload(id, label, false, payload);
       setSelectedSaveId(id);
+      return id;
     } catch {}
+    return null;
   };
 
   const loadSaveSlot = (preferredId?: string) => {
@@ -10412,6 +10414,7 @@ export default function App() {
         {view === 'INTRO' && (
           <IntroCinematicView
             onFinish={() => {
+              const hideout = locations.find(l => l.id === 'hideout_underground') ?? null;
               setPlayer(prev => ({
                 ...prev,
                 story: {
@@ -10419,11 +10422,18 @@ export default function App() {
                   introSeen: true,
                   mainQuest: prev.story?.mainQuest ?? 'CLEANSE_PORTALS',
                   mainQuestStage: Math.max(1, prev.story?.mainQuestStage ?? 0)
-                }
+                },
+                position: hideout?.coordinates ?? prev.position
               }));
               addLog('【主线】清理传送门周边的伪人活动，封堵异常源头。');
               addLog('提示：传送门据点会不断酝酿新的袭击，围绕它们建立据点、清剿外溢，是回家的唯一线索。');
-              setView('MAP');
+              if (hideout) {
+                setCurrentLocation(hideout);
+                setTownTab('HIDEOUT');
+                setView('TOWN');
+              } else {
+                setView('MAP');
+              }
             }}
           />
         )}

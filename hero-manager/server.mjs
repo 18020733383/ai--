@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const heroRoot = path.join(rootDir, 'image', 'characters');
+const troopRoot = path.join(rootDir, 'image', 'troops');
 const indexPath = path.join(__dirname, 'index.html');
 
 const sendJson = (res, status, data) => {
@@ -52,6 +53,53 @@ const listHeroFiles = async (heroId) => {
   }
 };
 
+const listTroopIdsFromConstants = async () => {
+  try {
+    const constantsPath = path.join(rootDir, 'constants.ts');
+    const text = await readFile(constantsPath, 'utf8');
+    const startKey = 'const RAW_TROOP_TEMPLATES';
+    const startIndex = text.indexOf(startKey);
+    if (startIndex < 0) return [];
+    const endIndex = text.indexOf('export const TROOP_TEMPLATES', startIndex);
+    if (endIndex < 0) return [];
+    const block = text.slice(startIndex, endIndex);
+    const bodyStart = block.indexOf('{');
+    const bodyEnd = block.lastIndexOf('};');
+    if (bodyStart < 0 || bodyEnd < 0 || bodyEnd <= bodyStart) return [];
+    const raw = block.slice(bodyStart + 1, bodyEnd);
+    const ids = [];
+    const re = /^\s*([a-zA-Z0-9_]+)\s*:\s*\{/gm;
+    let m;
+    while ((m = re.exec(raw)) !== null) {
+      const id = m[1];
+      if (id) ids.push(id);
+    }
+    return Array.from(new Set(ids)).sort();
+  } catch {
+    return [];
+  }
+};
+
+const listTroopFiles = async () => {
+  try {
+    const entries = await readdir(troopRoot, { withFileTypes: true });
+    return entries
+      .filter(e => e.isFile())
+      .map(e => e.name)
+      .filter(name => /\.(png|jpg|jpeg)$/i.test(name))
+      .sort();
+  } catch {
+    return [];
+  }
+};
+
+const listTroopImageCandidates = async (troopId) => {
+  const id = String(troopId ?? '').trim();
+  if (!id) return [];
+  const files = await listTroopFiles();
+  return files.filter(f => f.toLowerCase().startsWith(`${id.toLowerCase()}.`));
+};
+
 const parseDataUrl = (dataUrl) => {
   const match = dataUrl.match(/^data:(image\/png|image\/jpeg|image\/jpg);base64,(.+)$/);
   if (!match) return null;
@@ -77,12 +125,28 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { heroes });
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/troops') {
+    const troopIds = await listTroopIdsFromConstants();
+    const files = await listTroopFiles();
+    const existing = files.map(f => f.replace(/\.(png|jpg|jpeg)$/i, ''));
+    return sendJson(res, 200, { troopIds, existing: Array.from(new Set(existing)).sort() });
+  }
+
   if (req.method === 'GET' && url.pathname.startsWith('/api/hero/')) {
     const parts = url.pathname.split('/').filter(Boolean);
     if (parts.length === 3 && parts[2]) {
       const heroId = decodeURIComponent(parts[2]);
       const files = await listHeroFiles(heroId);
       return sendJson(res, 200, { heroId, files });
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/api/troop/')) {
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length === 3 && parts[2]) {
+      const troopId = decodeURIComponent(parts[2]);
+      const files = await listTroopImageCandidates(troopId);
+      return sendJson(res, 200, { troopId, files });
     }
   }
 
@@ -93,6 +157,31 @@ const server = http.createServer(async (req, res) => {
       const fileName = decodeURIComponent(parts[2]);
       try {
         const filePath = safeJoin(heroRoot, path.join(heroId, fileName));
+        const info = await stat(filePath);
+        if (!info.isFile()) return sendText(res, 404, 'Not found');
+        const ext = path.extname(filePath).toLowerCase();
+        const contentType = ext === '.png'
+          ? 'image/png'
+          : ext === '.jpg'
+            ? 'image/jpeg'
+            : ext === '.jpeg'
+              ? 'image/jpeg'
+              : 'application/octet-stream';
+        const buffer = await readFile(filePath);
+        res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
+        return res.end(buffer);
+      } catch {
+        return sendText(res, 404, 'Not found');
+      }
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/troop-files/')) {
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length === 2) {
+      const fileName = decodeURIComponent(parts[1]);
+      try {
+        const filePath = safeJoin(troopRoot, fileName);
         const info = await stat(filePath);
         if (!info.isFile()) return sendText(res, 404, 'Not found');
         const ext = path.extname(filePath).toLowerCase();
@@ -137,6 +226,45 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, heroId, fileName });
     } catch {
       return sendJson(res, 500, { error: 'Upload failed' });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/troop/upload') {
+    try {
+      const body = await readBody(req);
+      const troopId = String(body?.troopId ?? '').trim();
+      const dataUrl = String(body?.dataUrl ?? '').trim();
+      if (!troopId || !dataUrl) {
+        return sendJson(res, 400, { error: 'Missing fields' });
+      }
+      const parsed = parseDataUrl(dataUrl);
+      if (!parsed) return sendJson(res, 400, { error: 'Unsupported file type' });
+
+      await mkdir(troopRoot, { recursive: true });
+      const targets = ['png', 'jpg', 'jpeg'].map(ext => path.join(troopRoot, `${troopId}.${ext}`));
+      await Promise.all(targets.map(file => rm(file, { force: true })));
+
+      const fileName = `${troopId}.${parsed.ext}`;
+      const filePath = path.join(troopRoot, fileName);
+      await writeFile(filePath, parsed.buffer);
+
+      return sendJson(res, 200, { ok: true, troopId, fileName });
+    } catch {
+      return sendJson(res, 500, { error: 'Upload failed' });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/troop/delete') {
+    try {
+      const body = await readBody(req);
+      const troopId = String(body?.troopId ?? '').trim();
+      if (!troopId) return sendJson(res, 400, { error: 'Missing fields' });
+      await mkdir(troopRoot, { recursive: true });
+      const targets = ['png', 'jpg', 'jpeg'].map(ext => path.join(troopRoot, `${troopId}.${ext}`));
+      await Promise.all(targets.map(file => rm(file, { force: true })));
+      return sendJson(res, 200, { ok: true, troopId });
+    } catch {
+      return sendJson(res, 500, { error: 'Delete failed' });
     }
   }
 

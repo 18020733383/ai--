@@ -27,7 +27,7 @@ type MainMenuViewProps = {
   onDeleteSave: (id: string) => void;
   onNewGame: () => void;
   onContinue: (preferredId?: string) => void;
-  onCreateSaveFromAuto: () => void;
+  onCreateSaveFromAuto: () => string | null;
   endings: EndingMeta[];
   onReplayEnding: (endingId: string) => void;
 };
@@ -81,8 +81,15 @@ export const MainMenuView = ({
                     <Button onClick={() => onContinue(selectedSaveId ?? undefined)} variant="gold" disabled={!autoSave && !selected}>
                       <Play size={16} className="inline mr-2" /> 继续游戏
                     </Button>
-                    <Button onClick={onCreateSaveFromAuto} variant="secondary" disabled={!canCreateFromAuto}>
-                      <Save size={16} className="inline mr-2" /> 新建存档
+                    <Button
+                      onClick={() => {
+                        const id = onCreateSaveFromAuto();
+                        if (id) onContinue(id);
+                      }}
+                      variant="secondary"
+                      disabled={!canCreateFromAuto}
+                    >
+                      <Save size={16} className="inline mr-2" /> 另存为
                     </Button>
                   </div>
                 </div>

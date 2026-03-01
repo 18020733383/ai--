@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>本地英雄管理器</title>
+    <title>本地图片管理器</title>
     <style>
       body { margin: 0; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; background: #0f1115; color: #e6e8ef; }
       .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
@@ -20,12 +20,20 @@
       .muted { color: #8a93a3; font-size: 12px; }
       .title { font-size: 20px; font-weight: 600; margin-bottom: 12px; }
       .status { font-size: 12px; color: #7dd3fc; min-height: 16px; }
+      .tabs { display: flex; gap: 10px; margin-bottom: 14px; }
+      .tab { padding: 10px 12px; border-radius: 10px; border: 1px solid #2a2f3a; background: #0f1115; color: #e6e8ef; cursor: pointer; }
+      .tab.active { background: #2a3647; }
     </style>
   </head>
   <body>
     <div class="wrap">
-      <div class="title">本地英雄管理器</div>
-      <div class="card">
+      <div class="title">本地图片管理器</div>
+      <div class="tabs">
+        <button class="tab active" id="tabHero">英雄</button>
+        <button class="tab" id="tabTroop">兵种</button>
+      </div>
+
+      <div class="card" id="heroPanel">
         <div class="row">
           <div>
             <label>英雄</label>
@@ -72,13 +80,58 @@
         </div>
       </div>
 
-      <div class="card" style="margin-top: 16px;">
+      <div class="card" id="heroGridCard" style="margin-top: 16px;">
         <div class="title" style="font-size: 16px;">当前英雄文件</div>
         <div class="grid" id="fileGrid"></div>
+      </div>
+
+      <div class="card" id="troopPanel" style="display: none; margin-top: 16px;">
+        <div class="row">
+          <div>
+            <label>兵种</label>
+            <select id="troopSelect"></select>
+          </div>
+          <div>
+            <label>已有图片</label>
+            <div class="muted" id="troopCurrentFile">当前文件：无</div>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>上传文件（png/jpg/jpeg）</label>
+            <input id="troopFileInput" type="file" accept=".png,.jpg,.jpeg" />
+          </div>
+          <div>
+            <label>操作</label>
+            <button id="troopUploadBtn" disabled>上传并覆盖</button>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>操作</label>
+            <button id="troopDeleteBtn" disabled>删除图片</button>
+          </div>
+          <div>
+            <label>状态</label>
+            <div class="status" id="troopStatusText"></div>
+          </div>
+        </div>
+        <div class="row">
+          <div style="grid-column: 1 / -1;">
+            <label>预览</label>
+            <div class="grid" id="troopGrid"></div>
+          </div>
+        </div>
       </div>
     </div>
 
     <script>
+      const tabHero = document.getElementById('tabHero');
+      const tabTroop = document.getElementById('tabTroop');
+      const heroPanel = document.getElementById('heroPanel');
+      const heroGridCard = document.getElementById('heroGridCard');
+      const troopPanel = document.getElementById('troopPanel');
+
       const heroSelect = document.getElementById('heroSelect');
       const expressionSelect = document.getElementById('expressionSelect');
       const fileInput = document.getElementById('fileInput');
@@ -89,7 +142,25 @@
       const currentFile = document.getElementById('currentFile');
       const fileGrid = document.getElementById('fileGrid');
 
+      const troopSelect = document.getElementById('troopSelect');
+      const troopFileInput = document.getElementById('troopFileInput');
+      const troopUploadBtn = document.getElementById('troopUploadBtn');
+      const troopDeleteBtn = document.getElementById('troopDeleteBtn');
+      const troopStatusText = document.getElementById('troopStatusText');
+      const troopCurrentFile = document.getElementById('troopCurrentFile');
+      const troopGrid = document.getElementById('troopGrid');
+
       const setStatus = (text) => { statusText.textContent = text || ''; };
+      const setTroopStatus = (text) => { troopStatusText.textContent = text || ''; };
+
+      const setActiveTab = (key) => {
+        const isHero = key === 'HERO';
+        tabHero.classList.toggle('active', isHero);
+        tabTroop.classList.toggle('active', !isHero);
+        heroPanel.style.display = isHero ? '' : 'none';
+        heroGridCard.style.display = isHero ? '' : 'none';
+        troopPanel.style.display = isHero ? 'none' : '';
+      };
 
       const fetchHeroes = async () => {
         const res = await fetch('/api/heroes');
@@ -185,6 +256,83 @@
         await fetchHeroFiles();
       };
 
+      const fetchTroops = async () => {
+        const res = await fetch('/api/troops');
+        const data = await res.json();
+        const troopIds = data.troopIds || [];
+        troopSelect.innerHTML = troopIds.map(id => `<option value="${id}">${id}</option>`).join('');
+      };
+
+      const fetchTroopFiles = async () => {
+        const troopId = troopSelect.value;
+        if (!troopId) return;
+        const res = await fetch(`/api/troop/${encodeURIComponent(troopId)}`);
+        const data = await res.json();
+        const files = data.files || [];
+        troopDeleteBtn.disabled = files.length === 0;
+        renderTroopFiles(files);
+      };
+
+      const renderTroopFiles = (files) => {
+        if (!files.length) {
+          troopGrid.innerHTML = '<div class="muted">没有文件</div>';
+          troopCurrentFile.textContent = '当前文件：无';
+          return;
+        }
+        troopCurrentFile.textContent = `当前文件：${files[0]}`;
+        troopGrid.innerHTML = files.map(file => `
+          <div class="thumb">
+            <img src="/troop-files/${encodeURIComponent(file)}" alt="${file}" />
+            <div class="muted">${file}</div>
+          </div>
+        `).join('');
+      };
+
+      const uploadTroopFile = async () => {
+        const troopId = troopSelect.value;
+        const file = troopFileInput.files[0];
+        if (!troopId || !file) return;
+        setTroopStatus('上传中...');
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
+        });
+        const res = await fetch('/api/troop/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ troopId, dataUrl })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setTroopStatus(data.error || '上传失败');
+          return;
+        }
+        setTroopStatus('上传成功');
+        troopFileInput.value = '';
+        troopUploadBtn.disabled = true;
+        await fetchTroopFiles();
+      };
+
+      const deleteTroopFile = async () => {
+        const troopId = troopSelect.value;
+        if (!troopId) return;
+        setTroopStatus('删除中...');
+        const res = await fetch('/api/troop/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ troopId })
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setTroopStatus(data.error || '删除失败');
+          return;
+        }
+        setTroopStatus('删除成功');
+        await fetchTroopFiles();
+      };
+
       fileInput.addEventListener('change', () => {
         uploadBtn.disabled = !fileInput.files.length;
       });
@@ -196,7 +344,17 @@
       uploadBtn.addEventListener('click', uploadFile);
       renameBtn.addEventListener('click', renameFile);
 
+      troopFileInput.addEventListener('change', () => {
+        troopUploadBtn.disabled = !troopFileInput.files.length;
+      });
+      troopSelect.addEventListener('change', fetchTroopFiles);
+      troopUploadBtn.addEventListener('click', uploadTroopFile);
+      troopDeleteBtn.addEventListener('click', deleteTroopFile);
+      tabHero.addEventListener('click', () => setActiveTab('HERO'));
+      tabTroop.addEventListener('click', () => setActiveTab('TROOP'));
+
       fetchHeroes().then(fetchHeroFiles);
+      fetchTroops().then(fetchTroopFiles);
     </script>
   </body>
 </html>

@@ -4964,7 +4964,7 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
   currentHp: 100,
   maxHp: 100,
   status: 'ACTIVE',
-  position: { x: 200, y: 200 }, // Center of 400x400 map
+  position: { x: 384, y: 340 }, // Spawn at hideout entrance
   minerals: {
     NULL_CRYSTAL: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
     STACK_OVERFLOW: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },

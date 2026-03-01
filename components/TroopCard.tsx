@@ -37,6 +37,8 @@ export const TroopCard: React.FC<TroopCardProps> = ({
   upgradeLabel,
   countLabel
 }) => {
+  const [portraitSrc, setPortraitSrc] = React.useState<string | null>(null);
+
   // Calculate XP Percentage for the whole stack to determine if ready
   const xpPercentage = Math.min(100, (troop.xp / (troop.maxXp * (troop.count || 1))) * 100);
   const isReadyToUpgrade = canUpgrade && troop.xp >= troop.maxXp; // At least one unit can upgrade
@@ -50,6 +52,16 @@ export const TroopCard: React.FC<TroopCardProps> = ({
   const troopRace = getTroopRace({ id: troop.id, name: troop.name, doctrine: troop.doctrine, evangelist: troop.evangelist });
   const raceLabel = TROOP_RACE_LABELS[troopRace];
 
+  React.useEffect(() => {
+    setPortraitSrc(null);
+  }, [normalizedId]);
+
+  const portraitFallbacks = React.useMemo(() => ([
+    `/image/troops/${normalizedId}.png`,
+    `/image/troops/${normalizedId}.jpg`,
+    `/image/troops/${normalizedId}.jpeg`
+  ]), [normalizedId]);
+
   return (
     <div className="bg-stone-900/80 border border-stone-700 p-4 rounded-sm flex flex-col gap-3 group hover:border-stone-500 transition-colors relative overflow-hidden">
        {/* Count Label Badge (Top Right) */}
@@ -61,10 +73,44 @@ export const TroopCard: React.FC<TroopCardProps> = ({
 
       <div className="flex items-start justify-between pr-12">
         <div className="flex items-center gap-4">
-          <div className={`w-12 h-12 rounded-full flex items-center justify-center border-2 ${troop.tier >= 3 ? 'border-yellow-600 bg-stone-800' : 'border-stone-600 bg-stone-800'}`}>
-             {troop.tier >= 4 ? <Shield className="w-6 h-6 text-yellow-500" /> : 
-              troop.tier === 3 ? <Sword className="w-6 h-6 text-stone-300" /> :
-              <Hammer className="w-5 h-5 text-stone-500" />}
+          <div className={`relative w-12 h-12 rounded-full flex items-center justify-center border-2 overflow-hidden ${troop.tier >= 3 ? 'border-yellow-600 bg-stone-800' : 'border-stone-600 bg-stone-800'}`}>
+            {portraitSrc && portraitSrc !== '' ? (
+              <img src={portraitSrc} alt={troop.name} className="w-full h-full object-cover" />
+            ) : portraitSrc === '' ? (
+              <>
+                {troop.tier >= 4 ? <Shield className="w-6 h-6 text-yellow-500" /> :
+                  troop.tier === 3 ? <Sword className="w-6 h-6 text-stone-300" /> :
+                    <Hammer className="w-5 h-5 text-stone-500" />}
+              </>
+            ) : (
+              <>
+                <img
+                  src={portraitFallbacks[0]}
+                  alt=""
+                  className="w-full h-full object-cover"
+                  onLoad={(e) => {
+                    const src = (e.currentTarget as HTMLImageElement).src;
+                    setPortraitSrc(src);
+                  }}
+                  onError={(e) => {
+                    const img = e.currentTarget as HTMLImageElement;
+                    const current = img.getAttribute('data-try') ? Number(img.getAttribute('data-try')) : 0;
+                    const next = current + 1;
+                    if (next >= portraitFallbacks.length) {
+                      setPortraitSrc('');
+                      return;
+                    }
+                    img.setAttribute('data-try', String(next));
+                    img.src = portraitFallbacks[next];
+                  }}
+                />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  {troop.tier >= 4 ? <Shield className="w-6 h-6 text-yellow-500" /> :
+                    troop.tier === 3 ? <Sword className="w-6 h-6 text-stone-300" /> :
+                      <Hammer className="w-5 h-5 text-stone-500" />}
+                </div>
+              </>
+            )}
           </div>
           <div>
             <h4 className="font-serif font-bold text-stone-200 text-lg">{troop.name}</h4>

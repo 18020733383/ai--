@@ -6,6 +6,16 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.7.0',
+    date: '2026-03-01',
+    items: [
+      '新开局主角出生在隐匿点，并在序章结束后自动进入据点',
+      '主菜单“另存为”会复制自动存档并立刻进入该存档',
+      '图片管理器支持兵种图片上传/删除/查询，并提供一键启动脚本',
+      '士兵卡片支持显示兵种图片（无图保持原样）'
+    ]
+  },
+  {
     version: '0.6.0',
     date: '2026-03-01',
     items: [
