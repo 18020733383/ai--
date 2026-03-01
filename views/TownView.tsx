@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Beer, Brain, Coins, Ghost, Hammer, History, Home, MapPin, MessageCircle, Mountain, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, Zap } from 'lucide-react';
+import { AlertTriangle, Beer, Brain, Coins, Ghost, Hammer, History, Home, MapPin, MessageCircle, Mountain, Plus, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, X, Zap } from 'lucide-react';
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
 import { chatWithAltar, chatWithCampLeader, chatWithLord, proposeHeroPromotion, type HeroPromotionDraft } from '../services/geminiService';
@@ -1262,11 +1262,11 @@ export const TownView = ({
   const hideoutExposure = Math.max(0, Math.min(100, hideoutState?.exposure ?? 0));
   const hideoutCamouflageCooldownUntilDay = hideoutState?.camouflageCooldownUntilDay ?? 0;
 
-  const [hideoutFacilityChoices, setHideoutFacilityChoices] = React.useState<Record<number, BuildingType>>({});
-  const [hideoutDefenseChoices, setHideoutDefenseChoices] = React.useState<Record<number, BuildingType>>({});
   const [hideoutRefineMineralId, setHideoutRefineMineralId] = React.useState<MineralId>('NULL_CRYSTAL');
   const [hideoutRefineFromPurity, setHideoutRefineFromPurity] = React.useState<MineralPurity>(1);
   const [hideoutRefineOutputCount, setHideoutRefineOutputCount] = React.useState(1);
+  const [hideoutPage, setHideoutPage] = React.useState<'DASHBOARD' | 'GARRISON' | 'GUARDIAN' | 'FACILITIES' | 'DEFENSE' | 'REFINERY'>('DASHBOARD');
+  const [hideoutSlotMenu, setHideoutSlotMenu] = React.useState<{ category: 'FACILITY' | 'DEFENSE'; slotIndex: number } | null>(null);
 
   const hideoutFacilityBuildOptions = buildingOptions.filter(b => (
     b.type === 'HOUSING' ||
@@ -1287,6 +1287,62 @@ export const TownView = ({
     b.type === 'AA_RADAR_II' ||
     b.type === 'CAMOUFLAGE_STRUCTURE'
   ));
+  const hideoutHasRefineryBuilt = hideoutFacilitySlots.some(slot => slot.type === 'ORE_REFINERY' && isSlotBuilt(slot));
+
+  const getHideoutSlotLabel = (slot: { type: BuildingType | null; daysLeft?: number }) => {
+    if (!slot.type) return '空槽';
+    if (slot.daysLeft && slot.daysLeft > 0) return `${getBuildingName(slot.type)} · ${slot.daysLeft}天`;
+    return getBuildingName(slot.type);
+  };
+
+  const renderHideoutRadial = (category: 'FACILITY' | 'DEFENSE', slotIndex: number) => {
+    const isOpen = hideoutSlotMenu?.category === category && hideoutSlotMenu?.slotIndex === slotIndex;
+    if (!isOpen) return null;
+    const depth = hideoutSelectedLayer?.depth ?? 0;
+    const rawOptions = category === 'FACILITY' ? hideoutFacilityBuildOptions : hideoutDefenseBuildOptions;
+    const options = rawOptions.filter(opt => depth === 0 ? true : opt.type !== 'CAMOUFLAGE_STRUCTURE');
+    const radius = 74;
+    const centerStyle: React.CSSProperties = { left: '50%', top: '50%', transform: 'translate(-50%, -50%)' };
+    return (
+      <div className="absolute inset-0 z-30 animate-fade-in">
+        <button
+          className="absolute inset-0 bg-black/70 rounded"
+          onClick={() => setHideoutSlotMenu(null)}
+        />
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute" style={centerStyle}>
+            <button
+              className="pointer-events-auto w-10 h-10 rounded-full border border-stone-700 bg-stone-950/80 text-stone-200 flex items-center justify-center shadow"
+              onClick={() => setHideoutSlotMenu(null)}
+            >
+              <X size={16} />
+            </button>
+          </div>
+          {options.map((opt, i) => {
+            const angle = (i / Math.max(1, options.length)) * Math.PI * 2 - Math.PI / 2;
+            const x = Math.round(Math.cos(angle) * radius);
+            const y = Math.round(Math.sin(angle) * radius);
+            const disabled = player.gold < opt.cost;
+            return (
+              <button
+                key={`${category}_${slotIndex}_${opt.type}`}
+                title={`${opt.name}（${opt.cost} / ${opt.days}天）`}
+                className={`pointer-events-auto absolute w-12 h-12 rounded-full border shadow flex items-center justify-center transition-all duration-200 animate-fade-in ${disabled ? 'border-stone-800 bg-stone-950/30 text-stone-600 cursor-not-allowed' : 'border-emerald-900/60 bg-stone-950/80 text-emerald-200 hover:border-emerald-600 hover:text-emerald-100'}`}
+                style={{ left: '50%', top: '50%', transform: `translate(-50%, -50%) translate(${x}px, ${y}px)` }}
+                disabled={disabled}
+                onClick={() => {
+                  setHideoutSlotMenu(null);
+                  handleHideoutBuildInSlot(category, slotIndex, opt);
+                }}
+              >
+                <span className="text-[11px] font-bold">{opt.name.slice(0, 2)}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
 
   const handleBuySiegeEngine = (engine: { type: SiegeEngineType; name: string; cost: number; days: number }) => {
     if (!isSiegeTarget && !isImposterPortal) return;
@@ -2123,247 +2179,311 @@ export const TownView = ({
               </div>
             </div>
 
-            <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4">
-              <div className="text-stone-200 font-bold">该层守护者</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
-                <div>
-                  <label className="block text-xs text-stone-500 mb-1">选择英雄</label>
-                  <select
-                    value={hideoutSelectedLayer?.guardianHeroId ?? ''}
-                    onChange={(e) => handleHideoutSetGuardian(e.target.value)}
-                    className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+            <div className="flex flex-wrap gap-2">
+              {([
+                { id: 'DASHBOARD', label: '仪表盘' },
+                { id: 'GARRISON', label: '驻军' },
+                { id: 'GUARDIAN', label: '守护者' },
+                { id: 'FACILITIES', label: '建筑槽' },
+                { id: 'DEFENSE', label: '防御槽' },
+                { id: 'REFINERY', label: '精炼' }
+              ] as const).map(item => (
+                <button
+                  key={item.id}
+                  onClick={() => {
+                    setHideoutSlotMenu(null);
+                    setHideoutPage(item.id);
+                  }}
+                  className={`px-3 py-2 rounded border text-sm ${hideoutPage === item.id ? 'bg-emerald-900/30 border-emerald-700 text-emerald-200' : 'bg-stone-900/60 border-stone-700 text-stone-400 hover:border-stone-500'}`}
+                >
+                  {item.label}
+                </button>
+              ))}
+            </div>
+
+            {hideoutPage === 'DASHBOARD' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                <button
+                  onClick={() => setHideoutPage('GARRISON')}
+                  className="text-left bg-stone-900/60 border border-stone-800 rounded p-5 hover:border-stone-600 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-200 font-bold">驻军</div>
+                    <Users size={16} className="text-emerald-300" />
+                  </div>
+                  <div className="text-stone-400 text-sm mt-2">该层 {hideoutLayerGarrisonCount}/{hideoutLayerLimit}｜战力 {Math.round(hideoutLayerGarrisonPower)}</div>
+                </button>
+                <button
+                  onClick={() => setHideoutPage('GUARDIAN')}
+                  className="text-left bg-stone-900/60 border border-stone-800 rounded p-5 hover:border-stone-600 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-200 font-bold">守护者</div>
+                    <Shield size={16} className="text-emerald-300" />
+                  </div>
+                  <div className="text-stone-400 text-sm mt-2">
+                    {hideoutSelectedLayer?.guardianHeroId
+                      ? `已设置：${heroes.find(h => h.id === hideoutSelectedLayer.guardianHeroId)?.name ?? hideoutSelectedLayer.guardianHeroId}`
+                      : '未设置'}
+                  </div>
+                </button>
+                <button
+                  onClick={() => setHideoutPage('FACILITIES')}
+                  className="text-left bg-stone-900/60 border border-stone-800 rounded p-5 hover:border-stone-600 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-200 font-bold">建筑槽</div>
+                    <Home size={16} className="text-emerald-300" />
+                  </div>
+                  <div className="text-stone-400 text-sm mt-2">点击空槽位，圆盘选择建造。</div>
+                </button>
+                <button
+                  onClick={() => setHideoutPage('DEFENSE')}
+                  className="text-left bg-stone-900/60 border border-stone-800 rounded p-5 hover:border-stone-600 transition-colors"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-200 font-bold">防御槽</div>
+                    <ShieldAlert size={16} className="text-emerald-300" />
+                  </div>
+                  <div className="text-stone-400 text-sm mt-2">防御与防空可重复堆叠。</div>
+                </button>
+                <button
+                  onClick={() => setHideoutPage('REFINERY')}
+                  disabled={!hideoutHasRefineryBuilt}
+                  className={`text-left bg-stone-900/60 border rounded p-5 transition-colors ${hideoutHasRefineryBuilt ? 'border-stone-800 hover:border-stone-600' : 'border-stone-900 opacity-50 cursor-not-allowed'}`}
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-200 font-bold">矿石精炼</div>
+                    <Mountain size={16} className="text-emerald-300" />
+                  </div>
+                  <div className="text-stone-400 text-sm mt-2">{hideoutHasRefineryBuilt ? '将低纯度矿石熔炼为更高纯度。' : '需要先建造矿石精炼厂。'}</div>
+                </button>
+                <div className="bg-stone-900/60 border border-stone-800 rounded p-5">
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-200 font-bold">暴露程度</div>
+                    <AlertTriangle size={16} className="text-amber-300" />
+                  </div>
+                  <div className="text-stone-400 text-sm mt-2">当前 {Math.round(hideoutExposure)}%｜越高越危险。</div>
+                </div>
+              </div>
+            )}
+
+            {hideoutPage === 'GUARDIAN' && (
+              <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4 animate-fade-in">
+                <div className="text-stone-200 font-bold">该层守护者</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+                  <div>
+                    <label className="block text-xs text-stone-500 mb-1">选择英雄</label>
+                    <select
+                      value={hideoutSelectedLayer?.guardianHeroId ?? ''}
+                      onChange={(e) => handleHideoutSetGuardian(e.target.value)}
+                      className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+                    >
+                      <option value="">（无）</option>
+                      {heroes
+                        .filter(h => h.recruited && h.status !== 'DEAD')
+                        .map(h => (
+                          <option key={h.id} value={h.id}>{h.title}{h.name} (Lv.{h.level})</option>
+                        ))}
+                    </select>
+                  </div>
+                  <div className="text-sm text-stone-400">
+                    {hideoutSelectedLayer?.guardianHeroId
+                      ? `守护者：${(heroes.find(h => h.id === hideoutSelectedLayer.guardianHeroId)?.title ?? '')}${heroes.find(h => h.id === hideoutSelectedLayer.guardianHeroId)?.name ?? hideoutSelectedLayer.guardianHeroId}`
+                      : '未设置守护者。'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {hideoutPage === 'GARRISON' && (
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
+                <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-200 font-bold">该层驻军</div>
+                    <div className="text-xs text-stone-500">容量 {hideoutLayerGarrisonCount}/{hideoutLayerLimit}</div>
+                  </div>
+                  {hideoutLayerTroops.length === 0 ? (
+                    <div className="text-stone-500 text-sm">该层暂无驻军。</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {hideoutLayerTroops.map((unit, idx) => (
+                        <TroopCard
+                          key={`${unit.id}-${idx}`}
+                          troop={unit}
+                          count={unit.count}
+                          countLabel="驻军"
+                          actionLabel="调回10"
+                          onAction={() => handleHideoutWithdrawFromGarrison(unit.id, 10)}
+                          secondaryActionLabel="调回1"
+                          onSecondaryAction={() => handleHideoutWithdrawFromGarrison(unit.id, 1)}
+                          disabled={maxTroops - currentTroopCount <= 0}
+                          secondaryDisabled={maxTroops - currentTroopCount <= 0}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-200 font-bold">部队调入该层</div>
+                    <div className="text-xs text-stone-500">队伍 {currentTroopCount}/{maxTroops}</div>
+                  </div>
+                  {player.troops.length === 0 ? (
+                    <div className="text-stone-500 text-sm">没有可调入的部队。</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {player.troops.map((unit, idx) => (
+                        <TroopCard
+                          key={`${unit.id}-${idx}`}
+                          troop={unit}
+                          count={unit.count}
+                          countLabel="部队"
+                          actionLabel="调入10"
+                          onAction={() => handleHideoutDepositToGarrison(unit.id, 10)}
+                          secondaryActionLabel="调入1"
+                          onSecondaryAction={() => handleHideoutDepositToGarrison(unit.id, 1)}
+                          disabled={hideoutLayerGarrisonCount >= hideoutLayerLimit}
+                          secondaryDisabled={hideoutLayerGarrisonCount >= hideoutLayerLimit}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {hideoutPage === 'FACILITIES' && (
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 animate-fade-in">
+                {hideoutFacilitySlots.map((slot, slotIndex) => (
+                  <div
+                    key={`facility_slot_${slotIndex}`}
+                    className={`relative bg-stone-900/60 border rounded p-3 min-h-[96px] ${slot.type ? 'border-stone-800' : 'border-stone-800 hover:border-emerald-700'} ${hideoutSlotMenu?.category === 'FACILITY' && hideoutSlotMenu?.slotIndex === slotIndex ? 'z-20' : ''}`}
                   >
-                    <option value="">（无）</option>
-                    {heroes
-                      .filter(h => h.recruited && h.status !== 'DEAD')
-                      .map(h => (
-                        <option key={h.id} value={h.id}>{h.title}{h.name} (Lv.{h.level})</option>
-                      ))}
-                  </select>
-                </div>
-                <div className="text-sm text-stone-400">
-                  {hideoutSelectedLayer?.guardianHeroId
-                    ? `守护者：${(heroes.find(h => h.id === hideoutSelectedLayer.guardianHeroId)?.title ?? '')}${heroes.find(h => h.id === hideoutSelectedLayer.guardianHeroId)?.name ?? hideoutSelectedLayer.guardianHeroId}`
-                    : '未设置守护者。'}
-                </div>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-stone-200 font-bold">该层驻军</div>
-                  <div className="text-xs text-stone-500">容量 {hideoutLayerGarrisonCount}/{hideoutLayerLimit}</div>
-                </div>
-                {hideoutLayerTroops.length === 0 ? (
-                  <div className="text-stone-500 text-sm">该层暂无驻军。</div>
-                ) : (
-                  <div className="space-y-3">
-                    {hideoutLayerTroops.map((unit, idx) => (
-                      <TroopCard
-                        key={`${unit.id}-${idx}`}
-                        troop={unit}
-                        count={unit.count}
-                        countLabel="驻军"
-                        actionLabel="调回10"
-                        onAction={() => handleHideoutWithdrawFromGarrison(unit.id, 10)}
-                        secondaryActionLabel="调回1"
-                        onSecondaryAction={() => handleHideoutWithdrawFromGarrison(unit.id, 1)}
-                        disabled={maxTroops - currentTroopCount <= 0}
-                        secondaryDisabled={maxTroops - currentTroopCount <= 0}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="text-stone-200 font-bold">部队调入该层</div>
-                  <div className="text-xs text-stone-500">队伍 {currentTroopCount}/{maxTroops}</div>
-                </div>
-                {player.troops.length === 0 ? (
-                  <div className="text-stone-500 text-sm">没有可调入的部队。</div>
-                ) : (
-                  <div className="space-y-3">
-                    {player.troops.map((unit, idx) => (
-                      <TroopCard
-                        key={`${unit.id}-${idx}`}
-                        troop={unit}
-                        count={unit.count}
-                        countLabel="部队"
-                        actionLabel="调入10"
-                        onAction={() => handleHideoutDepositToGarrison(unit.id, 10)}
-                        secondaryActionLabel="调入1"
-                        onSecondaryAction={() => handleHideoutDepositToGarrison(unit.id, 1)}
-                        disabled={hideoutLayerGarrisonCount >= hideoutLayerLimit}
-                        secondaryDisabled={hideoutLayerGarrisonCount >= hideoutLayerLimit}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4">
-              <div className="text-stone-200 font-bold">建筑槽（10）</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {hideoutFacilitySlots.map((slot, slotIndex) => {
-                  const isBuilt = isSlotBuilt(slot);
-                  const choice = hideoutFacilityChoices[slotIndex] ?? 'HOUSING';
-                  const selected = hideoutFacilityBuildOptions.find(b => b.type === choice) ?? hideoutFacilityBuildOptions[0];
-                  const canBuild = !slot.type && !!selected && player.gold >= (selected?.cost ?? 0);
-                  return (
-                    <div key={`facility_slot_${slotIndex}`} className="bg-stone-900 border border-stone-800 p-4 rounded">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-stone-300 text-sm font-bold">槽位 {slotIndex + 1}</div>
-                        {slot.type ? (
-                          <span className={`text-xs px-2 py-0.5 rounded border ${isBuilt ? 'bg-emerald-950/30 border-emerald-900/60 text-emerald-200' : 'bg-amber-950/30 border-amber-900/60 text-amber-200'}`}>
-                            {isBuilt ? '已建成' : `施工中 ${slot.daysLeft ?? 0} 天`}
-                          </span>
-                        ) : (
-                          <span className="text-xs px-2 py-0.5 rounded border bg-stone-950/40 border-stone-800 text-stone-500">空</span>
-                        )}
+                    {slot.type ? (
+                      <div className="space-y-2">
+                        <div className="text-xs text-stone-500">槽位 {slotIndex + 1}</div>
+                        <div className="text-stone-200 font-bold text-sm">{getHideoutSlotLabel(slot)}</div>
                       </div>
-                      {slot.type ? (
-                        <div className="text-stone-200 font-bold">{getBuildingName(slot.type)}</div>
-                      ) : (
-                        <div className="space-y-2">
-                          <select
-                            value={choice}
-                            onChange={(e) => setHideoutFacilityChoices(prev => ({ ...prev, [slotIndex]: e.target.value as BuildingType }))}
-                            className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
-                          >
-                            {hideoutFacilityBuildOptions.map(opt => (
-                              <option key={`facility_opt_${opt.type}`} value={opt.type}>{opt.name}（{opt.cost} / {opt.days}天）</option>
-                            ))}
-                          </select>
-                          <div className="text-stone-500 text-xs">{selected?.description}</div>
-                          <Button
-                            variant="secondary"
-                            disabled={!canBuild}
-                            onClick={() => selected && handleHideoutBuildInSlot('FACILITY', slotIndex, selected)}
-                          >
-                            建造
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                    ) : (
+                      <button
+                        className="w-full h-full flex flex-col items-center justify-center gap-2 text-stone-400 hover:text-emerald-200 transition-colors"
+                        onClick={() => setHideoutSlotMenu({ category: 'FACILITY', slotIndex })}
+                        title="点击建造"
+                      >
+                        <Plus size={18} />
+                        <span className="text-xs">空槽</span>
+                      </button>
+                    )}
+                    {renderHideoutRadial('FACILITY', slotIndex)}
+                  </div>
+                ))}
               </div>
+            )}
 
-              <div className="text-stone-200 font-bold mt-2">防御槽（10）</div>
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {hideoutDefenseSlots.map((slot, slotIndex) => {
-                  const isBuilt = isSlotBuilt(slot);
-                  const choice = hideoutDefenseChoices[slotIndex] ?? 'DEFENSE';
-                  const selected = hideoutDefenseBuildOptions.find(b => b.type === choice) ?? hideoutDefenseBuildOptions[0];
-                  const canBuild = !slot.type && !!selected && player.gold >= (selected?.cost ?? 0) && !(selected?.type === 'CAMOUFLAGE_STRUCTURE' && (hideoutSelectedLayer?.depth ?? 0) !== 0);
-                  return (
-                    <div key={`def_slot_${slotIndex}`} className="bg-stone-900 border border-stone-800 p-4 rounded">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="text-stone-300 text-sm font-bold">槽位 {slotIndex + 1}</div>
-                        {slot.type ? (
-                          <span className={`text-xs px-2 py-0.5 rounded border ${isBuilt ? 'bg-emerald-950/30 border-emerald-900/60 text-emerald-200' : 'bg-amber-950/30 border-amber-900/60 text-amber-200'}`}>
-                            {isBuilt ? '已建成' : `施工中 ${slot.daysLeft ?? 0} 天`}
-                          </span>
-                        ) : (
-                          <span className="text-xs px-2 py-0.5 rounded border bg-stone-950/40 border-stone-800 text-stone-500">空</span>
-                        )}
+            {hideoutPage === 'DEFENSE' && (
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 animate-fade-in">
+                {hideoutDefenseSlots.map((slot, slotIndex) => (
+                  <div
+                    key={`def_slot_${slotIndex}`}
+                    className={`relative bg-stone-900/60 border rounded p-3 min-h-[96px] ${slot.type ? 'border-stone-800' : 'border-stone-800 hover:border-emerald-700'} ${hideoutSlotMenu?.category === 'DEFENSE' && hideoutSlotMenu?.slotIndex === slotIndex ? 'z-20' : ''}`}
+                  >
+                    {slot.type ? (
+                      <div className="space-y-2">
+                        <div className="text-xs text-stone-500">槽位 {slotIndex + 1}</div>
+                        <div className="text-stone-200 font-bold text-sm">{getHideoutSlotLabel(slot)}</div>
                       </div>
-                      {slot.type ? (
-                        <div className="text-stone-200 font-bold">{getBuildingName(slot.type)}</div>
-                      ) : (
-                        <div className="space-y-2">
-                          <select
-                            value={choice}
-                            onChange={(e) => setHideoutDefenseChoices(prev => ({ ...prev, [slotIndex]: e.target.value as BuildingType }))}
-                            className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
-                          >
-                            {hideoutDefenseBuildOptions
-                              .filter(opt => (hideoutSelectedLayer?.depth ?? 0) === 0 ? true : opt.type !== 'CAMOUFLAGE_STRUCTURE')
-                              .map(opt => (
-                                <option key={`def_opt_${opt.type}`} value={opt.type}>{opt.name}（{opt.cost} / {opt.days}天）</option>
-                              ))}
-                          </select>
-                          <div className="text-stone-500 text-xs">{selected?.description}</div>
-                          <Button
-                            variant="secondary"
-                            disabled={!canBuild}
-                            onClick={() => selected && handleHideoutBuildInSlot('DEFENSE', slotIndex, selected)}
-                          >
-                            建造
-                          </Button>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                    ) : (
+                      <button
+                        className="w-full h-full flex flex-col items-center justify-center gap-2 text-stone-400 hover:text-emerald-200 transition-colors"
+                        onClick={() => setHideoutSlotMenu({ category: 'DEFENSE', slotIndex })}
+                        title="点击建造"
+                      >
+                        <Plus size={18} />
+                        <span className="text-xs">空槽</span>
+                      </button>
+                    )}
+                    {renderHideoutRadial('DEFENSE', slotIndex)}
+                  </div>
+                ))}
               </div>
+            )}
 
-              <div className="bg-stone-900 border border-stone-800 p-4 rounded">
-                <div className="flex items-center justify-between">
-                  <div className="text-stone-200 font-bold">矿石精炼</div>
-                  <div className="text-stone-500 text-xs">需要该层至少 1 个矿石精炼厂</div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mt-3">
-                  <div>
-                    <div className="text-xs text-stone-500 mb-1">矿石</div>
-                    <select
-                      value={hideoutRefineMineralId}
-                      onChange={(e) => setHideoutRefineMineralId(e.target.value as MineralId)}
-                      className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
-                    >
-                      {(Object.keys(mineralMeta) as MineralId[]).map(id => (
-                        <option key={`min_${id}`} value={id}>{mineralMeta[id]?.name ?? id}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <div className="text-xs text-stone-500 mb-1">输入纯度</div>
-                    <select
-                      value={hideoutRefineFromPurity}
-                      onChange={(e) => setHideoutRefineFromPurity(Number(e.target.value) as MineralPurity)}
-                      className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
-                    >
-                      {[1, 2, 3, 4].map(p => (
-                        <option key={`pur_${p}`} value={p}>{p} → {p + 1}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <div className="text-xs text-stone-500 mb-1">产出数量</div>
-                    <input
-                      value={hideoutRefineOutputCount}
-                      onChange={(e) => setHideoutRefineOutputCount(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
-                      className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
-                      type="number"
-                      min={1}
-                      max={50}
-                    />
-                  </div>
-                  <div className="flex items-end">
-                    <Button variant="secondary" onClick={handleHideoutStartRefine} className="w-full">
-                      开始精炼
+            {hideoutPage === 'REFINERY' && (
+              <div className="bg-stone-900/60 border border-stone-800 rounded p-6 space-y-4 animate-fade-in">
+                {!hideoutHasRefineryBuilt ? (
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                    <div>
+                      <div className="text-stone-200 font-bold">矿石精炼</div>
+                      <div className="text-stone-500 text-sm mt-1">需要先在该层建造矿石精炼厂。</div>
+                    </div>
+                    <Button variant="secondary" onClick={() => setHideoutPage('FACILITIES')}>
+                      去建造
                     </Button>
                   </div>
-                </div>
-                <div className="mt-3 text-xs text-stone-500">
-                  规则：消耗 输入纯度×3 → 产出更高纯度×1，按产出数量倍增。
-                </div>
-                {((hideoutSelectedLayer?.refineQueue ?? []) as any[]).length > 0 && (
-                  <div className="mt-3 space-y-2">
-                    {((hideoutSelectedLayer?.refineQueue ?? []) as any[]).map((job: any) => (
-                      <div key={job.id} className="flex items-center justify-between text-sm text-stone-300">
-                        <span>{mineralMeta[job.mineralId as MineralId]?.name ?? job.mineralId} 纯度{job.fromPurity}→{job.toPurity} ×{job.outputAmount}</span>
-                        <span className="text-stone-500">{job.daysLeft} 天</span>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between">
+                      <div className="text-stone-200 font-bold">矿石精炼</div>
+                      <div className="text-stone-500 text-xs">输入纯度×3 → 输出更高纯度×1</div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+                      <div>
+                        <div className="text-xs text-stone-500 mb-1">矿石</div>
+                        <select
+                          value={hideoutRefineMineralId}
+                          onChange={(e) => setHideoutRefineMineralId(e.target.value as MineralId)}
+                          className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+                        >
+                          {(Object.keys(mineralMeta) as MineralId[]).map(id => (
+                            <option key={`min_${id}`} value={id}>{mineralMeta[id]?.name ?? id}</option>
+                          ))}
+                        </select>
                       </div>
-                    ))}
-                  </div>
+                      <div>
+                        <div className="text-xs text-stone-500 mb-1">输入纯度</div>
+                        <select
+                          value={hideoutRefineFromPurity}
+                          onChange={(e) => setHideoutRefineFromPurity(Number(e.target.value) as MineralPurity)}
+                          className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+                        >
+                          {[1, 2, 3, 4].map(p => (
+                            <option key={`pur_${p}`} value={p}>{p} → {p + 1}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <div className="text-xs text-stone-500 mb-1">产出数量</div>
+                        <input
+                          value={hideoutRefineOutputCount}
+                          onChange={(e) => setHideoutRefineOutputCount(Math.max(1, Math.min(50, Number(e.target.value) || 1)))}
+                          className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+                          type="number"
+                          min={1}
+                          max={50}
+                        />
+                      </div>
+                      <div className="flex items-end">
+                        <Button variant="secondary" onClick={handleHideoutStartRefine} className="w-full">
+                          开始精炼
+                        </Button>
+                      </div>
+                    </div>
+                    {((hideoutSelectedLayer?.refineQueue ?? []) as any[]).length > 0 && (
+                      <div className="space-y-2">
+                        {((hideoutSelectedLayer?.refineQueue ?? []) as any[]).map((job: any) => (
+                          <div key={job.id} className="flex items-center justify-between text-sm text-stone-300">
+                            <span>{mineralMeta[job.mineralId as MineralId]?.name ?? job.mineralId} 纯度{job.fromPurity}→{job.toPurity} ×{job.outputAmount}</span>
+                            <span className="text-stone-500">{job.daysLeft} 天</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
-            </div>
+            )}
           </div>
         )}
         {activeTownTab === 'RECRUIT' && (
