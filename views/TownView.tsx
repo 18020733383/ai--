@@ -1451,6 +1451,32 @@ export const TownView = ({
     updateLocationState({ ...currentLocation, hideout: { ...hideout, layers: nextLayers, selectedLayer: safeIndex } });
   };
 
+  const updateHideoutLayerWithLocalLog = (
+    layerIndex: number,
+    updater: (layer: NonNullable<Location['hideout']>['layers'][number]) => NonNullable<Location['hideout']>['layers'][number],
+    localLogText?: string
+  ) => {
+    if (!isHideout || !isOwnedByPlayer) return;
+    const hideout = currentLocation.hideout;
+    if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
+    const safeIndex = Math.max(0, Math.min(hideout.layers.length - 1, Math.floor(layerIndex)));
+    const nextLayers = hideout.layers.map((layer, idx) => idx === safeIndex ? updater(layer) : layer);
+    const nextHideout = { ...hideout, layers: nextLayers, selectedLayer: safeIndex };
+    if (!localLogText) {
+      updateLocationState({ ...currentLocation, hideout: nextHideout });
+      return;
+    }
+    const safe = String(localLogText ?? '').trim();
+    if (!safe) {
+      updateLocationState({ ...currentLocation, hideout: nextHideout });
+      return;
+    }
+    const entry = { day: player.day, text: safe };
+    const existing = currentLocation.localLogs ?? [];
+    const nextLogs = [entry, ...existing].slice(0, 30);
+    updateLocationState({ ...currentLocation, hideout: nextHideout, localLogs: nextLogs });
+  };
+
   const handleHideoutSelectLayer = (layerIndex: number) => {
     if (!isHideout || !isOwnedByPlayer) return;
     const hideout = currentLocation.hideout;
@@ -1595,16 +1621,19 @@ export const TownView = ({
       return;
     }
     setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - building.cost) }));
-    updateHideoutLayer(layerIndex, l => {
-      const emptySlot = { type: null as BuildingType | null, daysLeft: undefined as number | undefined, totalDays: undefined as number | undefined };
-      const nextSlots = [...((category === 'FACILITY' ? l.facilitySlots : l.defenseSlots) ?? Array.from({ length: 10 }, () => ({ ...emptySlot })))];
-      nextSlots[idx] = { type: building.type, daysLeft: building.days, totalDays: building.days };
-      return category === 'FACILITY'
-        ? { ...l, facilitySlots: nextSlots }
-        : { ...l, defenseSlots: nextSlots };
-    });
+    updateHideoutLayerWithLocalLog(
+      layerIndex,
+      (l) => {
+        const emptySlot = { type: null as BuildingType | null, daysLeft: undefined as number | undefined, totalDays: undefined as number | undefined };
+        const nextSlots = [...((category === 'FACILITY' ? l.facilitySlots : l.defenseSlots) ?? Array.from({ length: 10 }, () => ({ ...emptySlot })))];
+        nextSlots[idx] = { type: building.type, daysLeft: building.days, totalDays: building.days };
+        return category === 'FACILITY'
+          ? { ...l, facilitySlots: nextSlots }
+          : { ...l, defenseSlots: nextSlots };
+      },
+      `开工：${layer.name} 槽位${idx + 1} 开始建造 ${building.name}。`
+    );
     addLog(`开始在 ${layer.name} 建造 ${building.name}（槽位 ${idx + 1}），需要 ${building.days} 天。`);
-    addHideoutLocalLog(`开工：${layer.name} 槽位${idx + 1} 开始建造 ${building.name}。`);
   };
 
   const handleHideoutReduceExposure = () => {
@@ -1702,20 +1731,24 @@ export const TownView = ({
     if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
     const layerIndex = Math.max(0, Math.min(hideout.layers.length - 1, hideout.selectedLayer ?? 0));
     const layerName = hideout.layers[layerIndex]?.name ?? `第${layerIndex}层`;
-    updateHideoutLayer(layerIndex, l => ({ ...l, guardianHeroId: heroId || undefined }));
+    const prevGuardianId = hideout.layers[layerIndex]?.guardianHeroId;
+    updateHideoutLayerWithLocalLog(
+      layerIndex,
+      (l) => ({ ...l, guardianHeroId: heroId || undefined }),
+      heroId
+        ? `守护者更替：${heroes.find(h => h.id === heroId)?.name ?? heroId} 前往 ${layerName} 驻守。`
+        : `守护者撤离：${layerName} 的守护者已返回随行队伍。`
+    );
     setHeroes(prev => prev.map(h => {
-      if (h.id !== heroId && h.id !== (hideout.layers[layerIndex]?.guardianHeroId ?? '')) return h;
+      if (h.id !== heroId && h.id !== (prevGuardianId ?? '')) return h;
       if (h.status === 'DEAD' || !h.recruited) return h;
       if (h.id === heroId) return { ...h, locationId: currentLocation.id, stayDays: undefined };
       return { ...h, locationId: undefined, stayDays: undefined };
     }));
     if (heroId) {
-      const name = heroes.find(h => h.id === heroId)?.name ?? heroId;
       addLog("已更换该层守护者。");
-      addHideoutLocalLog(`守护者更替：${name} 前往 ${layerName} 驻守。`);
     } else {
       addLog("已撤下该层守护者。");
-      addHideoutLocalLog(`守护者撤离：${layerName} 的守护者已返回随行队伍。`);
     }
   };
 
