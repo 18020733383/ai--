@@ -1701,6 +1701,112 @@ export const chatWithHero = async (
   return { reply: reply || `${hero.name} 看着你，没有说话。`, emotion: emotionRaw as Hero['currentExpression'], memory, memoryEdits, diaryEdits, affinity };
 };
 
+export const chatHeroChatter = async (
+  heroes: Hero[],
+  player: PlayerState,
+  recentLogs: string[],
+  partyDiary: PartyDiaryEntry[],
+  locationContext: string,
+  openAI?: OpenAIConfig
+): Promise<{ summary: string; lines: Array<{ heroId: string; text: string; emotion?: Hero['currentExpression'] }> }> => {
+  const nowText = new Date().toLocaleString('zh-CN', { hour12: false });
+  const heroBlocks = (heroes ?? []).map(h => {
+    const race = String(h.race ?? 'UNKNOWN');
+    const traits = (h.traits ?? []).slice(0, 6).join('、') || '（无）';
+    return `- id: ${h.id}\n  名字: ${h.name}\n  种族: ${race}\n  性格: ${h.personality}\n  特质: ${traits}\n  背景: ${h.background}`;
+  }).join('\n');
+  const logsText = (recentLogs || []).slice(0, 10).map(l => `- ${l}`).join('\n') || '（无）';
+  const diaryText = (partyDiary || []).slice(-10).map(d => `- ${d.createdAt}：${d.text}`).join('\n') || '（无）';
+
+  const prompt = `
+你将生成一段“队伍闲聊”：由 2~4 名随行英雄在一个随机场景中对话。你说中文，语气自然，有起伏，允许吐槽、争论、和解。
+要求：
+1) 输出 JSON，仅包含 summary 与 lines 两个字段。
+2) summary：一句话总结（<= 24 字）。
+3) lines：数组，长度 6~14；每项是 { "heroId": "...", "text": "...", "emotion": "..." }。emotion 可省略；若给出必须是 ANGRY, IDLE, SILENT, AWKWARD, HAPPY, SAD, AFRAID, SURPRISED, DEAD 之一。
+4) 每句 text 至少包含 1 处动作括号（中文括号或英文括号都可以），但不要每句都写很长动作。
+5) 不能捏造“刚刚发生的具体战斗/战果/交易”，只能引用【最近日志】与【队伍日记】里已经存在的内容；可以基于此推测情绪与观点。
+6) 你可以根据种族、性格、背景制造冲突点，但不要无意义吵架，至少给出一个观点分歧并收束。
+7) lines 里 heroId 必须来自【参与英雄】列表。
+
+【参与英雄】
+${heroBlocks}
+
+【队伍当前位置】
+${String(locationContext ?? '').trim() || '（未知）'}
+
+【玩家信息】
+- 名字: ${player.name}
+- 等级: ${player.level}
+- 当前游戏天数: ${player.day}
+- 当前现实时间: ${nowText}
+
+【最近日志（从新到旧）】
+${logsText}
+
+【队伍日记（最近）】
+${diaryText}
+  `.trim();
+
+  const openAIConfig = requireOpenAIConfig(openAI);
+  if (openAIConfig) {
+    const url = `${normalizeProviderBaseUrl(openAIConfig.provider, openAIConfig.baseUrl)}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openAIConfig.apiKey}`,
+      },
+      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+        model: openAIConfig.model,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: '只返回 JSON。' }
+        ],
+        temperature: 0.9,
+        jsonOnly: true
+      }))
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
+    }
+    const json = await res.json().catch(() => null) as any;
+    const text = json?.choices?.[0]?.message?.content;
+    if (!text) throw new Error('OpenAI 返回为空');
+    const parsed = JSON.parse(text) as any;
+    const summary = String(parsed?.summary ?? '').trim();
+    const linesRaw = Array.isArray(parsed?.lines) ? parsed.lines : [];
+    const lines = linesRaw.map((x: any) => ({
+      heroId: String(x?.heroId ?? '').trim(),
+      text: String(x?.text ?? '').trim(),
+      emotion: x?.emotion ? String(x.emotion).trim().toUpperCase() as Hero['currentExpression'] : undefined
+    })).filter((x: any) => x.heroId && x.text);
+    return { summary: summary || '队伍闲聊', lines };
+  }
+
+  const model = "gemini-3-flash-preview";
+  const response = await getGeminiClient(openAI?.provider === 'GEMINI' ? openAI.apiKey : undefined).models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      temperature: 0.9,
+      responseMimeType: "application/json"
+    },
+  });
+  const text = response.text;
+  if (!text) throw new Error("No response from AI");
+  const parsed = JSON.parse(text) as any;
+  const summary = String(parsed?.summary ?? '').trim();
+  const linesRaw = Array.isArray(parsed?.lines) ? parsed.lines : [];
+  const lines = linesRaw.map((x: any) => ({
+    heroId: String(x?.heroId ?? '').trim(),
+    text: String(x?.text ?? '').trim(),
+    emotion: x?.emotion ? String(x.emotion).trim().toUpperCase() as Hero['currentExpression'] : undefined
+  })).filter((x: any) => x.heroId && x.text);
+  return { summary: summary || '队伍闲聊', lines };
+};
+
 type LordRaceContext = {
   race: 'HUMAN' | 'ROACH' | 'UNDEAD';
   sameRaceLords: Array<{

@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
 import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './constants';
-import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
+import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { Button } from './components/Button';
 import { BigMapView } from './components/BigMapView';
 import { BattleView } from './components/BattleView';
@@ -907,6 +907,9 @@ export default function App() {
   const [geminiApiKey, setGeminiApiKey] = useState('');
   const [openAIProfiles, setOpenAIProfiles] = useState<{ id: string; name: string; baseUrl: string; key: string; model: string }[]>([]);
   const [activeOpenAIProfileId, setActiveOpenAIProfileId] = useState<string | null>(null);
+  const [heroChatterEnabled, setHeroChatterEnabled] = useState(false);
+  const [heroChatterMinMinutes, setHeroChatterMinMinutes] = useState(6);
+  const [heroChatterMaxMinutes, setHeroChatterMaxMinutes] = useState(12);
   const [openAIProfileName, setOpenAIProfileName] = useState('默认');
   const [openAIModels, setOpenAIModels] = useState<string[]>([]);
   const [isModelsLoading, setIsModelsLoading] = useState(false);
@@ -989,12 +992,14 @@ export default function App() {
   const battleTimelineRef = useRef(battleTimeline);
   const worldDiplomacyRef = useRef(worldDiplomacy);
   const partyDiaryRef = useRef(partyDiary);
+  const logsRef = useRef(logs);
   const defenseAidMetaRef = useRef<{ locationId: string; delta: number; ratio: number } | null>(null);
   const undeadChatListRef = useRef<HTMLDivElement>(null);
   const shaperChatListRef = useRef<HTMLDivElement>(null);
   const altarChatListRef = useRef<HTMLDivElement>(null);
   const heroChatListRef = useRef<HTMLDivElement>(null);
   const heroChatTimersRef = useRef<Record<string, number[]>>({});
+  const heroChatterRef = useRef<{ nextAt: number; inFlight: boolean; retry: number }>({ nextAt: 0, inFlight: false, retry: 0 });
 
   useEffect(() => {
     setNegotiationState({
@@ -1314,6 +1319,146 @@ export default function App() {
   useEffect(() => {
     partyDiaryRef.current = partyDiary;
   }, [partyDiary]);
+
+  useEffect(() => {
+    logsRef.current = logs;
+  }, [logs]);
+
+  useEffect(() => {
+    if (!heroChatterEnabled) {
+      heroChatterRef.current = { nextAt: 0, inFlight: false, retry: 0 };
+      return;
+    }
+
+    const clampInt = (n: number, min: number, max: number) => Math.max(min, Math.min(max, Math.floor(n)));
+    const getRange = () => {
+      const min = clampInt(heroChatterMinMinutes, 1, 240);
+      const max = clampInt(heroChatterMaxMinutes, 1, 240);
+      return { min, max: Math.max(min, max) };
+    };
+    const scheduleNext = (delayMs?: number) => {
+      const { min, max } = getRange();
+      const span = max - min;
+      const minutes = min + (span <= 0 ? 0 : Math.random() * span);
+      heroChatterRef.current.nextAt = Date.now() + (typeof delayMs === 'number' ? delayMs : Math.floor(minutes * 60 * 1000));
+    };
+
+    if (heroChatterRef.current.nextAt <= 0) scheduleNext(10_000);
+
+    const timer = window.setInterval(async () => {
+      const state = heroChatterRef.current;
+      if (!heroChatterEnabled) return;
+      if (state.inFlight) return;
+      if (state.nextAt <= 0 || Date.now() < state.nextAt) return;
+      if (isBattling || view === 'BATTLE' || view === 'BATTLE_RESULT' || view === 'MAIN_MENU' || view === 'INTRO' || view === 'ENDING') {
+        scheduleNext(30_000);
+        return;
+      }
+
+      const party = (heroesRef.current ?? []).filter(h => h && h.recruited && h.status !== 'DEAD');
+      if (party.length < 2) {
+        scheduleNext(60_000);
+        return;
+      }
+
+      const aiConfig = buildAIConfig();
+      if (!aiConfig) {
+        scheduleNext(60_000);
+        return;
+      }
+
+      const shuffle = <T,>(arr: T[]) => {
+        const a = [...arr];
+        for (let i = a.length - 1; i > 0; i -= 1) {
+          const j = Math.floor(Math.random() * (i + 1));
+          const tmp = a[i];
+          a[i] = a[j];
+          a[j] = tmp;
+        }
+        return a;
+      };
+      const maxCount = Math.min(4, party.length);
+      const size = Math.max(2, Math.min(maxCount, 2 + Math.floor(Math.random() * (maxCount - 1))));
+      const participants = shuffle(party).slice(0, size);
+
+      const locationText = currentLocation
+        ? `${currentLocation.name}（${currentLocation.type}）`
+        : view === 'TOWN'
+          ? '城镇'
+          : '野外行军';
+
+      state.inFlight = true;
+      try {
+        const res = await chatHeroChatter(
+          participants,
+          playerRef.current,
+          (logsRef.current ?? []).slice(0, 20),
+          (partyDiaryRef.current ?? []).slice(-20),
+          locationText,
+          aiConfig
+        );
+        const summary = String(res.summary ?? '').trim() || '队伍闲聊';
+        const map = new Map(participants.map(h => [h.id, h.name]));
+        const lines = (res.lines ?? []).slice(0, 18).map(l => ({
+          heroId: String(l.heroId ?? '').trim(),
+          text: String(l.text ?? '').trim(),
+          emotion: l.emotion
+        })).filter(l => l.heroId && l.text && map.has(l.heroId));
+        const text = lines.length > 0
+          ? lines.map(l => `${map.get(l.heroId)}：${l.text}`).join('\n')
+          : `${participants.map(h => h.name).join('、')}（沉默地交换了眼神）。`;
+
+        addLog(`【闲聊】${summary}`);
+        addPartyDiaryEntry('party', '队伍', `【闲聊】${summary}\n${text}`, playerRef.current.day, playerRef.current.day);
+
+        const now = Date.now();
+        const createdAt = new Date(now).toLocaleString('zh-CN', { hour12: false });
+        setHeroes(prev => prev.map(h => {
+          if (!h.recruited || h.status === 'DEAD') return h;
+          const involved = participants.some(p => p.id === h.id);
+          if (!involved) return h;
+          const mem: HeroPermanentMemory = {
+            id: `chatter_${now}_${Math.floor(Math.random() * 10000)}`,
+            text: `闲聊：${summary}`,
+            createdAt,
+            createdDay: playerRef.current.day,
+            roundIndex: playerRef.current.day
+          };
+          const nextMem = [mem, ...(h.permanentMemory ?? [])].slice(0, 24);
+          const lastEmotion = [...lines].reverse().find(l => l.heroId === h.id)?.emotion;
+          return { ...h, permanentMemory: nextMem, currentExpression: lastEmotion ?? h.currentExpression };
+        }));
+
+        state.retry = 0;
+        scheduleNext();
+      } catch {
+        state.retry = Math.max(0, Math.floor(state.retry)) + 1;
+        if (state.retry >= 3) {
+          state.retry = 0;
+          scheduleNext();
+        } else {
+          scheduleNext(15_000 * state.retry);
+        }
+      } finally {
+        state.inFlight = false;
+      }
+    }, 4_000);
+
+    return () => window.clearInterval(timer);
+  }, [
+    heroChatterEnabled,
+    heroChatterMinMinutes,
+    heroChatterMaxMinutes,
+    aiProvider,
+    openAIBaseUrl,
+    openAIKey,
+    openAIModel,
+    doubaoApiKey,
+    geminiApiKey,
+    view,
+    isBattling,
+    currentLocation?.id
+  ]);
 
   useEffect(() => {
     if (view !== 'TOWN' || townTab !== 'COFFEE_CHAT') return;
@@ -2423,6 +2568,9 @@ export default function App() {
     const activeProfileId = localStorage.getItem('openai.profile.active');
     const battleStream = localStorage.getItem('battle.stream');
     const battleMode = localStorage.getItem('battle.mode');
+    const chatterEnabled = localStorage.getItem('hero.chatter.enabled');
+    const chatterMin = localStorage.getItem('hero.chatter.minMinutes');
+    const chatterMax = localStorage.getItem('hero.chatter.maxMinutes');
     let profiles: { id: string; name: string; baseUrl: string; key: string; model: string }[] = [];
     if (profilesRaw) {
       try {
@@ -2467,6 +2615,15 @@ export default function App() {
     setGeminiApiKey(geminiKey ?? '');
     if (battleStream) setBattleStreamEnabled(battleStream === '1' || battleStream === 'true');
     if (battleMode === 'AI' || battleMode === 'PROGRAM') setBattleResolutionMode(battleMode);
+    if (chatterEnabled) setHeroChatterEnabled(chatterEnabled === '1' || chatterEnabled === 'true');
+    if (chatterMin) {
+      const n = Number(chatterMin);
+      if (Number.isFinite(n) && n > 0) setHeroChatterMinMinutes(Math.floor(n));
+    }
+    if (chatterMax) {
+      const n = Number(chatterMax);
+      if (Number.isFinite(n) && n > 0) setHeroChatterMaxMinutes(Math.floor(n));
+    }
   }, []);
 
   useEffect(() => {
@@ -8303,6 +8460,9 @@ export default function App() {
     localStorage.setItem('gemini.key', geminiApiKey.trim());
     localStorage.setItem('battle.stream', battleStreamEnabled ? '1' : '0');
     localStorage.setItem('battle.mode', battleResolutionMode);
+    localStorage.setItem('hero.chatter.enabled', heroChatterEnabled ? '1' : '0');
+    localStorage.setItem('hero.chatter.minMinutes', String(heroChatterMinMinutes));
+    localStorage.setItem('hero.chatter.maxMinutes', String(heroChatterMaxMinutes));
   };
 
   const selectOpenAIProfile = (profileId: string) => {
@@ -8393,6 +8553,9 @@ export default function App() {
       aiProvider: AIProvider;
       doubaoApiKey: string;
       geminiApiKey: string;
+      heroChatterEnabled?: boolean;
+      heroChatterMinMinutes?: number;
+      heroChatterMaxMinutes?: number;
       openAIProfiles: typeof openAIProfiles;
       openAIActiveProfileId: typeof activeOpenAIProfileId;
       openAI: {
@@ -8453,6 +8616,9 @@ export default function App() {
       aiProvider,
       doubaoApiKey,
       geminiApiKey,
+      heroChatterEnabled,
+      heroChatterMinMinutes,
+      heroChatterMaxMinutes,
       openAI: {
         baseUrl: openAIBaseUrl,
         key: openAIKey,
@@ -9189,6 +9355,20 @@ export default function App() {
       if (save?.settings?.battleResolutionMode === 'AI' || save?.settings?.battleResolutionMode === 'PROGRAM') {
         setBattleResolutionMode(save.settings.battleResolutionMode);
         localStorage.setItem('battle.mode', save.settings.battleResolutionMode);
+      }
+      if (typeof save?.settings?.heroChatterEnabled === 'boolean') {
+        setHeroChatterEnabled(save.settings.heroChatterEnabled);
+        localStorage.setItem('hero.chatter.enabled', save.settings.heroChatterEnabled ? '1' : '0');
+      }
+      if (typeof save?.settings?.heroChatterMinMinutes === 'number' && Number.isFinite(save.settings.heroChatterMinMinutes)) {
+        const v = Math.max(1, Math.floor(save.settings.heroChatterMinMinutes));
+        setHeroChatterMinMinutes(v);
+        localStorage.setItem('hero.chatter.minMinutes', String(v));
+      }
+      if (typeof save?.settings?.heroChatterMaxMinutes === 'number' && Number.isFinite(save.settings.heroChatterMaxMinutes)) {
+        const v = Math.max(1, Math.floor(save.settings.heroChatterMaxMinutes));
+        setHeroChatterMaxMinutes(v);
+        localStorage.setItem('hero.chatter.maxMinutes', String(v));
       }
       setOpenAIModels([]);
       setActiveEnemy(null);
@@ -10051,6 +10231,12 @@ export default function App() {
       setBattleStreamEnabled={setBattleStreamEnabled}
       battleResolutionMode={battleResolutionMode}
       setBattleResolutionMode={setBattleResolutionMode}
+      heroChatterEnabled={heroChatterEnabled}
+      setHeroChatterEnabled={setHeroChatterEnabled}
+      heroChatterMinMinutes={heroChatterMinMinutes}
+      setHeroChatterMinMinutes={setHeroChatterMinMinutes}
+      heroChatterMaxMinutes={heroChatterMaxMinutes}
+      setHeroChatterMaxMinutes={setHeroChatterMaxMinutes}
       saveDataText={saveDataText}
       setSaveDataText={setSaveDataText}
       saveDataNotice={saveDataNotice}

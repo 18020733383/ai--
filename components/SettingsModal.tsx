@@ -30,6 +30,12 @@ type SettingsModalProps = {
   setBattleStreamEnabled: (value: boolean) => void;
   battleResolutionMode: 'AI' | 'PROGRAM';
   setBattleResolutionMode: (value: 'AI' | 'PROGRAM') => void;
+  heroChatterEnabled: boolean;
+  setHeroChatterEnabled: (value: boolean) => void;
+  heroChatterMinMinutes: number;
+  setHeroChatterMinMinutes: (value: number) => void;
+  heroChatterMaxMinutes: number;
+  setHeroChatterMaxMinutes: (value: number) => void;
   saveDataText: string;
   setSaveDataText: (value: string) => void;
   saveDataNotice: string | null;
@@ -66,6 +72,12 @@ export const SettingsModal = ({
   setBattleStreamEnabled,
   battleResolutionMode,
   setBattleResolutionMode,
+  heroChatterEnabled,
+  setHeroChatterEnabled,
+  heroChatterMinMinutes,
+  setHeroChatterMinMinutes,
+  heroChatterMaxMinutes,
+  setHeroChatterMaxMinutes,
   saveDataText,
   setSaveDataText,
   saveDataNotice,
@@ -248,6 +260,51 @@ export const SettingsModal = ({
                     程序
                   </Button>
                 </div>
+              </div>
+
+              <div className="bg-black/20 border border-stone-800 rounded px-3 py-2 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="text-xs text-stone-400">英雄闲聊</div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant={heroChatterEnabled ? "gold" : "secondary"}
+                      onClick={() => setHeroChatterEnabled(true)}
+                    >
+                      开
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant={!heroChatterEnabled ? "gold" : "secondary"}
+                      onClick={() => setHeroChatterEnabled(false)}
+                    >
+                      关
+                    </Button>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs text-stone-500 mb-1">间隔下限（分钟）</label>
+                    <input
+                      value={heroChatterMinMinutes}
+                      onChange={(e) => setHeroChatterMinMinutes(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                      type="number"
+                      min={1}
+                      className="w-full bg-stone-950 border border-stone-700 rounded px-3 py-2 text-stone-200"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-stone-500 mb-1">间隔上限（分钟）</label>
+                    <input
+                      value={heroChatterMaxMinutes}
+                      onChange={(e) => setHeroChatterMaxMinutes(Math.max(1, Math.floor(Number(e.target.value) || 1)))}
+                      type="number"
+                      min={1}
+                      className="w-full bg-stone-950 border border-stone-700 rounded px-3 py-2 text-stone-200"
+                    />
+                  </div>
+                </div>
+                <div className="text-xs text-stone-600">仅当队伍至少有 2 名英雄，且不在战斗中时触发。</div>
               </div>
 
               {settingsError && (

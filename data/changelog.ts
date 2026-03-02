@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.8.0',
+    date: '2026-03-02',
+    items: [
+      '新增后台英雄闲聊：按现实时间随机触发、写入队伍日记与永久记忆，并输出一句话总结',
+      '设置新增英雄闲聊开关与触发间隔范围（失败最多重试 3 次）'
+    ]
+  },
+  {
     version: '0.7.2',
     date: '2026-03-01',
     items: [
