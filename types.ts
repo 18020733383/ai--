@@ -538,6 +538,12 @@ export interface Location {
   volunteers: RecruitOffer[]; // Low tier, cheap, resets often
   mercenaries: RecruitOffer[]; // High tier, expensive
   altar?: AltarState;
+  religion?: {
+    faith: number;
+    started?: boolean;
+    lastEventDay?: number;
+    nextEventDay?: number;
+  };
 
   owner?: 'PLAYER' | 'ENEMY' | 'NEUTRAL';
   isUnderSiege?: boolean;

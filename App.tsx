@@ -775,6 +775,7 @@ export default function App() {
   const [lords, setLords] = useState<Lord[]>(() => initialWorld.lords);
   const [view, setView] = useState<GameView>('MAIN_MENU');
   const [endingReturnView, setEndingReturnView] = useState<GameView>('GAME_OVER');
+  const [portalEndingChoiceMade, setPortalEndingChoiceMade] = useState(false);
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [activeEnemy, setActiveEnemy] = useState<EnemyForce | null>(null);
   const [negotiationState, setNegotiationState] = useState<NegotiationState>({
@@ -1561,6 +1562,88 @@ export default function App() {
     if (location.factionId) return { type: 'FACTION' as const, id: location.factionId };
     const race = getLocationRace(location);
     return race ? { type: 'RACE' as const, id: race } : null;
+  };
+
+  const getPlayerReligion = (list: Location[] = locations) => {
+    const altars = (list ?? []).filter(l => l && l.type === 'ALTAR' && l.altar?.doctrine?.religionName);
+    if (altars.length === 0) return null;
+    const picked = altars.find(l => (l.altar?.troopIds ?? []).length > 0) ?? altars[0];
+    const doctrine = picked.altar?.doctrine;
+    if (!doctrine?.religionName) return null;
+    return {
+      religionName: doctrine.religionName,
+      troopIds: picked.altar?.troopIds ?? []
+    };
+  };
+
+  const getCityReligionTierCap = (faith: number) => {
+    const f = Math.max(0, Math.min(100, Math.floor(faith)));
+    if (f >= 80) return 4;
+    if (f >= 60) return 3;
+    if (f >= 40) return 2;
+    if (f >= 20) return 1;
+    return 0;
+  };
+
+  const computePreachPlan = (loc: Location, relationValue: number) => {
+    const faith = Math.max(0, Math.min(100, Math.floor(loc.religion?.faith ?? 0)));
+    const rel = Math.max(-100, Math.min(100, Math.floor(relationValue ?? 0)));
+    const costBase = 60 + Math.floor(faith * 0.9);
+    const relFactor = rel >= 0 ? (1 - Math.min(0.35, rel * 0.005)) : (1 + Math.min(0.6, Math.abs(rel) * 0.008));
+    const cost = Math.max(20, Math.min(800, Math.floor(costBase * relFactor)));
+    const gainBase = 6 + Math.round(rel / 30);
+    const damp = Math.max(0.15, 1 - faith / 115);
+    const gain = Math.max(1, Math.min(12, Math.floor(gainBase * damp)));
+    return { cost, gain, faith };
+  };
+
+  const preachInCity = (locationId: string) => {
+    const id = String(locationId ?? '');
+    if (!id) return;
+    const religion = getPlayerReligion();
+    if (!religion) {
+      addLog('你还没有确立宗教。先去祭坛创建宗教。');
+      return;
+    }
+    const target = locations.find(l => l.id === id) ?? null;
+    if (!target || target.type !== 'CITY') return;
+    const relationValue = playerRef.current.locationRelations?.[id] ?? 0;
+    const plan = computePreachPlan(target, relationValue);
+    if (playerRef.current.gold < plan.cost) {
+      addLog('资金不足，无法传教。');
+      return;
+    }
+    const day = playerRef.current.day;
+    const rollInt = (min: number, max: number) => Math.floor(min + Math.random() * (max - min + 1));
+    const nextEventDay = (() => {
+      const current = target.religion?.nextEventDay;
+      if (typeof current === 'number' && current > day) return current;
+      return day + rollInt(7, 14);
+    })();
+    const nextFaith = Math.max(0, Math.min(100, plan.faith + plan.gain));
+    setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - plan.cost) }));
+    setLocations(prev => prev.map(l => {
+      if (l.id !== id) return l;
+      const currentFaith = Math.max(0, Math.min(100, Math.floor(l.religion?.faith ?? 0)));
+      const faithAfter = Math.max(0, Math.min(100, currentFaith + plan.gain));
+      return {
+        ...l,
+        religion: {
+          faith: faithAfter,
+          started: true,
+          lastEventDay: l.religion?.lastEventDay,
+          nextEventDay
+        }
+      };
+    }));
+    setCurrentLocation(prev => {
+      if (!prev || prev.id !== id) return prev;
+      const currentFaith = Math.max(0, Math.min(100, Math.floor(prev.religion?.faith ?? 0)));
+      const faithAfter = Math.max(0, Math.min(100, currentFaith + plan.gain));
+      return { ...prev, religion: { faith: faithAfter, started: true, lastEventDay: prev.religion?.lastEventDay, nextEventDay } };
+    });
+    addLog(`【传教】${target.name}：宣讲“${religion.religionName}”，+${plan.gain}%（花费 ${plan.cost}）。`);
+    addLocationLog(id, `传教活动推进：信教比例 +${plan.gain}%（现 ${nextFaith}%）。`, day);
   };
 
   const getEncounterChance = (baseChance: number, relationValue: number) => {
@@ -3276,6 +3359,52 @@ export default function App() {
         if (contracts.length > 0 && nextDay - last < intervalDays) return loc;
         return { ...loc, workBoard: { lastRefreshDay: nextDay, contracts: buildWorkContractsForCity(loc, nextDay) } };
       });
+      const religion = getPlayerReligion(newLocations);
+      if (religion) {
+        const rollInt = (min: number, max: number) => Math.floor(min + Math.random() * (max - min + 1));
+        const clampFaith = (v: number) => Math.max(0, Math.min(100, Math.floor(v)));
+        newLocations = newLocations.map(loc => {
+          if (loc.type !== 'CITY') return loc;
+          const current = loc.religion ?? { faith: 0, started: false };
+          const started = !!current.started || (current.faith ?? 0) > 0;
+          if (!started) return loc;
+          const nextEventDay = typeof current.nextEventDay === 'number' && current.nextEventDay > nextDay
+            ? current.nextEventDay
+            : nextDay + rollInt(7, 14);
+          if (nextDay < nextEventDay) {
+            return { ...loc, religion: { ...current, faith: clampFaith(current.faith ?? 0), started: true, nextEventDay } };
+          }
+          const faithNow = clampFaith(current.faith ?? 0);
+          const relationValue = nextPlayer.locationRelations?.[loc.id] ?? 0;
+          const r = Math.random();
+          const negative = r < 0.72;
+          const magnitude = negative
+            ? (2 + rollInt(0, 7))
+            : (1 + rollInt(0, 5));
+          const relationTilt = relationValue >= 60 ? 2 : relationValue >= 30 ? 1 : relationValue <= -40 ? -2 : relationValue <= -20 ? -1 : 0;
+          const delta = negative ? -(magnitude + Math.max(0, -relationTilt)) : (magnitude + Math.max(0, relationTilt));
+          const nextFaith = clampFaith(faithNow + delta);
+          const effectText = delta >= 0
+            ? `街头传来新的赞词，信教比例 +${delta}%（现 ${nextFaith}%）。`
+            : `谣言与嘲弄扩散，信教比例 ${delta}%（现 ${nextFaith}%）。`;
+          const logLine = `【传教事件】${loc.name}：${effectText}`;
+          logsToAdd.push(logLine);
+          const localLogs = Array.isArray(loc.localLogs) ? loc.localLogs : [];
+          const nextLocalLogs = localLogs.length > 0 && localLogs[0].text === effectText
+            ? localLogs
+            : [{ day: nextDay, text: effectText }, ...localLogs].slice(0, 30);
+          return {
+            ...loc,
+            localLogs: nextLocalLogs,
+            religion: {
+              faith: nextFaith,
+              started: true,
+              lastEventDay: nextDay,
+              nextEventDay: nextDay + rollInt(7, 14)
+            }
+          };
+        });
+      }
       const stayLoc = location ? (newLocations.find(l => l.id === location.id) ?? location) : null;
       const hospitalLevel = (() => {
         if (!stayLoc || stayLoc.type !== 'HIDEOUT' || stayLoc.owner !== 'PLAYER') return 0;
@@ -6064,12 +6193,33 @@ export default function App() {
         // Generate Volunteers (Low tier, cheap)
         const volunteerPool = getRecruitmentPool(location, 'VOLUNTEER');
         const volunteerOffers: RecruitOffer[] = [];
-        if (volunteerPool.length > 0) {
-            // Count boosted by leadership
-            const count = Math.floor(Math.random() * 5) + 3 + player.attributes.leadership; 
-            const templateId = volunteerPool[Math.floor(Math.random() * volunteerPool.length)];
-            const template = TROOP_TEMPLATES[templateId];
+        const extraBelievers = (() => {
+          if (location.type !== 'CITY') return [];
+          const faith = Math.max(0, Math.min(100, Math.floor(location.religion?.faith ?? 0)));
+          const cap = getCityReligionTierCap(faith);
+          if (cap <= 0) return [];
+          const religion = getPlayerReligion();
+          if (!religion || (religion.troopIds ?? []).length === 0) return [];
+          return (religion.troopIds ?? [])
+            .map(id => {
+              const tmpl = getTroopTemplate(id);
+              return tmpl ? { id, tier: tmpl.tier } : null;
+            })
+            .filter((x): x is { id: string; tier: TroopTier } => !!x && typeof x.tier === 'number')
+            .filter(x => x.tier <= cap)
+            .map(x => x.id);
+        })();
+        const combinedVolunteerPool = Array.from(new Set([...volunteerPool, ...extraBelievers]));
+        if (combinedVolunteerPool.length > 0) {
+          const shuffled = combinedVolunteerPool.slice().sort(() => Math.random() - 0.5);
+          const offerCount = Math.max(1, Math.min(3, shuffled.length, 1 + Math.floor(Math.random() * 3)));
+          for (let i = 0; i < offerCount; i += 1) {
+            const templateId = shuffled[i];
+            const template = getTroopTemplate(templateId);
+            if (!template) continue;
+            const count = Math.floor(Math.random() * 5) + 2 + player.attributes.leadership;
             volunteerOffers.push({ troopId: templateId, count, cost: template.cost });
+          }
         }
 
         // Generate Mercenaries (Mid-High tier, expensive)
@@ -6081,11 +6231,16 @@ export default function App() {
               const template = TROOP_TEMPLATES[templateId];
               mercOffers.push({ troopId: templateId, count: 1, cost: template.cost });
             });
-          } else if (Math.random() > 0.3) {
-            const count = Math.floor(Math.random() * 4) + 1;
-            const templateId = mercPool[Math.floor(Math.random() * mercPool.length)];
-            const template = TROOP_TEMPLATES[templateId];
-            mercOffers.push({ troopId: templateId, count, cost: Math.floor(template.cost * 1.5) });
+          } else if (Math.random() > 0.25) {
+            const shuffled = mercPool.slice().sort(() => Math.random() - 0.5);
+            const offerCount = Math.max(1, Math.min(3, shuffled.length, 1 + Math.floor(Math.random() * 3)));
+            for (let i = 0; i < offerCount; i += 1) {
+              const templateId = shuffled[i];
+              const template = getTroopTemplate(templateId);
+              if (!template) continue;
+              const count = Math.floor(Math.random() * 3) + 1;
+              mercOffers.push({ troopId: templateId, count, cost: Math.floor(template.cost * 1.5) });
+            }
           }
         }
 
@@ -7849,6 +8004,7 @@ export default function App() {
                 endingId: 'PORTAL_CLEARED'
               }
             }));
+            setPortalEndingChoiceMade(false);
             setEndingReturnView('GAME_OVER');
             setView('ENDING');
           }
@@ -8735,20 +8891,91 @@ export default function App() {
     return () => window.clearTimeout(timer);
   }, [player.day, player.gold, player.renown, player.level, player.story?.endingId, view]);
 
-  const createSaveFromAuto = (): string | null => {
+  const createBlankSaveSlot = () => {
     try {
-      const raw = localStorage.getItem(`${SAVE_DATA_PREFIX}${AUTO_SAVE_ID}`);
-      if (!raw) return null;
-      const payload = JSON.parse(raw) as SaveGame;
+      const world = buildInitialWorld();
       const now = Date.now();
-      payload.meta = { ...payload.meta, timestamp: now, createdAt: new Date(now).toISOString() };
       const id = `SLOT_${now}_${Math.floor(Math.random() * 10000)}`;
-      const label = `存档 ${new Date(now).toLocaleString('zh-CN', { hour12: false })}`;
+      const label = `空白存档 ${new Date(now).toLocaleString('zh-CN', { hour12: false })}`;
+      const basePlayer: PlayerState = {
+        ...INITIAL_PLAYER_STATE,
+        story: {
+          ...(INITIAL_PLAYER_STATE.story ?? {}),
+          introSeen: false,
+          mainQuest: 'CLEANSE_PORTALS',
+          mainQuestStage: 1,
+          gameOverReason: undefined,
+          endingId: undefined
+        }
+      };
+      const seededLocations = world.locations.map(l => l.type === 'CITY'
+        ? { ...l, workBoard: { lastRefreshDay: basePlayer.day, contracts: buildWorkContractsForCity(l, basePlayer.day) } }
+        : l
+      );
+      const seededHeroes = buildRandomizedHeroes();
+      const payload: SaveGame = {
+        meta: {
+          schemaId: 'CALRADIA_CHRONICLES',
+          schemaVersion: SAVEGAME_SCHEMA_VERSION,
+          timestamp: now,
+          createdAt: new Date(now).toISOString()
+        },
+        world: {
+          locations: seededLocations,
+          logs: ["欢迎来到《卡拉迪亚编年史》。拖动地图探索，滚轮缩放，点击据点移动。"],
+          recentBattleBriefs: [],
+          worldBattleReports: [],
+          worldDiplomacy: buildInitialWorldDiplomacy(),
+          battleTimeline: [{ day: basePlayer.day, count: 0 }]
+        },
+        entities: {
+          heroes: seededHeroes,
+          lords: world.lords
+        },
+        player: basePlayer,
+        ui: {
+          view: 'INTRO',
+          currentLocationId: null,
+          townTab: 'RECRUIT',
+          workDays: 1,
+          miningDays: 2,
+          roachLureDays: 2,
+          trainingMyArmy: [],
+          trainingEnemyArmy: [],
+          trainInputMy: { id: '', count: 0 },
+          trainInputEnemy: { id: '', count: 0 }
+        },
+        systems: {
+          customTroopTemplates: {},
+          shaperDialogue: [{ role: 'NPC', text: '别站门口挡风。说吧，你想让我缝出什么兵？' }],
+          shaperInput: '',
+          shaperProposal: null,
+          altarDialogues: {},
+          altarDrafts: {},
+          altarProposals: {},
+          altarRecruitDays: 2
+        },
+        settings: {
+          battleStreamEnabled,
+          battleResolutionMode,
+          openAIProfiles,
+          openAIActiveProfileId: activeOpenAIProfileId,
+          aiProvider,
+          doubaoApiKey,
+          geminiApiKey,
+          heroChatterEnabled,
+          heroChatterMinMinutes,
+          heroChatterMaxMinutes,
+          openAI: {
+            baseUrl: openAIBaseUrl,
+            key: openAIKey,
+            model: openAIModel
+          }
+        }
+      };
       writeSavePayload(id, label, false, payload);
       setSelectedSaveId(id);
-      return id;
     } catch {}
-    return null;
   };
 
   const loadSaveSlot = (preferredId?: string) => {
@@ -10444,6 +10671,7 @@ export default function App() {
     setCurrentLocation(null);
     setView('MAIN_MENU');
     setEndingReturnView('GAME_OVER');
+    setPortalEndingChoiceMade(false);
     setLogs(["欢迎来到《卡拉迪亚编年史》。拖动地图探索，滚轮缩放，点击据点移动。"]);
     setActiveEnemy(null);
     setBattleResult(null);
@@ -10515,7 +10743,29 @@ export default function App() {
   );
 
   const endingKey = player.story?.endingId ?? player.story?.gameOverReason ?? '';
+  const newCovenantAvailable = (() => {
+    const religion = getPlayerReligion();
+    if (!religion) return false;
+    const cities = (locations ?? []).filter(l => l && l.type === 'CITY');
+    if (cities.length === 0) return false;
+    return cities.every(c => (c.religion?.faith ?? 0) >= 90);
+  })();
+  const playerReligionName = getPlayerReligion()?.religionName ?? '';
   const endingContent = (() => {
+    if (endingKey === 'NEW_COVENANT') {
+      return {
+        title: '终章：新约',
+        subtitle: `第 ${player.day} 天`,
+        lines: [
+          '门亮起的那一刻，你没有伸手。',
+          '你让火把从掌心熄灭，又在灰烬里点燃新的词。',
+          '城市的钟声被重新校准——它们不再为旧神敲响。',
+          `你把「${playerReligionName || '新约'}」写进每一块告示板，把恐惧换成秩序。`,
+          '裂隙仍在那里，但它不再是唯一的路。',
+          '诸神黄昏之后，你签下了新的契约。'
+        ]
+      };
+    }
     if (endingKey === 'PORTAL_CLEARED') {
       return {
         title: '终章：门',
@@ -10571,14 +10821,16 @@ export default function App() {
             onDeleteSave={(id) => deleteSaveSlot(id)}
             onNewGame={startNewGame}
             onContinue={(preferredId) => loadSaveSlot(preferredId)}
-            onCreateSaveFromAuto={createSaveFromAuto}
+            onCreateBlankSave={createBlankSaveSlot}
             endings={[
               { id: 'PORTAL_CLEARED', title: '封堵裂隙', subtitle: '你夺回了回家的门。' },
+              { id: 'NEW_COVENANT', title: '诸神黄昏后的新约', subtitle: '你把信仰写进废土。' },
               { id: 'HIDEOUT_FALLEN', title: '隐匿点沦陷', subtitle: '最后退路被异常吞没。' },
               { id: 'ALL_DIED', title: '无名之死', subtitle: '队伍覆灭，传说终止。' }
             ]}
             onReplayEnding={(endingId) => {
               setEndingReturnView('MAIN_MENU');
+              setPortalEndingChoiceMade(true);
               setPlayer(prev => ({
                 ...prev,
                 story: {
@@ -10649,12 +10901,53 @@ export default function App() {
           />
         )}
         {view === 'ENDING' && (
-          <EndingCinematicView
-            title={endingContent.title}
-            subtitle={endingContent.subtitle}
-            lines={endingContent.lines}
-            onFinish={() => setView(endingReturnView)}
-          />
+          (endingKey === 'PORTAL_CLEARED' && newCovenantAvailable && !portalEndingChoiceMade) ? (
+            <div className="fixed inset-0 z-50 bg-black flex items-center justify-center p-4">
+              <div className="w-full max-w-2xl bg-stone-900 border border-stone-700 rounded shadow-2xl p-6 space-y-4">
+                <div className="text-2xl font-serif text-amber-400">终章：门</div>
+                <div className="text-sm text-stone-400 leading-relaxed">
+                  你攻破了伪人传送门。门在发光，但城市里的信仰也在发声。
+                </div>
+                <div className="bg-black/30 border border-stone-800 rounded p-4 space-y-2">
+                  <div className="text-stone-200 font-bold">可选结局</div>
+                  <div className="text-xs text-stone-500">满足条件：所有城市信教比例 ≥ 90%</div>
+                </div>
+                <div className="flex flex-col md:flex-row gap-3 justify-end">
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      setPortalEndingChoiceMade(true);
+                    }}
+                  >
+                    选择正常结局
+                  </Button>
+                  <Button
+                    variant="gold"
+                    onClick={() => {
+                      setPortalEndingChoiceMade(true);
+                      setPlayer(prev => ({
+                        ...prev,
+                        story: {
+                          ...(prev.story ?? {}),
+                          endingId: 'NEW_COVENANT',
+                          gameOverReason: 'NEW_COVENANT'
+                        }
+                      }));
+                    }}
+                  >
+                    选择宗教结局：诸神黄昏后的新约
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <EndingCinematicView
+              title={endingContent.title}
+              subtitle={endingContent.subtitle}
+              lines={endingContent.lines}
+              onFinish={() => setView(endingReturnView)}
+            />
+          )
         )}
         {view === 'INTRO' && (
           <IntroCinematicView
@@ -10779,6 +11072,8 @@ export default function App() {
             openAIKey={openAIKey}
             openAIModel={openAIModel}
             recentLogs={logs.slice(0, 12)}
+            playerReligionName={getPlayerReligion()?.religionName ?? null}
+            onPreachInCity={preachInCity}
           />
         )}
         {view === 'BANDIT_ENCOUNTER' && renderBanditEncounter()}
