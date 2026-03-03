@@ -776,6 +776,17 @@ export default function App() {
   const [view, setView] = useState<GameView>('MAIN_MENU');
   const [endingReturnView, setEndingReturnView] = useState<GameView>('GAME_OVER');
   const [portalEndingChoiceMade, setPortalEndingChoiceMade] = useState(false);
+  const [pendingDecisions, setPendingDecisions] = useState<Array<{
+    id: string;
+    kind: 'CITY_RELIGION' | 'HIDEOUT_GOV';
+    locationId: string;
+    day: number;
+    title: string;
+    description: string;
+    baseDelta?: number;
+    payload?: any;
+  }>>([]);
+  const [decisionHeroId, setDecisionHeroId] = useState<string>('');
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [activeEnemy, setActiveEnemy] = useState<EnemyForce | null>(null);
   const [negotiationState, setNegotiationState] = useState<NegotiationState>({
@@ -1326,6 +1337,16 @@ export default function App() {
   }, [logs]);
 
   useEffect(() => {
+    const active = pendingDecisions[0] ?? null;
+    if (!active || active.kind !== 'CITY_RELIGION') return;
+    const heroesHere = (heroes ?? []).filter(h => h.recruited && h.status !== 'DEAD');
+    if (heroesHere.length === 0) return;
+    const current = String(decisionHeroId ?? '').trim();
+    if (current && heroesHere.some(h => h.id === current)) return;
+    setDecisionHeroId(heroesHere[0].id);
+  }, [pendingDecisions.length, pendingDecisions[0]?.id, heroes, decisionHeroId]);
+
+  useEffect(() => {
     if (!heroChatterEnabled) {
       heroChatterRef.current = { nextAt: 0, inFlight: false, retry: 0 };
       return;
@@ -1590,10 +1611,11 @@ export default function App() {
     const rel = Math.max(-100, Math.min(100, Math.floor(relationValue ?? 0)));
     const costBase = 60 + Math.floor(faith * 0.9);
     const relFactor = rel >= 0 ? (1 - Math.min(0.35, rel * 0.005)) : (1 + Math.min(0.6, Math.abs(rel) * 0.008));
-    const cost = Math.max(20, Math.min(800, Math.floor(costBase * relFactor)));
+    const hasChapel = (loc.buildings ?? []).includes('CHAPEL');
+    const cost = Math.max(20, Math.min(800, Math.floor(costBase * relFactor * (hasChapel ? 0.9 : 1))));
     const gainBase = 6 + Math.round(rel / 30);
     const damp = Math.max(0.15, 1 - faith / 115);
-    const gain = Math.max(1, Math.min(12, Math.floor(gainBase * damp)));
+    const gain = Math.max(1, Math.min(14, Math.floor(gainBase * damp) + (hasChapel ? 2 : 0)));
     return { cost, gain, faith };
   };
 
@@ -3073,6 +3095,7 @@ export default function App() {
     { type: 'BARRACKS', name: '兵营', cost: 800, days: 4, description: '驻军容量提升 50%。' },
     { type: 'DEFENSE', name: '防御建筑', cost: 700, days: 4, description: '增强据点防御强度。' },
     { type: 'RECRUITER', name: '征兵官', cost: 650, days: 3, description: '定期招募新兵加入驻军。' },
+    { type: 'CHAPEL', name: '小教堂', cost: 720, days: 4, description: '提高传教效率，缓冲信教比例的负面波动。' },
     { type: 'SHRINE', name: '神殿', cost: 720, days: 4, description: '若你已确立宗教，会周期性招募信徒守卫此层。' },
     { type: 'ORE_REFINERY', name: '矿石精炼厂', cost: 780, days: 4, description: '花钱与时间将低纯度矿石熔炼为更高纯度。' },
     { type: 'HOSPITAL_I', name: '地下医院·I', cost: 520, days: 3, description: '简易诊疗与担架通道，能更快让伤兵恢复。' },
@@ -3223,6 +3246,16 @@ export default function App() {
     let nextBattleTimeline = [...battleTimelineRef.current];
     let nextWorldDiplomacy = worldDiplomacyRef.current;
     const logsToAdd: string[] = [];
+    const decisionsToAdd: Array<{
+      id: string;
+      kind: 'CITY_RELIGION' | 'HIDEOUT_GOV';
+      locationId: string;
+      day: number;
+      title: string;
+      description: string;
+      baseDelta?: number;
+      payload?: any;
+    }> = [];
     const isRoachId = (id: string) => id.startsWith('roach_');
     const isImposterControlledLocation = (loc: Location) => {
       if (loc.owner !== 'ENEMY') return false;
@@ -3376,33 +3409,69 @@ export default function App() {
           }
           const faithNow = clampFaith(current.faith ?? 0);
           const relationValue = nextPlayer.locationRelations?.[loc.id] ?? 0;
-          const r = Math.random();
-          const negative = r < 0.72;
+          const negative = Math.random() < 0.72;
           const magnitude = negative
             ? (2 + rollInt(0, 7))
             : (1 + rollInt(0, 5));
           const relationTilt = relationValue >= 60 ? 2 : relationValue >= 30 ? 1 : relationValue <= -40 ? -2 : relationValue <= -20 ? -1 : 0;
-          const delta = negative ? -(magnitude + Math.max(0, -relationTilt)) : (magnitude + Math.max(0, relationTilt));
-          const nextFaith = clampFaith(faithNow + delta);
-          const effectText = delta >= 0
-            ? `街头传来新的赞词，信教比例 +${delta}%（现 ${nextFaith}%）。`
-            : `谣言与嘲弄扩散，信教比例 ${delta}%（现 ${nextFaith}%）。`;
-          const logLine = `【传教事件】${loc.name}：${effectText}`;
-          logsToAdd.push(logLine);
-          const localLogs = Array.isArray(loc.localLogs) ? loc.localLogs : [];
-          const nextLocalLogs = localLogs.length > 0 && localLogs[0].text === effectText
-            ? localLogs
-            : [{ day: nextDay, text: effectText }, ...localLogs].slice(0, 30);
+          const rawDelta = negative ? -(magnitude + Math.max(0, -relationTilt)) : (magnitude + Math.max(0, relationTilt));
+          const hasChapel = (loc.buildings ?? []).includes('CHAPEL');
+          const delta = rawDelta < 0
+            ? Math.min(-1, Math.ceil(rawDelta * (hasChapel ? 0.7 : 1)))
+            : Math.max(1, Math.floor(rawDelta * (hasChapel ? 1.15 : 1)));
+          decisionsToAdd.push({
+            id: `religion_${loc.id}_${nextDay}_${Math.floor(Math.random() * 10000)}`,
+            kind: 'CITY_RELIGION',
+            locationId: loc.id,
+            day: nextDay,
+            title: `传教风波：${loc.name}`,
+            description: [
+              delta >= 0 ? `城里有人开始传唱“${religion.religionName}”。` : '谣言在街巷里发酵，信徒被嘲弄。',
+              `当前信教比例：${faithNow}%`,
+              `波动倾向：${delta >= 0 ? `+${delta}%` : `${delta}%`}`,
+              hasChapel ? '小教堂在运作，能缓冲波动。' : ''
+            ].filter(Boolean).join('\n'),
+            baseDelta: delta,
+            payload: { religionName: religion.religionName }
+          });
           return {
             ...loc,
-            localLogs: nextLocalLogs,
             religion: {
-              faith: nextFaith,
+              faith: faithNow,
               started: true,
-              lastEventDay: nextDay,
+              lastEventDay: current.lastEventDay,
               nextEventDay: nextDay + rollInt(7, 14)
             }
           };
+        });
+      }
+
+      {
+        const rollInt = (min: number, max: number) => Math.floor(min + Math.random() * (max - min + 1));
+        const clampPct = (v: number) => Math.max(0, Math.min(100, Math.floor(v)));
+        newLocations = newLocations.map(loc => {
+          if (loc.type !== 'HIDEOUT' || loc.owner !== 'PLAYER' || !loc.hideout) return loc;
+          const gov = loc.hideout.governance ?? { stability: 60, productivity: 55, prosperity: 50, harmony: 55 };
+          const nextEventDay = typeof gov.nextEventDay === 'number' && gov.nextEventDay > nextDay
+            ? gov.nextEventDay
+            : nextDay + rollInt(4, 7);
+          if (nextDay < nextEventDay) {
+            return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, stability: clampPct(gov.stability), productivity: clampPct(gov.productivity), prosperity: clampPct(gov.prosperity), harmony: clampPct(gov.harmony), nextEventDay } } };
+          }
+          decisionsToAdd.push({
+            id: `hideout_gov_${loc.id}_${nextDay}_${Math.floor(Math.random() * 10000)}`,
+            kind: 'HIDEOUT_GOV',
+            locationId: loc.id,
+            day: nextDay,
+            title: `隐匿据点内政：${loc.name}`,
+            description: [
+              '地下的秩序需要代价。',
+              `稳定性 ${clampPct(gov.stability)}｜生产力 ${clampPct(gov.productivity)}｜繁荣度 ${clampPct(gov.prosperity)}｜和谐度 ${clampPct(gov.harmony)}`,
+              clampPct(gov.stability) <= 20 ? '警告：稳定性过低，叛乱风险上升。' : ''
+            ].filter(Boolean).join('\n'),
+            payload: { gov }
+          });
+          return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, nextEventDay: nextDay + rollInt(4, 7) } } };
         });
       }
       const stayLoc = location ? (newLocations.find(l => l.id === location.id) ?? location) : null;
@@ -5366,6 +5435,9 @@ export default function App() {
     setWorldDiplomacy(nextWorldDiplomacy);
     setBattleTimeline(nextBattleTimeline.slice(-60));
     logsToAdd.forEach(addLog);
+    if (decisionsToAdd.length > 0) {
+      setPendingDecisions(prev => [...prev, ...decisionsToAdd].slice(0, 24));
+    }
 
     if ((nextPlayer.story?.endingId ?? '') === 'HIDEOUT_FALLEN') {
       setEndingReturnView('GAME_OVER');
@@ -10705,6 +10777,235 @@ export default function App() {
     <GameOverView player={player} onRestart={restartGame} />
   );
 
+  const renderDecisionModal = () => {
+    const active = pendingDecisions[0] ?? null;
+    if (!active) return null;
+    if (isBattling || view === 'BATTLE' || view === 'BATTLE_RESULT' || view === 'MAIN_MENU' || view === 'INTRO' || view === 'ENDING' || view === 'GAME_OVER') return null;
+    const loc = locations.find(l => l.id === active.locationId) ?? null;
+    const shift = () => setPendingDecisions(prev => prev.slice(1));
+    const clampPct = (v: number) => Math.max(0, Math.min(100, Math.floor(v)));
+    const now = Date.now();
+    const createdAt = new Date(now).toLocaleString('zh-CN', { hour12: false });
+
+    if (active.kind === 'CITY_RELIGION') {
+      if (!loc || loc.type !== 'CITY') return null;
+      const faithNow = clampPct(loc.religion?.faith ?? 0);
+      const baseDelta = Math.floor(Number(active.baseDelta ?? 0));
+      const hasChapel = (loc.buildings ?? []).includes('CHAPEL');
+      const suppressCostRaw = 90 + Math.abs(baseDelta) * 22 + Math.floor(faithNow * 0.3);
+      const suppressCost = Math.max(20, Math.floor(suppressCostRaw * (hasChapel ? 0.9 : 1)));
+      const canSuppress = player.gold >= suppressCost;
+      const heroesHere = heroes.filter(h => h.recruited && h.status !== 'DEAD');
+      const hero = heroesHere.find(h => h.id === decisionHeroId) ?? heroesHere[0] ?? null;
+
+      const applyFaithDelta = (delta: number, reason: string, heroId?: string) => {
+        const nextFaith = clampPct(faithNow + delta);
+        setLocations(prev => prev.map(l => {
+          if (l.id !== loc.id) return l;
+          const currentFaith = clampPct(l.religion?.faith ?? 0);
+          const faithAfter = clampPct(currentFaith + delta);
+          const localLogs = Array.isArray(l.localLogs) ? l.localLogs : [];
+          const text = `传教事件处理：${reason}（${delta >= 0 ? `+${delta}%` : `${delta}%`}，现 ${faithAfter}%）。`;
+          const nextLocalLogs = localLogs.length > 0 && localLogs[0].text === text ? localLogs : [{ day: active.day, text }, ...localLogs].slice(0, 30);
+          return { ...l, localLogs: nextLocalLogs, religion: { ...(l.religion ?? { faith: 0 }), faith: faithAfter, started: true, lastEventDay: active.day } };
+        }));
+        setCurrentLocation(prev => {
+          if (!prev || prev.id !== loc.id) return prev;
+          const currentFaith = clampPct(prev.religion?.faith ?? 0);
+          const faithAfter = clampPct(currentFaith + delta);
+          return { ...prev, religion: { ...(prev.religion ?? { faith: 0 }), faith: faithAfter, started: true, lastEventDay: active.day } };
+        });
+        addLog(`【传教事件】${loc.name}：${reason}（现 ${nextFaith}%）。`);
+        if (heroId) {
+          setHeroes(prev => prev.map(h => {
+            if (h.id !== heroId) return h;
+            const mem: HeroPermanentMemory = {
+              id: `faith_evt_${now}_${Math.floor(Math.random() * 10000)}`,
+              text: `传教事件：${loc.name}｜${reason}`,
+              createdAt,
+              createdDay: playerRef.current.day,
+              roundIndex: playerRef.current.day
+            };
+            return { ...h, permanentMemory: [mem, ...(h.permanentMemory ?? [])].slice(0, 24) };
+          }));
+        }
+      };
+
+      return (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl bg-stone-900 border border-stone-700 rounded shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-bold text-stone-200">{active.title}</div>
+                <div className="text-xs text-stone-500 mt-1">第 {active.day} 天 · {loc.name}</div>
+              </div>
+              <button
+                onClick={() => {
+                  const extra = baseDelta < 0 && Math.random() < (hasChapel ? 0.2 : 0.35) ? (hasChapel ? -1 : -2) : 0;
+                  applyFaithDelta(baseDelta + extra, '放任不管');
+                  shift();
+                }}
+                className="text-stone-400 hover:text-white"
+              >
+                跳过处理
+              </button>
+            </div>
+            <pre className="whitespace-pre-wrap text-sm text-stone-300 bg-black/30 border border-stone-800 rounded p-4">{active.description}</pre>
+            <div className="flex flex-col md:flex-row gap-2 justify-end">
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  const extra = baseDelta < 0 && Math.random() < (hasChapel ? 0.2 : 0.35) ? (hasChapel ? -1 : -2) : 0;
+                  applyFaithDelta(baseDelta + extra, '放任不管');
+                  shift();
+                }}
+              >
+                放任不管
+              </Button>
+              <Button
+                variant="secondary"
+                disabled={!canSuppress}
+                onClick={() => {
+                  if (!canSuppress) return;
+                  const delta = baseDelta < 0 ? Math.ceil(baseDelta * (hasChapel ? 0.35 : 0.5)) : baseDelta;
+                  setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - suppressCost) }));
+                  applyFaithDelta(delta, `花钱镇压（-${suppressCost}）`);
+                  shift();
+                }}
+              >
+                花钱镇压（{suppressCost}）
+              </Button>
+              <div className="flex items-center gap-2">
+                <select
+                  value={hero?.id ?? ''}
+                  onChange={(e) => setDecisionHeroId(e.target.value)}
+                  className="bg-stone-950 border border-stone-700 rounded px-2 py-2 text-sm text-stone-200"
+                  disabled={heroesHere.length === 0}
+                >
+                  {heroesHere.map(h => (
+                    <option key={h.id} value={h.id}>{h.name} Lv.{h.level}</option>
+                  ))}
+                </select>
+                <Button
+                  variant="gold"
+                  disabled={!hero}
+                  onClick={() => {
+                    if (!hero) return;
+                    const bonus = Math.floor((hero.level ?? 0) / 8);
+                    const delta = baseDelta < 0 ? Math.max(1, Math.floor(Math.abs(baseDelta) / 2) + 1 + bonus) : (baseDelta + 2 + bonus);
+                    applyFaithDelta(delta, `派 ${hero.name} 讲道`, hero.id);
+                    shift();
+                  }}
+                >
+                  派英雄讲道
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (active.kind === 'HIDEOUT_GOV') {
+      if (!loc || loc.type !== 'HIDEOUT' || loc.owner !== 'PLAYER' || !loc.hideout) return null;
+      const gov = loc.hideout.governance ?? { stability: 60, productivity: 55, prosperity: 50, harmony: 55 };
+      const applyGov = (delta: { stability: number; productivity: number; prosperity: number; harmony: number }, cost: number, label: string) => {
+        if (cost > 0) setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - cost) }));
+        const nextGov = {
+          stability: clampPct(gov.stability + delta.stability),
+          productivity: clampPct(gov.productivity + delta.productivity),
+          prosperity: clampPct(gov.prosperity + delta.prosperity),
+          harmony: clampPct(gov.harmony + delta.harmony),
+          lastEventDay: active.day,
+          nextEventDay: gov.nextEventDay
+        };
+        setLocations(prev => prev.map(l => {
+          if (l.id !== loc.id || l.type !== 'HIDEOUT' || !l.hideout) return l;
+          const localLogs = Array.isArray(l.localLogs) ? l.localLogs : [];
+          const text = `内政处理：${label}（稳${delta.stability >= 0 ? `+${delta.stability}` : delta.stability} 产${delta.productivity >= 0 ? `+${delta.productivity}` : delta.productivity} 繁${delta.prosperity >= 0 ? `+${delta.prosperity}` : delta.prosperity} 和${delta.harmony >= 0 ? `+${delta.harmony}` : delta.harmony}）`;
+          const nextLocalLogs = localLogs.length > 0 && localLogs[0].text === text ? localLogs : [{ day: active.day, text }, ...localLogs].slice(0, 30);
+          return { ...l, localLogs: nextLocalLogs, hideout: { ...l.hideout, governance: nextGov } };
+        }));
+        setCurrentLocation(prev => {
+          if (!prev || prev.id !== loc.id || prev.type !== 'HIDEOUT' || !prev.hideout) return prev;
+          return { ...prev, hideout: { ...prev.hideout, governance: nextGov } };
+        });
+        addLog(`【内政】${loc.name}：${label}。`);
+        const rebellionRisk = nextGov.stability <= 15 ? 0.28 : nextGov.stability <= 20 ? 0.15 : 0;
+        if (rebellionRisk > 0 && Math.random() < rebellionRisk) {
+          setPlayer(prev => ({
+            ...prev,
+            story: { ...(prev.story ?? {}), endingId: 'HIDEOUT_REBELLION', gameOverReason: 'HIDEOUT_REBELLION' }
+          }));
+          setEndingReturnView('GAME_OVER');
+          setView('ENDING');
+        }
+      };
+      const costRelief = 140;
+      const costMediate = 80;
+      const canRelief = player.gold >= costRelief;
+      const canMediate = player.gold >= costMediate;
+
+      return (
+        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+          <div className="w-full max-w-2xl bg-stone-900 border border-stone-700 rounded shadow-2xl p-6 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-lg font-bold text-stone-200">{active.title}</div>
+                <div className="text-xs text-stone-500 mt-1">第 {active.day} 天 · {loc.name}</div>
+              </div>
+              <button
+                onClick={() => {
+                  applyGov({ stability: -2, productivity: 0, prosperity: 0, harmony: -1 }, 0, '观望不决');
+                  shift();
+                }}
+                className="text-stone-400 hover:text-white"
+              >
+                跳过处理
+              </button>
+            </div>
+            <pre className="whitespace-pre-wrap text-sm text-stone-300 bg-black/30 border border-stone-800 rounded p-4">{active.description}</pre>
+            <div className="flex flex-col md:flex-row gap-2 justify-end">
+              <Button
+                variant="secondary"
+                disabled={!canRelief}
+                onClick={() => {
+                  if (!canRelief) return;
+                  applyGov({ stability: 10, productivity: -3, prosperity: -1, harmony: 4 }, costRelief, `安抚民心（-${costRelief}）`);
+                  shift();
+                }}
+              >
+                安抚民心（{costRelief}）
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  applyGov({ stability: -9, productivity: 8, prosperity: 5, harmony: -2 }, 0, '强化生产');
+                  shift();
+                }}
+              >
+                强化生产
+              </Button>
+              <Button
+                variant="gold"
+                disabled={!canMediate}
+                onClick={() => {
+                  if (!canMediate) return;
+                  applyGov({ stability: 3, productivity: -2, prosperity: 0, harmony: 10 }, costMediate, `调停冲突（-${costMediate}）`);
+                  shift();
+                }}
+              >
+                调停冲突（{costMediate}）
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return null;
+  };
+
   const renderBattleSimulation = () => (
      <div className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center text-center p-4">
         {battleError ? (
@@ -10763,6 +11064,20 @@ export default function App() {
           `你把「${playerReligionName || '新约'}」写进每一块告示板，把恐惧换成秩序。`,
           '裂隙仍在那里，但它不再是唯一的路。',
           '诸神黄昏之后，你签下了新的契约。'
+        ]
+      };
+    }
+    if (endingKey === 'HIDEOUT_REBELLION') {
+      return {
+        title: '终章：叛军的灯火',
+        subtitle: `第 ${player.day} 天`,
+        lines: [
+          '地下的火把一盏盏熄灭，换成陌生的口号。',
+          '你以为自己在维持秩序——其实只是在透支它。',
+          '当稳定崩溃，生产与繁荣都变成了借口。',
+          '叛军冲进最深处时，没有谁愿意再为你挡门。',
+          '隐匿点被夺走，秘密被点燃成篝火。',
+          '你的故事以“叛乱”的名义结束。'
         ]
       };
     }
@@ -10826,6 +11141,7 @@ export default function App() {
               { id: 'PORTAL_CLEARED', title: '封堵裂隙', subtitle: '你夺回了回家的门。' },
               { id: 'NEW_COVENANT', title: '诸神黄昏后的新约', subtitle: '你把信仰写进废土。' },
               { id: 'HIDEOUT_FALLEN', title: '隐匿点沦陷', subtitle: '最后退路被异常吞没。' },
+              { id: 'HIDEOUT_REBELLION', title: '叛军夺取隐匿点', subtitle: '内政失衡，地下燃起反旗。' },
               { id: 'ALL_DIED', title: '无名之死', subtitle: '队伍覆灭，传说终止。' }
             ]}
             onReplayEnding={(endingId) => {
@@ -11093,6 +11409,7 @@ export default function App() {
       {isChangelogOpen && <ChangelogModal entries={CHANGELOG} onClose={() => setIsChangelogOpen(false)} />}
       {isMapListOpen && renderMapListModal()}
       {isWorldTroopStatsOpen && renderWorldTroopStatsModal()}
+      {renderDecisionModal()}
 
       {/* AI Simulation Overlay */}
       {(isBattling || battleError) && renderBattleSimulation()}

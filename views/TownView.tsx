@@ -2517,6 +2517,38 @@ export const TownView = ({
                   </div>
                   <div className="text-stone-400 text-sm mt-2">当前 {Math.round(hideoutExposure)}%｜越高越危险。</div>
                 </div>
+                <div className="bg-stone-900/60 border border-stone-800 rounded p-5">
+                  <div className="flex items-center justify-between">
+                    <div className="text-stone-200 font-bold">内政</div>
+                    <Home size={16} className="text-emerald-300" />
+                  </div>
+                  {(() => {
+                    const gov = hideoutState?.governance ?? { stability: 60, productivity: 55, prosperity: 50, harmony: 55 };
+                    const clampPct = (v: number) => Math.max(0, Math.min(100, Math.floor(v)));
+                    const items = [
+                      { label: '稳定性', value: clampPct(gov.stability), color: 'bg-amber-600' },
+                      { label: '生产力', value: clampPct(gov.productivity), color: 'bg-emerald-600' },
+                      { label: '繁荣度', value: clampPct(gov.prosperity), color: 'bg-sky-600' },
+                      { label: '和谐度', value: clampPct(gov.harmony), color: 'bg-purple-600' }
+                    ];
+                    return (
+                      <div className="mt-3 space-y-3">
+                        {items.map(item => (
+                          <div key={item.label}>
+                            <div className="flex items-center justify-between text-xs text-stone-500">
+                              <span>{item.label}</span>
+                              <span>{item.value}%</span>
+                            </div>
+                            <div className="h-2 bg-stone-950/60 border border-stone-800 rounded mt-1 overflow-hidden">
+                              <div className={`h-full ${item.color}`} style={{ width: `${item.value}%` }} />
+                            </div>
+                          </div>
+                        ))}
+                        <div className="text-xs text-stone-600">内政事件会周期性发生，选择会改变这些参数。</div>
+                      </div>
+                    );
+                  })()}
+                </div>
                 <button
                   onClick={() => setHideoutPage('LOGS')}
                   className="text-left bg-stone-900/60 border border-stone-800 rounded p-5 hover:border-stone-600 transition-colors"
@@ -2787,6 +2819,7 @@ export const TownView = ({
                         const hasMaze = hideoutDefenseSlots.some(s => s.type === 'MAZE_I' || s.type === 'MAZE_II' || s.type === 'MAZE_III');
                         const hasHospital = (hideoutState?.layers ?? []).some(l => (l.facilitySlots ?? []).some(s => s.type === 'HOSPITAL_I' || s.type === 'HOSPITAL_II' || s.type === 'HOSPITAL_III'));
                         const canBuildType = (type: BuildingType) => {
+                          if (type === 'CHAPEL') return { ok: false, reason: '仅可在城市建造' };
                           if (category === 'DEFENSE' && type === 'CAMOUFLAGE_STRUCTURE' && depth !== 0) return { ok: false, reason: '仅地面层可建造' };
                           if (type === 'MAZE_I') {
                             if (category !== 'DEFENSE') return { ok: false, reason: '迷宫属于防御设施' };

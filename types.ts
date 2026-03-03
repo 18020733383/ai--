@@ -407,6 +407,7 @@ export type BuildingType =
   | 'BARRACKS'
   | 'DEFENSE'
   | 'RECRUITER'
+  | 'CHAPEL'
   | 'SHRINE'
   | 'ORE_REFINERY'
   | 'HOSPITAL_I'
@@ -508,6 +509,14 @@ export type HideoutState = {
   lastRaidCheckDay?: number;
   exposure?: number;
   camouflageCooldownUntilDay?: number;
+  governance?: {
+    stability: number;
+    productivity: number;
+    prosperity: number;
+    harmony: number;
+    lastEventDay?: number;
+    nextEventDay?: number;
+  };
 };
 
 export type WorkContract = {
