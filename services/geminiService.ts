@@ -729,6 +729,80 @@ ${historyText || '（暂无）'}
   return String(text).trim();
 };
 
+export const chatWithAuthor = async (
+  dialogue: Array<{ role: 'PLAYER' | 'AUTHOR'; text: string }>,
+  userInput: string,
+  changelogText: string,
+  openAI?: OpenAIConfig
+): Promise<string> => {
+  const historyText = (dialogue ?? [])
+    .slice(-12)
+    .map(m => `${m.role === 'PLAYER' ? '玩家' : '作者'}: ${m.text}`)
+    .join('\n');
+
+  const prompt = `
+你在「阳光精神病院」里扮演“作者/院长”这个 NPC。
+你必须用中文回复玩家，语气要很神经病：喜欢用 emoji、颜文字、阴阳怪气吐槽、用莫名其妙的理由解释更新原因与未来更新规划。
+但你不能进行仇恨/歧视/威胁，也不要引导自伤自杀；可以调侃，但别攻击玩家的人格底线。
+
+回复要求：
+1) 直接回复，不要输出 JSON，不要解释规则。
+2) 可以引用 changelog 的版本号/条目来回答“为什么这么改”“接下来会加什么”。
+3) 如果玩家问 bug/玩法建议，给出 2~4 条具体建议（仍然保持疯癫语气）。
+
+【更新日志（所有版本）】
+${String(changelogText || '').trim() || '（暂无）'}
+
+【最近对话】
+${historyText || '（暂无）'}
+
+【玩家这次说】
+${userInput}
+  `.trim();
+
+  const openAIConfig = requireOpenAIConfig(openAI);
+  if (openAIConfig) {
+    const url = `${normalizeProviderBaseUrl(openAIConfig.provider, openAIConfig.baseUrl)}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openAIConfig.apiKey}`,
+      },
+      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+        model: openAIConfig.model,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: '继续对话并回复。' }
+        ],
+        temperature: 0.9
+      }))
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
+    }
+
+    const json = await res.json().catch(() => null) as any;
+    const text = json?.choices?.[0]?.message?.content;
+    if (!text) throw new Error('OpenAI 返回为空');
+    return String(text).trim();
+  }
+
+  const model = "gemini-3-flash-preview";
+  const response = await getGeminiClient(openAI?.provider === 'GEMINI' ? openAI.apiKey : undefined).models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      temperature: 0.9,
+    },
+  });
+  const text = response.text;
+  if (!text) throw new Error("No response from AI");
+  return String(text).trim();
+};
+
 const parseNegotiationResult = (raw: string): NegotiationResult => {
   let parsed: any;
   try {

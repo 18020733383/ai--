@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
 import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './constants';
-import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
+import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { Button } from './components/Button';
 import { BigMapView } from './components/BigMapView';
 import { BattleView } from './components/BattleView';
@@ -8107,6 +8107,53 @@ export default function App() {
     }
 
     if (battleMeta?.mode === 'FIELD' && battleMeta.targetLocationId) {
+      if (battleMeta.siegeContext === 'HIDEOUT_REBELLION') {
+        const target = locations.find(l => l.id === battleMeta.targetLocationId && l.type === 'HIDEOUT');
+        if (target && battleResult) {
+          if (battleResult.outcome === 'A') {
+            setLocations(prev => prev.map(l => {
+              if (l.id !== target.id || l.type !== 'HIDEOUT' || !l.hideout) return l;
+              const gov = l.hideout.governance ?? { stability: 60, productivity: 55, prosperity: 50, harmony: 55 };
+              const clampPct = (v: number) => Math.max(0, Math.min(100, Math.floor(v)));
+              return {
+                ...l,
+                hideout: {
+                  ...l.hideout,
+                  governance: {
+                    ...gov,
+                    stability: clampPct(gov.stability + 18),
+                    harmony: clampPct(gov.harmony + 8),
+                    productivity: clampPct(gov.productivity - 4),
+                    prosperity: clampPct(gov.prosperity - 2)
+                  }
+                }
+              };
+            }));
+            addLog(`【叛乱平定】你镇压了 ${target.name} 的叛军，地下秩序暂时恢复。`);
+            addLocationLog(target.id, '叛乱被镇压，稳定性回升。');
+          } else {
+            setPlayer(prev => ({
+              ...prev,
+              story: { ...(prev.story ?? {}), endingId: 'HIDEOUT_REBELLION', gameOverReason: 'HIDEOUT_REBELLION' }
+            }));
+            addLog(`【叛乱失败】你未能守住 ${target.name}。叛军夺取了隐匿点。`);
+            addLocationLog(target.id, '叛军夺取了隐匿点。');
+            setEndingReturnView('GAME_OVER');
+            setView('ENDING');
+          }
+        }
+        setBattleResult(null);
+        setActiveEnemy(null);
+        setIsBattling(false);
+        setIsBattleStreaming(false);
+        setIsBattleResultFinal(true);
+        setBattleMeta(null);
+        setBattleSnapshot(null);
+        setPendingBattleMeta(null);
+        setPendingBattleIsTraining(false);
+        if (!target || battleResult?.outcome !== 'B') setView('MAP');
+        return;
+      }
       const camp = locations.find(l => l.id === battleMeta.targetLocationId && l.type === 'FIELD_CAMP');
       if (camp && battleResult) {
         if (battleResult.outcome === 'A') {
@@ -10467,6 +10514,14 @@ export default function App() {
       gachaResult={gachaResult}
       onGacha={handleAsylumGacha}
       onBackToMap={() => setView('MAP')}
+      onChatAuthor={async (dialogue, userInput) => {
+        const aiConfig = buildAIConfig();
+        if (!aiConfig) throw new Error('AI 未配置');
+        const changelogText = CHANGELOG
+          .map(e => `版本 ${e.version}（${e.date}）\n- ${e.items.join('\n- ')}`)
+          .join('\n\n');
+        return chatWithAuthor(dialogue, userInput, changelogText, aiConfig);
+      }}
     />
   );
 
@@ -10933,12 +10988,32 @@ export default function App() {
         addLog(`【内政】${loc.name}：${label}。`);
         const rebellionRisk = nextGov.stability <= 15 ? 0.28 : nextGov.stability <= 20 ? 0.15 : 0;
         if (rebellionRisk > 0 && Math.random() < rebellionRisk) {
-          setPlayer(prev => ({
-            ...prev,
-            story: { ...(prev.story ?? {}), endingId: 'HIDEOUT_REBELLION', gameOverReason: 'HIDEOUT_REBELLION' }
-          }));
-          setEndingReturnView('GAME_OVER');
-          setView('ENDING');
+          const rebelCount = Math.max(10, Math.min(120, Math.floor((100 - nextGov.stability) * 0.9 + nextGov.productivity * 0.35 + nextGov.prosperity * 0.25)));
+          const mix = [
+            { id: 'militia', ratio: 0.55 },
+            { id: 'peasant', ratio: 0.25 },
+            { id: 'archer', ratio: 0.12 },
+            { id: 'footman', ratio: 0.08 }
+          ];
+          const troops = mix
+            .map(x => ({ ...x, count: Math.max(1, Math.floor(rebelCount * x.ratio)) }))
+            .filter(x => x.count > 0)
+            .map(x => createTroop(x.id as any, x.count));
+          const enemy: EnemyForce = {
+            id: `hideout_rebellion_${Date.now()}`,
+            name: '叛军',
+            description: '内政失衡引发的叛乱。你必须亲自镇压，否则隐匿点将被夺走。',
+            troops,
+            difficulty: nextGov.stability <= 15 ? '困难' : '中等',
+            lootPotential: 0.2,
+            terrain: loc.terrain,
+            baseTroopId: troops[0]?.id ?? 'militia'
+          };
+          setActiveEnemy(enemy);
+          setPendingBattleMeta({ mode: 'FIELD', targetLocationId: loc.id, siegeContext: 'HIDEOUT_REBELLION' });
+          setPendingBattleIsTraining(false);
+          addLog(`【叛乱】${loc.name} 爆发叛乱！准备迎战。`);
+          setView('BATTLE');
         }
       };
       const costRelief = 140;

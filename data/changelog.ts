@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.11.0',
+    date: '2026-03-03',
+    items: [
+      '隐匿据点叛乱从“直接结局”改为可打战斗：战败才触发坏结局',
+      '精神病院新增“和作者对话”：提示词注入完整changelog，回复为疯癫吐槽风格'
+    ]
+  },
+  {
     version: '0.10.0',
     date: '2026-03-03',
     items: [
