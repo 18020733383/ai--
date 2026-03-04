@@ -176,6 +176,59 @@ const extractJson = (raw) => {
   return null;
 };
 
+const extractDataUrlFromText = (raw) => {
+  const text = String(raw ?? '');
+  const match = text.match(/data:(image\/png|image\/jpeg|image\/jpg);base64,([A-Za-z0-9+/=\s]+)\b/);
+  if (!match) return null;
+  const mime = match[1];
+  const base64 = match[2].replace(/\s+/g, '');
+  if (!base64) return null;
+  const ext = mime === 'image/png' ? 'png' : mime === 'image/jpg' ? 'jpg' : 'jpeg';
+  return { ext, buffer: Buffer.from(base64, 'base64') };
+};
+
+const extractBase64ImageFromJson = (json) => {
+  if (!json) return null;
+  const direct =
+    json?.b64_json ??
+    json?.b64 ??
+    json?.image_base64 ??
+    json?.imageBase64 ??
+    json?.image ??
+    json?.dataUrl ??
+    json?.data_url ??
+    null;
+  if (typeof direct === 'string' && direct.trim()) {
+    if (direct.trim().startsWith('data:')) return parseDataUrl(direct.trim());
+    const buffer = Buffer.from(direct.trim(), 'base64');
+    return { ext: 'png', buffer };
+  }
+  const nested = json?.data?.[0]?.b64_json ?? json?.data?.[0]?.b64 ?? null;
+  if (typeof nested === 'string' && nested.trim()) {
+    const buffer = Buffer.from(nested.trim(), 'base64');
+    return { ext: 'png', buffer };
+  }
+  const url = json?.data?.[0]?.url ?? json?.url ?? null;
+  if (typeof url === 'string' && url.trim()) return { url: url.trim() };
+  return null;
+};
+
+const fetchBinary = async (url, init, timeoutMs = 120000) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || 1));
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status} ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
+    }
+    const ab = await res.arrayBuffer();
+    return Buffer.from(ab);
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 const buildTroopDescriptionPrompt = (troops) => {
   const list = (troops ?? []).map(t => `- ${t.name}（id: ${t.id}）`).join('\n');
   return `
@@ -400,28 +453,90 @@ const server = http.createServer(async (req, res) => {
       const prompt = String(body?.prompt ?? '').trim();
       const size = String(body?.size ?? '1024x1024').trim() || '1024x1024';
       const sendIntervalMs = Number(body?.sendIntervalMs ?? 0);
+      const endpointMode = String(body?.endpointMode ?? 'AUTO').trim().toUpperCase();
       if (!baseUrl || !apiKey || !model || !troopId || !prompt) return sendJson(res, 400, { error: 'Missing fields' });
-      const endpoint = joinUrl(ensureV1(baseUrl), '/images/generations');
-      const json = await fetchJson(endpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify({
-          model,
-          prompt,
-          size,
-          response_format: 'b64_json'
-        })
-      }, 240000);
-      const b64 = json?.data?.[0]?.b64_json ?? '';
-      if (!b64) return sendJson(res, 500, { error: 'No image data' });
-      const buffer = Buffer.from(String(b64), 'base64');
+      const v1 = ensureV1(baseUrl);
+      const authHeaders = {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      };
+
+      const tryImagesEndpoint = async () => {
+        const endpoint = joinUrl(v1, '/images/generations');
+        const json = await fetchJson(endpoint, {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({
+            model,
+            prompt,
+            size,
+            response_format: 'b64_json'
+          })
+        }, 240000);
+        const picked = extractBase64ImageFromJson(json);
+        if (!picked) throw new Error('No image data');
+        return picked;
+      };
+
+      const tryChatEndpoint = async () => {
+        const endpoint = joinUrl(v1, '/chat/completions');
+        const sys = `
+你是一个图片生成模型的代理。你要基于用户 prompt 生成一张 1:1 的头像图。
+你必须只返回 JSON，不要返回任何解释性文字，不要加“好啊我来生成”之类的内容。
+JSON 格式必须是：
+{"b64_png":"<base64 png 不带前缀>"}
+要求：画面内禁止任何文字、logo、水印、UI。
+        `.trim();
+        const json = await fetchJson(endpoint, {
+          method: 'POST',
+          headers: authHeaders,
+          body: JSON.stringify({
+            model,
+            temperature: 0.6,
+            messages: [
+              { role: 'system', content: sys },
+              { role: 'user', content: prompt }
+            ]
+          })
+        }, 240000);
+        const content = json?.choices?.[0]?.message?.content ?? '';
+        const parsed = extractJson(content) ?? extractJson(json) ?? null;
+        const picked = extractBase64ImageFromJson(parsed);
+        if (picked?.url) {
+          const buf = await fetchBinary(picked.url, { method: 'GET' }, 240000);
+          return { ext: 'png', buffer: buf };
+        }
+        if (picked?.buffer) return picked;
+        const fromText = extractDataUrlFromText(content);
+        if (fromText) return fromText;
+        throw new Error('No image data');
+      };
+
+      let result = null;
+      if (endpointMode === 'IMAGES') {
+        result = await tryImagesEndpoint();
+      } else if (endpointMode === 'CHAT') {
+        result = await tryChatEndpoint();
+      } else {
+        try {
+          result = await tryImagesEndpoint();
+        } catch (e) {
+          const msg = String(e?.message ?? '');
+          if (msg.includes('HTTP 404') || msg.includes('HTTP 405') || msg.includes('Not Found')) {
+            result = await tryChatEndpoint();
+          } else {
+            throw e;
+          }
+        }
+      }
+
+      if (!result || !result.buffer) return sendJson(res, 500, { error: 'No image data' });
+      const buffer = result.buffer;
+      const ext = result.ext === 'jpg' ? 'jpg' : result.ext === 'jpeg' ? 'jpeg' : 'png';
       await mkdir(troopRoot, { recursive: true });
       const targets = ['png', 'jpg', 'jpeg'].map(ext => path.join(troopRoot, `${troopId}.${ext}`));
       await Promise.all(targets.map(file => rm(file, { force: true })));
-      const fileName = `${troopId}.png`;
+      const fileName = `${troopId}.${ext}`;
       const filePath = path.join(troopRoot, fileName);
       await writeFile(filePath, buffer);
       if (sendIntervalMs > 0) await sleep(sendIntervalMs);

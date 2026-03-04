@@ -9,7 +9,8 @@ export const CHANGELOG: ChangelogEntry[] = [
     version: '0.12.0',
     date: '2026-03-04',
     items: [
-      '本地图片管理器新增批量生成兵种图片：文本批量生成+逐个生图、进度条、重试与自动写入'
+      '本地图片管理器新增批量生成兵种图片：文本批量生成+逐个生图、进度条、重试与自动写入',
+      '生图支持 images/generations 失败时自动回退到 chat/completions'
     ]
   },
   {

@@ -165,6 +165,20 @@
             <input id="imgKey" type="password" placeholder="sk-..." />
           </div>
         </div>
+        <div class="row">
+          <div>
+            <label>生图接口（端点）</label>
+            <select id="imgEndpointMode">
+              <option value="AUTO">自动（images 404/405 时回退 chat）</option>
+              <option value="IMAGES">/v1/images/generations（POST）</option>
+              <option value="CHAT">/v1/chat/completions（POST，要求返回 b64_png JSON）</option>
+            </select>
+            <div class="muted" style="margin-top: 6px;">
+              文本：/v1/chat/completions（POST）｜生图：/v1/images/generations（POST）或回退 chat
+            </div>
+          </div>
+          <div></div>
+        </div>
 
         <div class="row">
           <div>
@@ -242,6 +256,7 @@
       const imgBaseUrl = document.getElementById('imgBaseUrl');
       const imgModel = document.getElementById('imgModel');
       const imgKey = document.getElementById('imgKey');
+      const imgEndpointMode = document.getElementById('imgEndpointMode');
       const batchSize = document.getElementById('batchSize');
       const sendIntervalMs = document.getElementById('sendIntervalMs');
       const retryIntervalMs = document.getElementById('retryIntervalMs');
@@ -273,6 +288,7 @@
           imgBaseUrl.value = s.imgBaseUrl || '';
           imgModel.value = s.imgModel || '';
           imgKey.value = s.imgKey || '';
+          imgEndpointMode.value = s.imgEndpointMode || 'AUTO';
           batchSize.value = String(s.batchSize ?? 5);
           sendIntervalMs.value = String(s.sendIntervalMs ?? 800);
           retryIntervalMs.value = String(s.retryIntervalMs ?? 3000);
@@ -288,6 +304,7 @@
           imgBaseUrl: imgBaseUrl.value.trim(),
           imgModel: imgModel.value.trim(),
           imgKey: imgKey.value,
+          imgEndpointMode: imgEndpointMode.value,
           batchSize: Number(batchSize.value || 5),
           sendIntervalMs: Number(sendIntervalMs.value || 0),
           retryIntervalMs: Number(retryIntervalMs.value || 0),
@@ -525,7 +542,8 @@
           troopId,
           prompt,
           size: '1024x1024',
-          sendIntervalMs: 0
+          sendIntervalMs: 0,
+          endpointMode: imgEndpointMode.value || 'AUTO'
         };
         const res = await fetch('/api/ai/troop-image', {
           method: 'POST',
@@ -659,7 +677,7 @@
       tabTroop.addEventListener('click', () => setActiveTab('TROOP'));
       startGenBtn.addEventListener('click', startBatchGenerate);
       stopGenBtn.addEventListener('click', stopBatchGenerate);
-      [txtBaseUrl, txtModel, txtKey, imgBaseUrl, imgModel, imgKey, batchSize, sendIntervalMs, retryIntervalMs, maxRetries].forEach(el => {
+      [txtBaseUrl, txtModel, txtKey, imgBaseUrl, imgModel, imgKey, imgEndpointMode, batchSize, sendIntervalMs, retryIntervalMs, maxRetries].forEach(el => {
         el.addEventListener('change', saveGenSettings);
       });
 
