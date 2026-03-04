@@ -23,6 +23,9 @@
       .tabs { display: flex; gap: 10px; margin-bottom: 14px; }
       .tab { padding: 10px 12px; border-radius: 10px; border: 1px solid #2a2f3a; background: #0f1115; color: #e6e8ef; cursor: pointer; }
       .tab.active { background: #2a3647; }
+      .progress { width: 100%; height: 12px; background: #0f1115; border: 1px solid #2a2f3a; border-radius: 999px; overflow: hidden; }
+      .progress > div { height: 100%; width: 0%; background: linear-gradient(90deg, #7dd3fc, #a78bfa); transition: width 180ms ease; }
+      .log { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; background: #0f1115; border: 1px solid #2a2f3a; border-radius: 10px; padding: 10px; max-height: 220px; overflow: auto; }
     </style>
   </head>
   <body>
@@ -122,6 +125,89 @@
             <div class="grid" id="troopGrid"></div>
           </div>
         </div>
+
+        <div class="row" style="margin-top: 10px;">
+          <div style="grid-column: 1 / -1;">
+            <div class="title" style="font-size: 16px; margin: 0 0 10px;">批量生成兵种图片</div>
+            <div class="muted" style="margin-bottom: 12px;">
+              自动跳过已有图片的兵种；文本先批量生成（默认 5 组），再逐个生图并写入 image/troops。图片要求：1:1、无文字、统一背景与画风。
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>文本模型 Base URL（OpenAI 兼容）</label>
+            <input id="txtBaseUrl" placeholder="例如 https://api.openai.com" />
+          </div>
+          <div>
+            <label>文本模型 Model</label>
+            <input id="txtModel" placeholder="例如 gpt-4o-mini" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>文本模型 API Key</label>
+            <input id="txtKey" type="password" placeholder="sk-..." />
+          </div>
+          <div>
+            <label>生图模型 Base URL（OpenAI 兼容）</label>
+            <input id="imgBaseUrl" placeholder="例如 https://api.openai.com" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>生图模型 Model</label>
+            <input id="imgModel" placeholder="例如 gpt-image-1 / dall-e-3" />
+          </div>
+          <div>
+            <label>生图模型 API Key</label>
+            <input id="imgKey" type="password" placeholder="sk-..." />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>文本批量大小</label>
+            <input id="batchSize" type="number" min="1" max="20" value="5" />
+          </div>
+          <div>
+            <label>发送间隔（ms）</label>
+            <input id="sendIntervalMs" type="number" min="0" step="100" value="800" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>异常重试间隔（ms）</label>
+            <input id="retryIntervalMs" type="number" min="200" step="200" value="3000" />
+          </div>
+          <div>
+            <label>异常重试最大次数</label>
+            <input id="maxRetries" type="number" min="0" max="20" value="3" />
+          </div>
+        </div>
+
+        <div class="row">
+          <div>
+            <label>进度</label>
+            <div class="progress"><div id="genProgressBar"></div></div>
+            <div class="muted" id="genProgressText" style="margin-top: 6px;">未开始</div>
+          </div>
+          <div>
+            <label>操作</label>
+            <div style="display: flex; gap: 10px;">
+              <button id="startGenBtn">开始批量生成</button>
+              <button id="stopGenBtn" disabled>停止</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div style="grid-column: 1 / -1;">
+            <label>日志</label>
+            <div class="log" id="genLog"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -150,8 +236,65 @@
       const troopCurrentFile = document.getElementById('troopCurrentFile');
       const troopGrid = document.getElementById('troopGrid');
 
+      const txtBaseUrl = document.getElementById('txtBaseUrl');
+      const txtModel = document.getElementById('txtModel');
+      const txtKey = document.getElementById('txtKey');
+      const imgBaseUrl = document.getElementById('imgBaseUrl');
+      const imgModel = document.getElementById('imgModel');
+      const imgKey = document.getElementById('imgKey');
+      const batchSize = document.getElementById('batchSize');
+      const sendIntervalMs = document.getElementById('sendIntervalMs');
+      const retryIntervalMs = document.getElementById('retryIntervalMs');
+      const maxRetries = document.getElementById('maxRetries');
+      const startGenBtn = document.getElementById('startGenBtn');
+      const stopGenBtn = document.getElementById('stopGenBtn');
+      const genProgressBar = document.getElementById('genProgressBar');
+      const genProgressText = document.getElementById('genProgressText');
+      const genLog = document.getElementById('genLog');
+
       const setStatus = (text) => { statusText.textContent = text || ''; };
       const setTroopStatus = (text) => { troopStatusText.textContent = text || ''; };
+      const appendLog = (text) => {
+        const line = `[${new Date().toLocaleTimeString('zh-CN', { hour12: false })}] ${text}`;
+        genLog.textContent = (genLog.textContent ? (genLog.textContent + '\n') : '') + line;
+        genLog.scrollTop = genLog.scrollHeight;
+      };
+
+      const sleep = (ms) => new Promise(resolve => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+
+      const loadGenSettings = () => {
+        const raw = localStorage.getItem('troopGenSettings');
+        if (!raw) return;
+        try {
+          const s = JSON.parse(raw);
+          txtBaseUrl.value = s.txtBaseUrl || '';
+          txtModel.value = s.txtModel || '';
+          txtKey.value = s.txtKey || '';
+          imgBaseUrl.value = s.imgBaseUrl || '';
+          imgModel.value = s.imgModel || '';
+          imgKey.value = s.imgKey || '';
+          batchSize.value = String(s.batchSize ?? 5);
+          sendIntervalMs.value = String(s.sendIntervalMs ?? 800);
+          retryIntervalMs.value = String(s.retryIntervalMs ?? 3000);
+          maxRetries.value = String(s.maxRetries ?? 3);
+        } catch {}
+      };
+
+      const saveGenSettings = () => {
+        const s = {
+          txtBaseUrl: txtBaseUrl.value.trim(),
+          txtModel: txtModel.value.trim(),
+          txtKey: txtKey.value,
+          imgBaseUrl: imgBaseUrl.value.trim(),
+          imgModel: imgModel.value.trim(),
+          imgKey: imgKey.value,
+          batchSize: Number(batchSize.value || 5),
+          sendIntervalMs: Number(sendIntervalMs.value || 0),
+          retryIntervalMs: Number(retryIntervalMs.value || 0),
+          maxRetries: Number(maxRetries.value || 0),
+        };
+        localStorage.setItem('troopGenSettings', JSON.stringify(s));
+      };
 
       const setActiveTab = (key) => {
         const isHero = key === 'HERO';
@@ -263,6 +406,15 @@
         troopSelect.innerHTML = troops.map(t => `<option value="${t.id}">${t.name}（${t.id}）</option>`).join('');
       };
 
+      const fetchTroopsWithExisting = async () => {
+        const res = await fetch('/api/troops');
+        const data = await res.json();
+        return {
+          troops: data.troops || [],
+          existing: new Set((data.existing || []).map(x => String(x).trim()).filter(Boolean))
+        };
+      };
+
       const fetchTroopFiles = async () => {
         const troopId = troopSelect.value;
         if (!troopId) return;
@@ -333,6 +485,159 @@
         await fetchTroopFiles();
       };
 
+      let isGenerating = false;
+      let stopRequested = false;
+
+      const setProgress = (done, total, currentText) => {
+        const safeTotal = Math.max(0, Number(total) || 0);
+        const safeDone = Math.max(0, Math.min(safeTotal, Number(done) || 0));
+        const ratio = safeTotal === 0 ? 0 : (safeDone / safeTotal);
+        genProgressBar.style.width = `${Math.round(ratio * 100)}%`;
+        genProgressText.textContent = safeTotal === 0
+          ? (currentText || '没有需要生成的图片')
+          : `${safeDone}/${safeTotal}（${Math.round(ratio * 100)}%）${currentText ? ` · ${currentText}` : ''}`;
+      };
+
+      const requestDescriptions = async (troops, attemptInfo) => {
+        const body = {
+          baseUrl: txtBaseUrl.value.trim(),
+          apiKey: txtKey.value,
+          model: txtModel.value.trim(),
+          troops
+        };
+        const res = await fetch('/api/ai/troop-descriptions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || attemptInfo || '描述生成失败');
+        const items = data.items || [];
+        const map = new Map(items.map(x => [x.id, x]));
+        return map;
+      };
+
+      const requestImage = async (troopId, prompt, attemptInfo) => {
+        const body = {
+          baseUrl: imgBaseUrl.value.trim(),
+          apiKey: imgKey.value,
+          model: imgModel.value.trim(),
+          troopId,
+          prompt,
+          size: '1024x1024',
+          sendIntervalMs: 0
+        };
+        const res = await fetch('/api/ai/troop-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || attemptInfo || '生图失败');
+        return data;
+      };
+
+      const startBatchGenerate = async () => {
+        if (isGenerating) return;
+        saveGenSettings();
+        genLog.textContent = '';
+        stopRequested = false;
+        isGenerating = true;
+        startGenBtn.disabled = true;
+        stopGenBtn.disabled = false;
+
+        try {
+          const settings = {
+            batchSize: Math.max(1, Math.min(20, Number(batchSize.value || 5))),
+            sendIntervalMs: Math.max(0, Number(sendIntervalMs.value || 0)),
+            retryIntervalMs: Math.max(200, Number(retryIntervalMs.value || 200)),
+            maxRetries: Math.max(0, Number(maxRetries.value || 0))
+          };
+          if (!txtBaseUrl.value.trim() || !txtModel.value.trim() || !txtKey.value) throw new Error('文本模型配置不完整');
+          if (!imgBaseUrl.value.trim() || !imgModel.value.trim() || !imgKey.value) throw new Error('生图模型配置不完整');
+
+          appendLog('拉取兵种列表…');
+          const { troops, existing } = await fetchTroopsWithExisting();
+          const missing = troops.filter(t => !existing.has(t.id));
+          const total = missing.length;
+          let done = 0;
+          setProgress(done, total, total === 0 ? '全部已有图片' : `待生成 ${total} 张`);
+          appendLog(`已存在图片：${existing.size}；待生成：${total}`);
+          if (total === 0) return;
+
+          let cursor = 0;
+          while (cursor < missing.length && !stopRequested) {
+            const batch = missing.slice(cursor, cursor + settings.batchSize);
+            cursor += batch.length;
+
+            appendLog(`批量生成描述：${batch.map(x => x.id).join(', ')}`);
+            let descMap = null;
+            for (let attempt = 0; attempt <= settings.maxRetries; attempt++) {
+              try {
+                descMap = await requestDescriptions(batch, `描述生成失败（尝试 ${attempt + 1}）`);
+                break;
+              } catch (e) {
+                appendLog(`描述生成异常：${e.message || e}；${attempt >= settings.maxRetries ? '达到最大重试次数，停止' : `等待重试 ${settings.retryIntervalMs}ms`}`);
+                if (attempt >= settings.maxRetries) throw e;
+                await sleep(settings.retryIntervalMs);
+              }
+            }
+
+            for (const troop of batch) {
+              if (stopRequested) break;
+              if (existing.has(troop.id)) continue;
+              const item = descMap.get(troop.id);
+              const prompt = item?.imagePrompt;
+              if (!prompt) {
+                appendLog(`跳过 ${troop.id}：缺少 imagePrompt`);
+                continue;
+              }
+
+              setProgress(done, total, `生成中：${troop.name}（${troop.id}）`);
+              appendLog(`生图：${troop.id}`);
+
+              for (let attempt = 0; attempt <= settings.maxRetries; attempt++) {
+                try {
+                  await requestImage(troop.id, prompt, `生图失败（尝试 ${attempt + 1}）`);
+                  existing.add(troop.id);
+                  done += 1;
+                  setProgress(done, total, `完成：${troop.name}（${troop.id}）`);
+                  appendLog(`完成：${troop.id} -> image/troops/${troop.id}.png`);
+                  await fetchTroopFiles().catch(() => {});
+                  if (settings.sendIntervalMs > 0) await sleep(settings.sendIntervalMs);
+                  break;
+                } catch (e) {
+                  appendLog(`生图异常：${troop.id}：${e.message || e}；${attempt >= settings.maxRetries ? '达到最大重试次数，停止' : `等待重试 ${settings.retryIntervalMs}ms`}`);
+                  if (attempt >= settings.maxRetries) throw e;
+                  await sleep(settings.retryIntervalMs);
+                }
+              }
+            }
+          }
+
+          if (stopRequested) {
+            appendLog('已停止。');
+            setProgress(done, total, '已停止');
+          } else {
+            appendLog('全部完成。');
+            setProgress(done, total, '全部完成');
+          }
+        } catch (e) {
+          appendLog(`流程中止：${e.message || e}`);
+          genProgressText.textContent = `中止：${e.message || e}`;
+        } finally {
+          isGenerating = false;
+          startGenBtn.disabled = false;
+          stopGenBtn.disabled = true;
+        }
+      };
+
+      const stopBatchGenerate = () => {
+        if (!isGenerating) return;
+        stopRequested = true;
+        appendLog('收到停止请求，将在当前步骤结束后停止…');
+      };
+
       fileInput.addEventListener('change', () => {
         uploadBtn.disabled = !fileInput.files.length;
       });
@@ -352,9 +657,15 @@
       troopDeleteBtn.addEventListener('click', deleteTroopFile);
       tabHero.addEventListener('click', () => setActiveTab('HERO'));
       tabTroop.addEventListener('click', () => setActiveTab('TROOP'));
+      startGenBtn.addEventListener('click', startBatchGenerate);
+      stopGenBtn.addEventListener('click', stopBatchGenerate);
+      [txtBaseUrl, txtModel, txtKey, imgBaseUrl, imgModel, imgKey, batchSize, sendIntervalMs, retryIntervalMs, maxRetries].forEach(el => {
+        el.addEventListener('change', saveGenSettings);
+      });
 
       fetchHeroes().then(fetchHeroFiles);
       fetchTroops().then(fetchTroopFiles);
+      loadGenSettings();
     </script>
   </body>
 </html>

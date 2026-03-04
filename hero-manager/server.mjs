@@ -116,6 +116,94 @@ const parseDataUrl = (dataUrl) => {
   return { ext, buffer: Buffer.from(base64, 'base64') };
 };
 
+const sleep = (ms) => new Promise(resolve => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+
+const normalizeBaseUrl = (baseUrl) => {
+  const raw = String(baseUrl ?? '').trim();
+  if (!raw) return '';
+  return raw.replace(/\/+$/, '');
+};
+
+const ensureV1 = (baseUrl) => {
+  const base = normalizeBaseUrl(baseUrl);
+  if (!base) return '';
+  if (base.endsWith('/v1') || base.includes('/v1/')) return base;
+  return `${base}/v1`;
+};
+
+const joinUrl = (baseUrl, pathname) => {
+  const base = normalizeBaseUrl(baseUrl);
+  const pathPart = String(pathname ?? '').trim();
+  if (!base) return '';
+  if (!pathPart) return base;
+  if (pathPart.startsWith('/')) return `${base}${pathPart}`;
+  return `${base}/${pathPart}`;
+};
+
+const fetchJson = async (url, init, timeoutMs = 120000) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || 1));
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    const text = await res.text().catch(() => '');
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
+    if (!text.trim()) return null;
+    return JSON.parse(text);
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+const extractJson = (raw) => {
+  const text = String(raw ?? '').trim();
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {}
+  const fenced = text.match(/```json\s*([\s\S]*?)\s*```/i) || text.match(/```([\s\S]*?)```/i);
+  if (fenced && fenced[1]) {
+    try {
+      return JSON.parse(fenced[1]);
+    } catch {}
+  }
+  const start = text.indexOf('{');
+  const end = text.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    try {
+      return JSON.parse(text.slice(start, end + 1));
+    } catch {}
+  }
+  return null;
+};
+
+const buildTroopDescriptionPrompt = (troops) => {
+  const list = (troops ?? []).map(t => `- ${t.name}（id: ${t.id}）`).join('\n');
+  return `
+你是一个游戏美术提示词撰写助手。你要为一组“兵种头像”生成图像描述与最终的生图提示词（prompt）。
+输出必须是 JSON，不要输出任何额外文字。
+
+图像要求：
+- 1:1 方形头像构图（胸像/半身像为主）
+- 画面内禁止出现任何文字、logo、水印、UI
+- 背景与画风尽量统一：暗色纯净背景、柔和体积光、写实偏插画、统一调色（低饱和、偏冷灰）
+- 清晰主体、边缘干净，不要多人物群像
+
+你要处理的兵种（共 ${troops.length} 个）：
+${list || '（空）'}
+
+请返回 JSON，格式如下：
+{
+  "items": [
+    {
+      "id": "troop_id",
+      "description": "一句中文描述（用于日志/参考）",
+      "imagePrompt": "给生图模型的最终 prompt（建议英文，包含风格与限制）"
+    }
+  ]
+}
+  `.trim();
+};
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || '/', 'http://localhost');
   if (req.method === 'GET' && url.pathname === '/') {
@@ -258,6 +346,88 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { ok: true, troopId, fileName });
     } catch {
       return sendJson(res, 500, { error: 'Upload failed' });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/ai/troop-descriptions') {
+    try {
+      const body = await readBody(req);
+      const baseUrl = String(body?.baseUrl ?? '').trim();
+      const apiKey = String(body?.apiKey ?? '').trim();
+      const model = String(body?.model ?? '').trim();
+      const troops = Array.isArray(body?.troops) ? body.troops : [];
+      if (!baseUrl || !apiKey || !model) return sendJson(res, 400, { error: 'Missing fields' });
+      if (troops.length === 0) return sendJson(res, 400, { error: 'No troops' });
+      const prompt = buildTroopDescriptionPrompt(troops.slice(0, 20));
+      const endpoint = joinUrl(ensureV1(baseUrl), '/chat/completions');
+      const json = await fetchJson(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.8,
+          messages: [
+            { role: 'system', content: prompt },
+            { role: 'user', content: '只返回 JSON。' }
+          ]
+        })
+      }, 180000);
+      const content = json?.choices?.[0]?.message?.content ?? '';
+      const parsed = extractJson(content) ?? extractJson(json) ?? null;
+      const items = Array.isArray(parsed?.items) ? parsed.items : [];
+      const normalized = items.map(x => ({
+        id: String(x?.id ?? '').trim(),
+        description: String(x?.description ?? '').trim(),
+        imagePrompt: String(x?.imagePrompt ?? '').trim()
+      })).filter(x => x.id && x.imagePrompt);
+      if (normalized.length === 0) return sendJson(res, 500, { error: 'Empty AI result' });
+      return sendJson(res, 200, { ok: true, items: normalized });
+    } catch (e) {
+      return sendJson(res, 500, { error: String(e?.message ?? 'AI failed') });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/ai/troop-image') {
+    try {
+      const body = await readBody(req);
+      const baseUrl = String(body?.baseUrl ?? '').trim();
+      const apiKey = String(body?.apiKey ?? '').trim();
+      const model = String(body?.model ?? '').trim();
+      const troopId = String(body?.troopId ?? '').trim();
+      const prompt = String(body?.prompt ?? '').trim();
+      const size = String(body?.size ?? '1024x1024').trim() || '1024x1024';
+      const sendIntervalMs = Number(body?.sendIntervalMs ?? 0);
+      if (!baseUrl || !apiKey || !model || !troopId || !prompt) return sendJson(res, 400, { error: 'Missing fields' });
+      const endpoint = joinUrl(ensureV1(baseUrl), '/images/generations');
+      const json = await fetchJson(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          prompt,
+          size,
+          response_format: 'b64_json'
+        })
+      }, 240000);
+      const b64 = json?.data?.[0]?.b64_json ?? '';
+      if (!b64) return sendJson(res, 500, { error: 'No image data' });
+      const buffer = Buffer.from(String(b64), 'base64');
+      await mkdir(troopRoot, { recursive: true });
+      const targets = ['png', 'jpg', 'jpeg'].map(ext => path.join(troopRoot, `${troopId}.${ext}`));
+      await Promise.all(targets.map(file => rm(file, { force: true })));
+      const fileName = `${troopId}.png`;
+      const filePath = path.join(troopRoot, fileName);
+      await writeFile(filePath, buffer);
+      if (sendIntervalMs > 0) await sleep(sendIntervalMs);
+      return sendJson(res, 200, { ok: true, troopId, fileName });
+    } catch (e) {
+      return sendJson(res, 500, { error: String(e?.message ?? 'Image failed') });
     }
   }
 
