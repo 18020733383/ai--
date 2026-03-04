@@ -154,6 +154,19 @@ const fetchJson = async (url, init, timeoutMs = 120000) => {
   }
 };
 
+const fetchText = async (url, init, timeoutMs = 120000) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || 1));
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    const text = await res.text().catch(() => '');
+    if (!res.ok) throw new Error(`HTTP ${res.status} ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
+    return text;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 const extractJson = (raw) => {
   const text = String(raw ?? '').trim();
   if (!text) return null;
@@ -174,6 +187,88 @@ const extractJson = (raw) => {
     } catch {}
   }
   return null;
+};
+
+const extractJsonObjectsFromText = (raw) => {
+  const text = String(raw ?? '');
+  const objects = [];
+  let start = -1;
+  let depth = 0;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (ch === '{') {
+      if (depth === 0) start = i;
+      depth += 1;
+    } else if (ch === '}') {
+      if (depth > 0) depth -= 1;
+      if (depth === 0 && start >= 0) {
+        const chunk = text.slice(start, i + 1);
+        start = -1;
+        try {
+          objects.push(JSON.parse(chunk));
+        } catch {}
+      }
+    }
+  }
+  return objects;
+};
+
+const extractImageUrls = (raw) => {
+  const text = String(raw ?? '');
+  const urls = [];
+  const re = /(https?:\/\/[^\s"'`<>]+?\.(?:png|jpg|jpeg|webp))(?:[^\s"'`<>]*)/ig;
+  let m;
+  while ((m = re.exec(text))) {
+    const u = String(m[1] ?? '').trim();
+    if (!u) continue;
+    urls.push(u);
+  }
+  return Array.from(new Set(urls));
+};
+
+const parseChatCompletionToText = (raw) => {
+  const text = String(raw ?? '');
+  const urls = extractImageUrls(text);
+  const trimmed = text.trim();
+  if (!trimmed) return { content: '', urls, objects: [] };
+
+  if (trimmed.includes('\ndata:') || trimmed.startsWith('data:')) {
+    const lines = trimmed.split('\n');
+    const objects = [];
+    const parts = [];
+    for (const line of lines) {
+      const t = line.trim();
+      if (!t.startsWith('data:')) continue;
+      const payload = t.slice('data:'.length).trim();
+      if (!payload || payload === '[DONE]') continue;
+      try {
+        const obj = JSON.parse(payload);
+        objects.push(obj);
+        const delta = obj?.choices?.[0]?.delta?.content;
+        const msg = obj?.choices?.[0]?.message?.content;
+        if (typeof delta === 'string' && delta) parts.push(delta);
+        else if (typeof msg === 'string' && msg) parts.push(msg);
+      } catch {}
+    }
+    return { content: parts.join(''), urls: Array.from(new Set([...urls, ...extractImageUrls(parts.join(''))])), objects };
+  }
+
+  try {
+    const obj = JSON.parse(trimmed);
+    const msg = obj?.choices?.[0]?.message?.content ?? obj?.choices?.[0]?.delta?.content ?? '';
+    return { content: typeof msg === 'string' ? msg : '', urls: Array.from(new Set([...urls, ...extractImageUrls(msg)])), objects: [obj] };
+  } catch {}
+
+  const objects = extractJsonObjectsFromText(trimmed);
+  const parts = [];
+  for (const obj of objects) {
+    const delta = obj?.choices?.[0]?.delta?.content;
+    const msg = obj?.choices?.[0]?.message?.content;
+    if (typeof delta === 'string' && delta) parts.push(delta);
+    else if (typeof msg === 'string' && msg) parts.push(msg);
+  }
+  const content = parts.join('');
+  return { content, urls: Array.from(new Set([...urls, ...extractImageUrls(content)])), objects };
 };
 
 const extractDataUrlFromText = (raw) => {
@@ -487,7 +582,7 @@ JSON 格式必须是：
 {"b64_png":"<base64 png 不带前缀>"}
 要求：画面内禁止任何文字、logo、水印、UI。
         `.trim();
-        const json = await fetchJson(endpoint, {
+        const raw = await fetchText(endpoint, {
           method: 'POST',
           headers: authHeaders,
           body: JSON.stringify({
@@ -499,9 +594,10 @@ JSON 格式必须是：
             ]
           })
         }, 240000);
-        const content = json?.choices?.[0]?.message?.content ?? '';
-        const parsed = extractJson(content) ?? extractJson(json) ?? null;
-        const picked = extractBase64ImageFromJson(parsed);
+        const parsedText = parseChatCompletionToText(raw);
+        const content = parsedText.content || raw;
+        const parsed = extractJson(content) ?? extractJson(parsedText.objects?.[parsedText.objects.length - 1] ?? null) ?? null;
+        const picked = extractBase64ImageFromJson(parsed) ?? extractBase64ImageFromJson(parsedText.objects?.[parsedText.objects.length - 1] ?? null);
         if (picked?.url) {
           const buf = await fetchBinary(picked.url, { method: 'GET' }, 240000);
           return { ext: 'png', buffer: buf };
@@ -509,6 +605,10 @@ JSON 格式必须是：
         if (picked?.buffer) return picked;
         const fromText = extractDataUrlFromText(content);
         if (fromText) return fromText;
+        if (parsedText.urls.length > 0) {
+          const buf = await fetchBinary(parsedText.urls[0], { method: 'GET' }, 240000);
+          return { ext: 'png', buffer: buf };
+        }
         throw new Error('No image data');
       };
 
