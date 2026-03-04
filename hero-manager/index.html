@@ -203,6 +203,14 @@
             <input id="maxRetries" type="number" min="0" max="20" value="3" />
           </div>
         </div>
+        <div class="row"></div>
+          <div>
+            <label>绘图并发数量</label>
+            <input id="imgConcurrency" type="number" min="1" max="12" value="2" />
+            <div class="muted" style="margin-top: 6px;">同一批次内并发生成，必须整批都成功才进入下一批。</div>
+          </div>
+          <div></div>
+        </div>
 
         <div class="row">
           <div>
@@ -264,6 +272,7 @@
       const sendIntervalMs = document.getElementById('sendIntervalMs');
       const retryIntervalMs = document.getElementById('retryIntervalMs');
       const maxRetries = document.getElementById('maxRetries');
+      const imgConcurrency = document.getElementById('imgConcurrency');
       const startGenBtn = document.getElementById('startGenBtn');
       const stopGenBtn = document.getElementById('stopGenBtn');
       const genProgressBar = document.getElementById('genProgressBar');
@@ -296,6 +305,7 @@
           sendIntervalMs.value = String(s.sendIntervalMs ?? 800);
           retryIntervalMs.value = String(s.retryIntervalMs ?? 3000);
           maxRetries.value = String(s.maxRetries ?? 3);
+          imgConcurrency.value = String(s.imgConcurrency ?? 2);
         } catch {}
       };
 
@@ -312,6 +322,7 @@
           sendIntervalMs: Number(sendIntervalMs.value || 0),
           retryIntervalMs: Number(retryIntervalMs.value || 0),
           maxRetries: Number(maxRetries.value || 0),
+          imgConcurrency: Number(imgConcurrency.value || 2),
         };
         localStorage.setItem('troopGenSettings', JSON.stringify(s));
       };
@@ -572,7 +583,8 @@
             batchSize: Math.max(1, Math.min(20, Number(batchSize.value || 5))),
             sendIntervalMs: Math.max(0, Number(sendIntervalMs.value || 0)),
             retryIntervalMs: Math.max(200, Number(retryIntervalMs.value || 200)),
-            maxRetries: Math.max(0, Number(maxRetries.value || 0))
+            maxRetries: Math.max(0, Number(maxRetries.value || 0)),
+            imgConcurrency: Math.max(1, Math.min(12, Number(imgConcurrency.value || 1)))
           };
           if (!txtBaseUrl.value.trim() || !txtModel.value.trim() || !txtKey.value) throw new Error('文本模型配置不完整');
           if (!imgBaseUrl.value.trim() || !imgModel.value.trim() || !imgKey.value) throw new Error('生图模型配置不完整');
@@ -585,6 +597,7 @@
           setProgress(done, total, total === 0 ? '全部已有图片' : `待生成 ${total} 张`);
           appendLog(`已存在图片：${existing.size}；待生成：${total}`);
           if (total === 0) return;
+          appendLog(`绘图并发：${settings.imgConcurrency}｜发送间隔：${settings.sendIntervalMs}ms`);
 
           let cursor = 0;
           while (cursor < missing.length && !stopRequested) {
@@ -604,36 +617,72 @@
               }
             }
 
-            for (const troop of batch) {
-              if (stopRequested) break;
-              if (existing.has(troop.id)) continue;
-              const item = descMap.get(troop.id);
-              const prompt = item?.imagePrompt;
-              if (!prompt) {
-                appendLog(`跳过 ${troop.id}：缺少 imagePrompt`);
-                continue;
-              }
+            const tasks = batch
+              .filter(t => !existing.has(t.id))
+              .map(t => {
+                const item = descMap.get(t.id);
+                const prompt = item?.imagePrompt;
+                return prompt ? { troop: t, prompt } : { troop: t, prompt: '' };
+              });
+            for (const t of tasks) {
+              if (!t.prompt) appendLog(`跳过 ${t.troop.id}：缺少 imagePrompt`);
+            }
+            const queue = tasks.filter(t => t.prompt);
+            if (queue.length === 0) continue;
 
-              setProgress(done, total, `生成中：${troop.name}（${troop.id}）`);
-              appendLog(`生图：${troop.id}`);
+            let idx = 0;
+            let fatalError = null;
+            let lastDispatchAt = 0;
+            let dispatchLock = Promise.resolve();
+            const waitDispatchSlot = async () => {
+              const prev = dispatchLock;
+              let release = null;
+              dispatchLock = new Promise(r => (release = r));
+              await prev;
+              const now = Date.now();
+              const wait = Math.max(0, lastDispatchAt + settings.sendIntervalMs - now);
+              lastDispatchAt = now + wait;
+              release();
+              if (wait > 0) await sleep(wait);
+            };
 
-              for (let attempt = 0; attempt <= settings.maxRetries; attempt++) {
-                try {
-                  await requestImage(troop.id, prompt, `生图失败（尝试 ${attempt + 1}）`);
-                  existing.add(troop.id);
-                  done += 1;
-                  setProgress(done, total, `完成：${troop.name}（${troop.id}）`);
-                  appendLog(`完成：${troop.id} -> image/troops/${troop.id}.png`);
-                  await fetchTroopFiles().catch(() => {});
-                  if (settings.sendIntervalMs > 0) await sleep(settings.sendIntervalMs);
-                  break;
-                } catch (e) {
-                  appendLog(`生图异常：${troop.id}：${e.message || e}；${attempt >= settings.maxRetries ? '达到最大重试次数，停止' : `等待重试 ${settings.retryIntervalMs}ms`}`);
-                  if (attempt >= settings.maxRetries) throw e;
-                  await sleep(settings.retryIntervalMs);
+            const worker = async (workerId) => {
+              while (!stopRequested && !fatalError) {
+                const currentIndex = idx;
+                idx += 1;
+                if (currentIndex >= queue.length) return;
+                const { troop, prompt } = queue[currentIndex];
+                if (existing.has(troop.id)) continue;
+
+                setProgress(done, total, `生成中：${troop.name}（${troop.id}）`);
+                appendLog(`生图[${workerId}]: ${troop.id}`);
+
+                for (let attempt = 0; attempt <= settings.maxRetries; attempt++) {
+                  if (stopRequested) return;
+                  try {
+                    await waitDispatchSlot();
+                    await requestImage(troop.id, prompt, `生图失败（尝试 ${attempt + 1}）`);
+                    existing.add(troop.id);
+                    done += 1;
+                    setProgress(done, total, `完成：${troop.name}（${troop.id}）`);
+                    appendLog(`完成：${troop.id} -> image/troops/${troop.id}.png`);
+                    await fetchTroopFiles().catch(() => {});
+                    return;
+                  } catch (e) {
+                    appendLog(`生图异常：${troop.id}：${e.message || e}；${attempt >= settings.maxRetries ? '达到最大重试次数，停止' : `等待重试 ${settings.retryIntervalMs}ms`}`);
+                    if (attempt >= settings.maxRetries) {
+                      fatalError = e;
+                      return;
+                    }
+                    await sleep(settings.retryIntervalMs);
+                  }
                 }
               }
-            }
+            };
+
+            const workers = Array.from({ length: Math.min(settings.imgConcurrency, queue.length) }, (_, i) => worker(i + 1));
+            await Promise.all(workers);
+            if (fatalError) throw fatalError;
           }
 
           if (stopRequested) {
@@ -680,7 +729,7 @@
       tabTroop.addEventListener('click', () => setActiveTab('TROOP'));
       startGenBtn.addEventListener('click', startBatchGenerate);
       stopGenBtn.addEventListener('click', stopBatchGenerate);
-      [txtBaseUrl, txtModel, txtKey, imgBaseUrl, imgModel, imgKey, imgEndpointMode, batchSize, sendIntervalMs, retryIntervalMs, maxRetries].forEach(el => {
+      [txtBaseUrl, txtModel, txtKey, imgBaseUrl, imgModel, imgKey, imgEndpointMode, batchSize, sendIntervalMs, retryIntervalMs, maxRetries, imgConcurrency].forEach(el => {
         el.addEventListener('change', saveGenSettings);
       });
 
