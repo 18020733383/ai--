@@ -167,6 +167,52 @@ const fetchText = async (url, init, timeoutMs = 120000) => {
   }
 };
 
+const fetchTextWithEarlyStop = async (url, init, timeoutMs = 120000) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), Math.max(1, Number(timeoutMs) || 1));
+  try {
+    const res = await fetch(url, { ...init, signal: controller.signal });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`HTTP ${res.status} ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
+    }
+    if (!res.body || typeof res.body.getReader !== 'function') {
+      const text = await res.text().catch(() => '');
+      return text;
+    }
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let full = '';
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      full += chunk;
+      const normalized = full.replace(/\\\//g, '/');
+      if (extractImageUrls(normalized).length > 0) {
+        controller.abort();
+        break;
+      }
+      if (normalized.includes('[DONE]') || normalized.includes('data: [DONE]')) {
+        controller.abort();
+        break;
+      }
+      const finishMatch = normalized.match(/"finish_reason"\s*:\s*("(.*?)"|null)/);
+      if (finishMatch && finishMatch[1] && finishMatch[1] !== 'null') {
+        controller.abort();
+        break;
+      }
+      if (full.length > 2_000_000) {
+        controller.abort();
+        break;
+      }
+    }
+    return full;
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 const extractJson = (raw) => {
   const text = String(raw ?? '').trim();
   if (!text) return null;
@@ -214,7 +260,7 @@ const extractJsonObjectsFromText = (raw) => {
 };
 
 const extractImageUrls = (raw) => {
-  const text = String(raw ?? '');
+  const text = String(raw ?? '').replace(/\\\//g, '/');
   const urls = [];
   const re = /(https?:\/\/[^\s"'`<>]+?\.(?:png|jpg|jpeg|webp))(?:[^\s"'`<>]*)/ig;
   let m;
@@ -227,7 +273,7 @@ const extractImageUrls = (raw) => {
 };
 
 const parseChatCompletionToText = (raw) => {
-  const text = String(raw ?? '');
+  const text = String(raw ?? '').replace(/\\\//g, '/');
   const urls = extractImageUrls(text);
   const trimmed = text.trim();
   if (!trimmed) return { content: '', urls, objects: [] };
@@ -582,7 +628,7 @@ JSON 格式必须是：
 {"b64_png":"<base64 png 不带前缀>"}
 要求：画面内禁止任何文字、logo、水印、UI。
         `.trim();
-        const raw = await fetchText(endpoint, {
+        const raw = await fetchTextWithEarlyStop(endpoint, {
           method: 'POST',
           headers: authHeaders,
           body: JSON.stringify({
@@ -594,7 +640,11 @@ JSON 格式必须是：
             ]
           })
         }, 240000);
+        console.log('[troop-image][chat] raw length', String(raw ?? '').length);
+        console.log('[troop-image][chat] raw head', String(raw ?? '').slice(0, 800));
+        console.log('[troop-image][chat] raw tail', String(raw ?? '').slice(-800));
         const parsedText = parseChatCompletionToText(raw);
+        console.log('[troop-image][chat] extracted urls', parsedText.urls);
         const content = parsedText.content || raw;
         const parsed = extractJson(content) ?? extractJson(parsedText.objects?.[parsedText.objects.length - 1] ?? null) ?? null;
         const picked = extractBase64ImageFromJson(parsed) ?? extractBase64ImageFromJson(parsedText.objects?.[parsedText.objects.length - 1] ?? null);
