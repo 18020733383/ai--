@@ -26,6 +26,18 @@
       .progress { width: 100%; height: 12px; background: #0f1115; border: 1px solid #2a2f3a; border-radius: 999px; overflow: hidden; }
       .progress > div { height: 100%; width: 0%; background: linear-gradient(90deg, #7dd3fc, #a78bfa); transition: width 180ms ease; }
       .log { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; white-space: pre-wrap; background: #0f1115; border: 1px solid #2a2f3a; border-radius: 10px; padding: 10px; max-height: 220px; overflow: auto; }
+      .pill { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; padding: 6px 10px; border-radius: 999px; border: 1px solid #2a2f3a; background: #0f1115; color: #9aa3b2; }
+      .pill strong { color: #e6e8ef; font-weight: 600; }
+      .list { border: 1px solid #2a2f3a; border-radius: 12px; overflow: hidden; }
+      .listHeader { display: grid; grid-template-columns: 42px 64px 1fr 220px 100px; gap: 10px; padding: 10px 12px; background: #0f1115; border-bottom: 1px solid #2a2f3a; font-size: 12px; color: #9aa3b2; }
+      .listRow { display: grid; grid-template-columns: 42px 64px 1fr 220px 100px; gap: 10px; padding: 10px 12px; border-bottom: 1px solid #222733; align-items: center; }
+      .listRow:last-child { border-bottom: none; }
+      .thumbImg { width: 56px; height: 56px; border-radius: 10px; border: 1px solid #2a2f3a; background: #111; object-fit: cover; }
+      .idMono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: #9aa3b2; }
+      .nameStrong { font-weight: 600; color: #e6e8ef; }
+      .tagOk { color: #86efac; }
+      .tagMiss { color: #fca5a5; }
+      .btnRow { display: flex; gap: 10px; flex-wrap: wrap; }
     </style>
   </head>
   <body>
@@ -130,8 +142,45 @@
           <div style="grid-column: 1 / -1;">
             <div class="title" style="font-size: 16px; margin: 0 0 10px;">批量生成兵种图片</div>
             <div class="muted" style="margin-bottom: 12px;">
-              自动跳过已有图片的兵种；文本先批量生成（默认 5 组），再逐个生图并写入 image/troops。图片要求：1:1、无文字、统一背景与画风。
+              先从下方列表勾选要处理的兵种；点击“生成所选图片”后，会先批量生成描述（默认每批 5 个），再按并发数生图并写入 image/troops。图片要求：1:1、无文字、统一背景与画风。
             </div>
+          </div>
+        </div>
+
+        <div class="row">
+          <div style="grid-column: 1 / -1;">
+            <div class="title" style="font-size: 14px; margin: 0 0 10px;">选择兵种（分页）</div>
+            <div class="row">
+              <div>
+                <label>搜索</label>
+                <input id="troopSearch" placeholder="按名称或 id 搜索…" />
+              </div>
+              <div>
+                <label>每页</label>
+                <select id="troopPageSize">
+                  <option value="20">20</option>
+                  <option value="50" selected>50</option>
+                  <option value="100">100</option>
+                </select>
+              </div>
+            </div>
+            <div class="row">
+              <div class="btnRow">
+                <button id="selectAllPageBtn">全选本页</button>
+                <button id="selectMissingPageBtn">仅选本页缺图</button>
+                <button id="selectAllMissingBtn">选择全部缺图</button>
+                <button id="clearSelectionBtn">清空选择</button>
+              </div>
+              <div class="btnRow" style="justify-content: flex-end;">
+                <button id="pagePrevBtn">上一页</button>
+                <button id="pageNextBtn">下一页</button>
+              </div>
+            </div>
+            <div class="row">
+              <div class="pill">总兵种 <strong id="troopTotalCount">0</strong>｜缺图 <strong id="troopMissingCount">0</strong>｜已选 <strong id="troopSelectedCount">0</strong></div>
+              <div class="muted" id="troopPageInfo" style="text-align: right;"></div>
+            </div>
+            <div class="list" id="troopList"></div>
           </div>
         </div>
 
@@ -203,13 +252,19 @@
             <input id="maxRetries" type="number" min="0" max="20" value="3" />
           </div>
         </div>
-        <div class="row"></div>
+        <div class="row">
           <div>
             <label>绘图并发数量</label>
             <input id="imgConcurrency" type="number" min="1" max="12" value="2" />
             <div class="muted" style="margin-top: 6px;">同一批次内并发生成，必须整批都成功才进入下一批。</div>
           </div>
-          <div></div>
+          <div>
+            <label>跳过已有图片</label>
+            <select id="skipExisting">
+              <option value="YES" selected>是（推荐）</option>
+              <option value="NO">否（覆盖重生成）</option>
+            </select>
+          </div>
         </div>
 
         <div class="row">
@@ -221,7 +276,7 @@
           <div>
             <label>操作</label>
             <div style="display: flex; gap: 10px;">
-              <button id="startGenBtn">开始批量生成</button>
+              <button id="startGenBtn">生成所选图片</button>
               <button id="stopGenBtn" disabled>停止</button>
             </div>
           </div>
@@ -273,11 +328,26 @@
       const retryIntervalMs = document.getElementById('retryIntervalMs');
       const maxRetries = document.getElementById('maxRetries');
       const imgConcurrency = document.getElementById('imgConcurrency');
+      const skipExisting = document.getElementById('skipExisting');
       const startGenBtn = document.getElementById('startGenBtn');
       const stopGenBtn = document.getElementById('stopGenBtn');
       const genProgressBar = document.getElementById('genProgressBar');
       const genProgressText = document.getElementById('genProgressText');
       const genLog = document.getElementById('genLog');
+
+      const troopSearch = document.getElementById('troopSearch');
+      const troopPageSize = document.getElementById('troopPageSize');
+      const troopList = document.getElementById('troopList');
+      const troopTotalCount = document.getElementById('troopTotalCount');
+      const troopMissingCount = document.getElementById('troopMissingCount');
+      const troopSelectedCount = document.getElementById('troopSelectedCount');
+      const troopPageInfo = document.getElementById('troopPageInfo');
+      const selectAllPageBtn = document.getElementById('selectAllPageBtn');
+      const selectMissingPageBtn = document.getElementById('selectMissingPageBtn');
+      const selectAllMissingBtn = document.getElementById('selectAllMissingBtn');
+      const clearSelectionBtn = document.getElementById('clearSelectionBtn');
+      const pagePrevBtn = document.getElementById('pagePrevBtn');
+      const pageNextBtn = document.getElementById('pageNextBtn');
 
       const setStatus = (text) => { statusText.textContent = text || ''; };
       const setTroopStatus = (text) => { troopStatusText.textContent = text || ''; };
@@ -306,6 +376,8 @@
           retryIntervalMs.value = String(s.retryIntervalMs ?? 3000);
           maxRetries.value = String(s.maxRetries ?? 3);
           imgConcurrency.value = String(s.imgConcurrency ?? 2);
+          skipExisting.value = s.skipExisting || 'YES';
+          troopPageSize.value = String(s.troopPageSize ?? 50);
         } catch {}
       };
 
@@ -323,6 +395,8 @@
           retryIntervalMs: Number(retryIntervalMs.value || 0),
           maxRetries: Number(maxRetries.value || 0),
           imgConcurrency: Number(imgConcurrency.value || 2),
+          skipExisting: skipExisting.value || 'YES',
+          troopPageSize: Number(troopPageSize.value || 50),
         };
         localStorage.setItem('troopGenSettings', JSON.stringify(s));
       };
@@ -446,6 +520,96 @@
         };
       };
 
+      let allTroopsCache = [];
+      let existingSetCache = new Set();
+      let selectionPage = 1;
+      const selectedTroopIds = new Set();
+
+      const updateSelectionStats = () => {
+        troopTotalCount.textContent = String(allTroopsCache.length);
+        const missingCount = allTroopsCache.reduce((acc, t) => acc + (existingSetCache.has(t.id) ? 0 : 1), 0);
+        troopMissingCount.textContent = String(missingCount);
+        troopSelectedCount.textContent = String(selectedTroopIds.size);
+      };
+
+      const setupThumb = (img) => {
+        const id = img.getAttribute('data-id');
+        const tries = [`/troop-files/${encodeURIComponent(id)}.png`, `/troop-files/${encodeURIComponent(id)}.jpg`, `/troop-files/${encodeURIComponent(id)}.jpeg`];
+        img.dataset.try = img.dataset.try || '0';
+        img.onerror = () => {
+          const current = Number(img.dataset.try || '0');
+          const next = current + 1;
+          if (next >= tries.length) {
+            img.onerror = null;
+            img.src = '';
+            return;
+          }
+          img.dataset.try = String(next);
+          img.src = tries[next];
+        };
+        img.src = tries[Number(img.dataset.try || '0')];
+      };
+
+      const getFilteredTroops = () => {
+        const q = String(troopSearch.value || '').trim().toLowerCase();
+        if (!q) return allTroopsCache;
+        return allTroopsCache.filter(t => String(t.id || '').toLowerCase().includes(q) || String(t.name || '').toLowerCase().includes(q));
+      };
+
+      const renderTroopList = () => {
+        const pageSize = Math.max(1, Number(troopPageSize.value || 50));
+        const list = getFilteredTroops();
+        const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+        selectionPage = Math.max(1, Math.min(totalPages, selectionPage));
+        const start = (selectionPage - 1) * pageSize;
+        const pageItems = list.slice(start, start + pageSize);
+
+        troopPageInfo.textContent = `第 ${selectionPage}/${totalPages} 页 · 本页 ${pageItems.length} 条`;
+        updateSelectionStats();
+
+        troopList.innerHTML = `
+          <div class="listHeader">
+            <div>选</div>
+            <div>图</div>
+            <div>名称</div>
+            <div>ID</div>
+            <div>状态</div>
+          </div>
+          ${pageItems.map(t => {
+            const checked = selectedTroopIds.has(t.id) ? 'checked' : '';
+            const has = existingSetCache.has(t.id);
+            const status = has ? `<span class="tagOk">已有</span>` : `<span class="tagMiss">缺图</span>`;
+            return `
+              <div class="listRow">
+                <div><input type="checkbox" class="troopPick" data-id="${t.id}" ${checked} /></div>
+                <div><img class="thumbImg troopThumb" data-id="${t.id}" alt="" /></div>
+                <div><div class="nameStrong">${t.name}</div></div>
+                <div class="idMono">${t.id}</div>
+                <div>${status}</div>
+              </div>
+            `;
+          }).join('')}
+        `;
+
+        troopList.querySelectorAll('.troopThumb').forEach(setupThumb);
+        troopList.querySelectorAll('.troopPick').forEach(cb => {
+          cb.addEventListener('change', () => {
+            const id = cb.getAttribute('data-id');
+            if (!id) return;
+            if (cb.checked) selectedTroopIds.add(id);
+            else selectedTroopIds.delete(id);
+            updateSelectionStats();
+          });
+        });
+      };
+
+      const refreshTroopCache = async () => {
+        const { troops, existing } = await fetchTroopsWithExisting();
+        allTroopsCache = troops;
+        existingSetCache = existing;
+        renderTroopList();
+      };
+
       const fetchTroopFiles = async () => {
         const troopId = troopSelect.value;
         if (!troopId) return;
@@ -549,26 +713,12 @@
       };
 
       const requestImage = async (troopId, prompt, attemptInfo) => {
-        const softenPrompt = (raw) => {
-          let p = String(raw || '');
-          const pairs = [
-            [/blood|bloody|gore|gory|viscera|corpse|dead body|dismember(ed)?|severed|decapitat(ed|ion)|massacre/ig, ''],
-            [/kill(ing)?|slaughter|execute(d|ion)|torture/ig, 'defeat'],
-            [/nude|nudity|naked|sex|sexual|porn|erotic/ig, ''],
-            [/drugs?|cocaine|heroin|meth|needle/ig, ''],
-            [/hate|racis(t|m)|nazi|extremis(t|m)/ig, '']
-          ];
-          for (const [re, rep] of pairs) p = p.replace(re, rep);
-          const suffix = ' PG-13, non-violent, no gore, no blood, no injury, no nudity, no text, no logo, no watermark, clean portrait, safe content.';
-          if (!p.toLowerCase().includes('no text')) p = `${p}\n${suffix}`;
-          return p.trim();
-        };
         const body = {
           baseUrl: imgBaseUrl.value.trim(),
           apiKey: imgKey.value,
           model: imgModel.value.trim(),
           troopId,
-          prompt: softenPrompt(prompt),
+          prompt,
           size: '1024x1024',
           sendIntervalMs: 0,
           endpointMode: imgEndpointMode.value || 'AUTO'
@@ -603,19 +753,27 @@
           if (!txtBaseUrl.value.trim() || !txtModel.value.trim() || !txtKey.value) throw new Error('文本模型配置不完整');
           if (!imgBaseUrl.value.trim() || !imgModel.value.trim() || !imgKey.value) throw new Error('生图模型配置不完整');
 
-          appendLog('拉取兵种列表…');
-          const { troops, existing } = await fetchTroopsWithExisting();
-          const missing = troops.filter(t => !existing.has(t.id));
-          const total = missing.length;
+          if (allTroopsCache.length === 0) {
+            appendLog('拉取兵种列表…');
+            await refreshTroopCache();
+          } else {
+            await refreshTroopCache();
+          }
+
+          const selected = allTroopsCache.filter(t => selectedTroopIds.has(t.id));
+          if (selected.length === 0) throw new Error('未选择任何兵种');
+          const shouldSkipExisting = (skipExisting.value || 'YES') === 'YES';
+          const targets = shouldSkipExisting ? selected.filter(t => !existingSetCache.has(t.id)) : selected;
+          const total = targets.length;
           let done = 0;
-          setProgress(done, total, total === 0 ? '全部已有图片' : `待生成 ${total} 张`);
-          appendLog(`已存在图片：${existing.size}；待生成：${total}`);
+          setProgress(done, total, total === 0 ? '无需生成' : `待生成 ${total} 张`);
+          appendLog(`已选择：${selected.length}｜待生成：${total}｜跳过已有图：${shouldSkipExisting ? '是' : '否'}`);
           if (total === 0) return;
           appendLog(`绘图并发：${settings.imgConcurrency}｜发送间隔：${settings.sendIntervalMs}ms`);
 
           let cursor = 0;
-          while (cursor < missing.length && !stopRequested) {
-            const batch = missing.slice(cursor, cursor + settings.batchSize);
+          while (cursor < targets.length && !stopRequested) {
+            const batch = targets.slice(cursor, cursor + settings.batchSize);
             cursor += batch.length;
 
             appendLog(`批量生成描述：${batch.map(x => x.id).join(', ')}`);
@@ -632,7 +790,7 @@
             }
 
             const tasks = batch
-              .filter(t => !existing.has(t.id))
+              .filter(t => !(shouldSkipExisting && existingSetCache.has(t.id)))
               .map(t => {
                 const item = descMap.get(t.id);
                 const prompt = item?.imagePrompt;
@@ -666,7 +824,7 @@
                 idx += 1;
                 if (currentIndex >= queue.length) return;
                 const { troop, prompt } = queue[currentIndex];
-                if (existing.has(troop.id)) continue;
+                if (shouldSkipExisting && existingSetCache.has(troop.id)) continue;
 
                 setProgress(done, total, `生成中：${troop.name}（${troop.id}）`);
                 appendLog(`生图[${workerId}]: ${troop.id}`);
@@ -676,16 +834,15 @@
                   try {
                     await waitDispatchSlot();
                     await requestImage(troop.id, prompt, `生图失败（尝试 ${attempt + 1}）`);
-                    existing.add(troop.id);
+                    existingSetCache.add(troop.id);
                     done += 1;
                     setProgress(done, total, `完成：${troop.name}（${troop.id}）`);
                     appendLog(`完成：${troop.id} -> image/troops/${troop.id}.png`);
                     await fetchTroopFiles().catch(() => {});
+                    renderTroopList();
                     return;
                   } catch (e) {
-                    const msg = String(e?.message || e || '');
-                    const sensitive = msg.includes('sensitive_words_detected');
-                    appendLog(`生图异常：${troop.id}：${msg}；${attempt >= settings.maxRetries ? '达到最大重试次数，停止' : `等待重试 ${settings.retryIntervalMs}ms`}${sensitive ? '（检测到敏感词，将使用更委婉的安全 prompt）' : ''}`);
+                    appendLog(`生图异常：${troop.id}：${e.message || e}；${attempt >= settings.maxRetries ? '达到最大重试次数，停止' : `等待重试 ${settings.retryIntervalMs}ms`}`);
                     if (attempt >= settings.maxRetries) {
                       fatalError = e;
                       return;
@@ -745,13 +902,45 @@
       tabTroop.addEventListener('click', () => setActiveTab('TROOP'));
       startGenBtn.addEventListener('click', startBatchGenerate);
       stopGenBtn.addEventListener('click', stopBatchGenerate);
-      [txtBaseUrl, txtModel, txtKey, imgBaseUrl, imgModel, imgKey, imgEndpointMode, batchSize, sendIntervalMs, retryIntervalMs, maxRetries, imgConcurrency].forEach(el => {
+      [txtBaseUrl, txtModel, txtKey, imgBaseUrl, imgModel, imgKey, imgEndpointMode, batchSize, sendIntervalMs, retryIntervalMs, maxRetries, imgConcurrency, skipExisting, troopPageSize].forEach(el => {
         el.addEventListener('change', saveGenSettings);
+      });
+
+      troopSearch.addEventListener('input', () => { selectionPage = 1; renderTroopList(); });
+      troopPageSize.addEventListener('change', () => { selectionPage = 1; renderTroopList(); });
+      pagePrevBtn.addEventListener('click', () => { selectionPage = Math.max(1, selectionPage - 1); renderTroopList(); });
+      pageNextBtn.addEventListener('click', () => { selectionPage += 1; renderTroopList(); });
+      selectAllPageBtn.addEventListener('click', () => {
+        const pageSize = Math.max(1, Number(troopPageSize.value || 50));
+        const list = getFilteredTroops();
+        const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+        selectionPage = Math.max(1, Math.min(totalPages, selectionPage));
+        const start = (selectionPage - 1) * pageSize;
+        list.slice(start, start + pageSize).forEach(t => selectedTroopIds.add(t.id));
+        renderTroopList();
+      });
+      selectMissingPageBtn.addEventListener('click', () => {
+        const pageSize = Math.max(1, Number(troopPageSize.value || 50));
+        const list = getFilteredTroops();
+        const totalPages = Math.max(1, Math.ceil(list.length / pageSize));
+        selectionPage = Math.max(1, Math.min(totalPages, selectionPage));
+        const start = (selectionPage - 1) * pageSize;
+        list.slice(start, start + pageSize).forEach(t => { if (!existingSetCache.has(t.id)) selectedTroopIds.add(t.id); });
+        renderTroopList();
+      });
+      selectAllMissingBtn.addEventListener('click', () => {
+        allTroopsCache.forEach(t => { if (!existingSetCache.has(t.id)) selectedTroopIds.add(t.id); });
+        renderTroopList();
+      });
+      clearSelectionBtn.addEventListener('click', () => {
+        selectedTroopIds.clear();
+        renderTroopList();
       });
 
       fetchHeroes().then(fetchHeroFiles);
       fetchTroops().then(fetchTroopFiles);
       loadGenSettings();
+      refreshTroopCache();
     </script>
   </body>
 </html>
