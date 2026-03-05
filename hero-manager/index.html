@@ -549,12 +549,26 @@
       };
 
       const requestImage = async (troopId, prompt, attemptInfo) => {
+        const softenPrompt = (raw) => {
+          let p = String(raw || '');
+          const pairs = [
+            [/blood|bloody|gore|gory|viscera|corpse|dead body|dismember(ed)?|severed|decapitat(ed|ion)|massacre/ig, ''],
+            [/kill(ing)?|slaughter|execute(d|ion)|torture/ig, 'defeat'],
+            [/nude|nudity|naked|sex|sexual|porn|erotic/ig, ''],
+            [/drugs?|cocaine|heroin|meth|needle/ig, ''],
+            [/hate|racis(t|m)|nazi|extremis(t|m)/ig, '']
+          ];
+          for (const [re, rep] of pairs) p = p.replace(re, rep);
+          const suffix = ' PG-13, non-violent, no gore, no blood, no injury, no nudity, no text, no logo, no watermark, clean portrait, safe content.';
+          if (!p.toLowerCase().includes('no text')) p = `${p}\n${suffix}`;
+          return p.trim();
+        };
         const body = {
           baseUrl: imgBaseUrl.value.trim(),
           apiKey: imgKey.value,
           model: imgModel.value.trim(),
           troopId,
-          prompt,
+          prompt: softenPrompt(prompt),
           size: '1024x1024',
           sendIntervalMs: 0,
           endpointMode: imgEndpointMode.value || 'AUTO'
@@ -669,7 +683,9 @@
                     await fetchTroopFiles().catch(() => {});
                     return;
                   } catch (e) {
-                    appendLog(`生图异常：${troop.id}：${e.message || e}；${attempt >= settings.maxRetries ? '达到最大重试次数，停止' : `等待重试 ${settings.retryIntervalMs}ms`}`);
+                    const msg = String(e?.message || e || '');
+                    const sensitive = msg.includes('sensitive_words_detected');
+                    appendLog(`生图异常：${troop.id}：${msg}；${attempt >= settings.maxRetries ? '达到最大重试次数，停止' : `等待重试 ${settings.retryIntervalMs}ms`}${sensitive ? '（检测到敏感词，将使用更委婉的安全 prompt）' : ''}`);
                     if (attempt >= settings.maxRetries) {
                       fatalError = e;
                       return;
