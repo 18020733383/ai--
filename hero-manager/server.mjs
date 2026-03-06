@@ -6,8 +6,14 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
-const heroRoot = path.join(rootDir, 'image', 'characters');
-const troopRoot = path.join(rootDir, 'image', 'troops');
+const publicHeroRoot = path.join(rootDir, 'public', 'image', 'characters');
+const publicTroopRoot = path.join(rootDir, 'public', 'image', 'troops');
+const legacyHeroRoot = path.join(rootDir, 'image', 'characters');
+const legacyTroopRoot = path.join(rootDir, 'image', 'troops');
+const heroRoots = [publicHeroRoot, legacyHeroRoot];
+const troopRoots = [publicTroopRoot, legacyTroopRoot];
+const heroRoot = publicHeroRoot;
+const troopRoot = publicTroopRoot;
 const indexPath = path.join(__dirname, 'index.html');
 
 const sendJson = (res, status, data) => {
@@ -34,10 +40,28 @@ const safeJoin = (base, target) => {
   return resolved;
 };
 
+const findFirstExisting = async (roots, relativePath) => {
+  for (const root of roots) {
+    try {
+      const filePath = safeJoin(root, relativePath);
+      const info = await stat(filePath);
+      if (info.isFile()) return filePath;
+    } catch {}
+  }
+  return null;
+};
+
 const listHeroes = async () => {
   try {
-    const entries = await readdir(heroRoot, { withFileTypes: true });
-    return entries.filter(e => e.isDirectory()).map(e => e.name).sort();
+    const lists = await Promise.all(heroRoots.map(async (root) => {
+      try {
+        const entries = await readdir(root, { withFileTypes: true });
+        return entries.filter(e => e.isDirectory()).map(e => e.name);
+      } catch {
+        return [];
+      }
+    }));
+    return Array.from(new Set(lists.flat())).sort();
   } catch {
     return [];
   }
@@ -45,9 +69,16 @@ const listHeroes = async () => {
 
 const listHeroFiles = async (heroId) => {
   try {
-    const heroDir = safeJoin(heroRoot, heroId);
-    const entries = await readdir(heroDir, { withFileTypes: true });
-    return entries.filter(e => e.isFile()).map(e => e.name).sort();
+    const lists = await Promise.all(heroRoots.map(async (root) => {
+      try {
+        const heroDir = safeJoin(root, heroId);
+        const entries = await readdir(heroDir, { withFileTypes: true });
+        return entries.filter(e => e.isFile()).map(e => e.name);
+      } catch {
+        return [];
+      }
+    }));
+    return Array.from(new Set(lists.flat())).sort();
   } catch {
     return [];
   }
@@ -89,12 +120,18 @@ const listTroopsFromConstants = async () => {
 
 const listTroopFiles = async () => {
   try {
-    const entries = await readdir(troopRoot, { withFileTypes: true });
-    return entries
-      .filter(e => e.isFile())
-      .map(e => e.name)
-      .filter(name => /\.(png|jpg|jpeg)$/i.test(name))
-      .sort();
+    const lists = await Promise.all(troopRoots.map(async (root) => {
+      try {
+        const entries = await readdir(root, { withFileTypes: true });
+        return entries
+          .filter(e => e.isFile())
+          .map(e => e.name)
+          .filter(name => /\.(png|jpg|jpeg)$/i.test(name));
+      } catch {
+        return [];
+      }
+    }));
+    return Array.from(new Set(lists.flat())).sort();
   } catch {
     return [];
   }
@@ -445,9 +482,8 @@ const server = http.createServer(async (req, res) => {
       const heroId = decodeURIComponent(parts[1]);
       const fileName = decodeURIComponent(parts[2]);
       try {
-        const filePath = safeJoin(heroRoot, path.join(heroId, fileName));
-        const info = await stat(filePath);
-        if (!info.isFile()) return sendText(res, 404, 'Not found');
+        const filePath = await findFirstExisting(heroRoots, path.join(heroId, fileName));
+        if (!filePath) return sendText(res, 404, 'Not found');
         const ext = path.extname(filePath).toLowerCase();
         const contentType = ext === '.png'
           ? 'image/png'
@@ -470,9 +506,8 @@ const server = http.createServer(async (req, res) => {
     if (parts.length === 2) {
       const fileName = decodeURIComponent(parts[1]);
       try {
-        const filePath = safeJoin(troopRoot, fileName);
-        const info = await stat(filePath);
-        if (!info.isFile()) return sendText(res, 404, 'Not found');
+        const filePath = await findFirstExisting(troopRoots, fileName);
+        if (!filePath) return sendText(res, 404, 'Not found');
         const ext = path.extname(filePath).toLowerCase();
         const contentType = ext === '.png'
           ? 'image/png'

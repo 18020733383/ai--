@@ -12,7 +12,9 @@ export const CHANGELOG: ChangelogEntry[] = [
       '本地图片管理器新增批量生成兵种图片：文本批量生成+逐个生图、进度条、重试与自动写入',
       '支持兵种分页列表展示与多选：选中后点击生成图片',
       '生图支持 images/generations 失败时自动回退到 chat/completions（含 URL/流式返回兼容）',
-      '批量生图新增并发数量：同批次内并发生成，整批成功才进入下一批'
+      '批量生图支持并发数量：同批次内并发，整批成功才继续',
+      '兵种图片迁移到 public/image/troops，便于 Cloudflare 部署访问',
+      '启动时自动注销旧 Service Worker，避免 Workbox 缓存导致白屏/Failed to fetch'
     ]
   },
   {
