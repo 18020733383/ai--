@@ -59,6 +59,7 @@ export interface Troop {
   cost: number; 
   upgradeCost: number; 
   upgradeTargetId?: string; 
+  upgradeTargetIds?: string[];
   description: string;
   equipment: string[]; 
   attributes: TroopAttributes;
@@ -438,7 +439,7 @@ export interface SiegeEngineQueueItem {
   totalDays: number;
 }
 
-export type GameView = 'MAIN_MENU' | 'INTRO' | 'MAP' | 'TOWN' | 'BATTLE' | 'BATTLE_RESULT' | 'ENDING' | 'GAME_OVER' | 'PARTY' | 'CHARACTER' | 'BILLS' | 'TRAINING' | 'ASYLUM' | 'MARKET' | 'BANDIT_ENCOUNTER' | 'CAVE' | 'HERO_CHAT' | 'WORLD_BOARD' | 'TROOP_ARCHIVE' | 'RELATIONS';
+export type GameView = 'MAIN_MENU' | 'INTRO' | 'MAP' | 'TOWN' | 'BATTLE' | 'BATTLE_RESULT' | 'ENDING' | 'GAME_OVER' | 'PARTY' | 'CHARACTER' | 'BILLS' | 'TRAINING' | 'ASYLUM' | 'MARKET' | 'BANDIT_ENCOUNTER' | 'CAVE' | 'HERO_CHAT' | 'WORLD_BOARD' | 'TROOP_ARCHIVE' | 'RELATIONS' | 'HIDEOUT_INTERIOR';
 
 export interface RecruitOffer {
   troopId: string;

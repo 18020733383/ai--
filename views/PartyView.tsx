@@ -13,7 +13,8 @@ type PartyViewProps = {
   partyCategoryFilter: PartyCategoryFilter;
   setPartyCategoryFilter: (value: PartyCategoryFilter) => void;
   getTroopTemplate: (troopId: string) => any;
-  handleUpgrade: (troopId: string) => void;
+  getUpgradeTargetOptions: (troopId: string) => string[];
+  handleUpgrade: (troopId: string, targetId?: string) => void;
   handleDisband: (troopId: string, mode: 'ONE' | 'ALL') => void;
   getHeroRoleLabel: (role: Hero['role']) => string;
   spendHeroAttributePoint: (heroId: string, key: keyof Hero['attributes']) => void;
@@ -27,6 +28,7 @@ export const PartyView = ({
   partyCategoryFilter,
   setPartyCategoryFilter,
   getTroopTemplate,
+  getUpgradeTargetOptions,
   handleUpgrade,
   handleDisband,
   getHeroRoleLabel,
@@ -35,6 +37,7 @@ export const PartyView = ({
   onBackToMap
 }: PartyViewProps) => {
   const recruitedHeroes = heroes.filter(hero => hero.recruited && !hero.locationId);
+  const [upgradePicker, setUpgradePicker] = React.useState<{ sourceId: string; options: string[] } | null>(null);
   const partyCategoryLabel: Record<PartyCategoryFilter, string> = {
     ALL: '全部',
     NORMAL: '常规',
@@ -118,7 +121,11 @@ export const PartyView = ({
         )}
         {displayedTroops.map(troop => {
           const canAffordUpgrade = player.gold >= troop.upgradeCost;
-          const upgradeLabel = canAffordUpgrade ? `晋升部队 (${troop.upgradeCost} 第纳尔)` : `钱不够 (${troop.upgradeCost} 第纳尔)`;
+          const options = getUpgradeTargetOptions(troop.id);
+          const isBranching = options.length > 1;
+          const upgradeLabel = canAffordUpgrade
+            ? (isBranching ? `选择晋升 (${troop.upgradeCost} 第纳尔)` : `晋升部队 (${troop.upgradeCost} 第纳尔)`)
+            : `钱不够 (${troop.upgradeCost} 第纳尔)`;
           return (
             <TroopCard
               key={troop.id}
@@ -128,14 +135,69 @@ export const PartyView = ({
               onSecondaryAction={() => handleDisband(troop.id, 'ONE')}
               actionLabel="遣散全部"
               onAction={() => handleDisband(troop.id, 'ALL')}
-              canUpgrade={!!troop.upgradeTargetId}
-              onUpgrade={() => handleUpgrade(troop.id)}
+              canUpgrade={options.length > 0}
+              onUpgrade={() => {
+                if (options.length <= 1) {
+                  handleUpgrade(troop.id, options[0]);
+                  return;
+                }
+                setUpgradePicker({ sourceId: troop.id, options });
+              }}
               upgradeDisabled={!canAffordUpgrade}
               upgradeLabel={upgradeLabel}
             />
           );
         })}
       </div>
+
+      {upgradePicker && (() => {
+        const sourceStack = player.troops.find(t => t.id === upgradePicker.sourceId) ?? null;
+        const sourceTmpl = sourceStack ? getTroopTemplate(sourceStack.id) : null;
+        const close = () => setUpgradePicker(null);
+        return (
+          <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
+            <div className="w-full max-w-3xl bg-stone-900 border border-stone-700 rounded shadow-2xl p-5 space-y-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-lg font-bold text-stone-200">选择晋升方向</div>
+                  <div className="text-xs text-stone-500 mt-1">
+                    {sourceTmpl?.name ?? sourceStack?.name ?? upgradePicker.sourceId} · 费用 {sourceStack?.upgradeCost ?? 0}
+                  </div>
+                </div>
+                <button onClick={close} className="text-stone-400 hover:text-white">关闭</button>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {upgradePicker.options.map(targetId => {
+                  const t = getTroopTemplate(targetId);
+                  if (!t) return null;
+                  const attrs = t.attributes;
+                  return (
+                    <button
+                      key={targetId}
+                      onClick={() => {
+                        handleUpgrade(upgradePicker.sourceId, targetId);
+                        close();
+                      }}
+                      className="text-left bg-stone-950/50 hover:bg-stone-950/70 border border-stone-800 hover:border-emerald-700 rounded p-3 transition-colors"
+                    >
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-stone-200 font-semibold truncate">{t.name}</div>
+                        <div className="text-xs text-stone-500">T{t.tier}</div>
+                      </div>
+                      <div className="text-xs text-stone-500 mt-1 truncate">{t.id}</div>
+                      <div className="text-[11px] text-stone-400 mt-2">
+                        攻{attrs.attack} 防{attrs.defense} 敏{attrs.agility} 血{attrs.hp} 射{attrs.range} 士{attrs.morale}
+                      </div>
+                      <div className="text-[11px] text-stone-500 mt-2 line-clamp-3">{t.description}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {woundedTroops.length > 0 && (
         <div className="mt-6 bg-stone-900/60 border border-stone-700 p-4 rounded shadow-lg">

@@ -270,6 +270,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeCost: 60,
     maxXp: 50,
     upgradeTargetId: 'footman',
+    upgradeTargetIds: ['footman', 'archer', 'cavalryman'],
     description: '接受过基础训练的城镇守卫。【技能：坚守】在城镇地形防御力+20%。',
     equipment: ['短矛', '木盾', '皮甲'],
     attributes: troopAttr(65, 55, 50, 60, 5, 60)
@@ -286,6 +287,19 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     description: '军队的中坚力量。【技能：盾墙】对抗远程伤害减少50%。',
     equipment: ['精铁剑', '阔盾', '链甲'],
     attributes: troopAttr(100, 100, 60, 110, 5, 80)
+  },
+  cavalryman: {
+    id: 'cavalryman',
+    name: '骑兵',
+    tier: TroopTier.TIER_3,
+    basePower: 45,
+    cost: 160,
+    upgradeCost: 240,
+    maxXp: 170,
+    upgradeTargetId: 'knight',
+    description: '机动冲锋的中坚力量。【技能：突击冲锋】第一回合更容易击退步兵。',
+    equipment: ['轻骑枪', '军刀', '链甲马衣', '战马'],
+    attributes: troopAttr(125, 85, 95, 110, 15, 95)
   },
   knight: {
     id: 'knight',
@@ -4285,7 +4299,19 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
 export const TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = Object.fromEntries(
   Object.entries(RAW_TROOP_TEMPLATES).map(([id, template]) => [
     id,
-    { ...template, attributes: normalizeAttributes(template.attributes, template.tier) }
+    (() => {
+      const rawUpgradeIds = (template as any).upgradeTargetIds;
+      const upgradeTargetIds = Array.isArray(rawUpgradeIds)
+        ? rawUpgradeIds.map((x: any) => String(x ?? '').trim()).filter(Boolean)
+        : (template.upgradeTargetId ? [template.upgradeTargetId] : undefined);
+      const upgradeTargetId = template.upgradeTargetId ?? (upgradeTargetIds && upgradeTargetIds.length > 0 ? upgradeTargetIds[0] : undefined);
+      return {
+        ...template,
+        upgradeTargetId,
+        upgradeTargetIds,
+        attributes: normalizeAttributes(template.attributes, template.tier)
+      };
+    })()
   ])
 ) as Record<string, Omit<Troop, 'count' | 'xp'>>;
 

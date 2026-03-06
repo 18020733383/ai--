@@ -14,7 +14,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       '生图支持 images/generations 失败时自动回退到 chat/completions（含 URL/流式返回兼容）',
       '批量生图支持并发数量：同批次内并发，整批成功才继续',
       '兵种图片迁移到 public/image/troops，便于 Cloudflare 部署访问',
-      '启动时自动注销旧 Service Worker，避免 Workbox 缓存导致白屏/Failed to fetch'
+      '启动时自动注销旧 Service Worker，避免 Workbox 缓存导致白屏/Failed to fetch',
+      '隐匿点新增“视察”城内视角：可移动、士兵巡逻、英雄随行、楼梯切层、近距离按E对话'
     ]
   },
   {

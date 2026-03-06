@@ -16,6 +16,7 @@ import { WorldBoardView } from './views/WorldBoardView';
 import { TroopArchiveView } from './views/TroopArchiveView';
 import { PartyView } from './views/PartyView';
 import { TownView } from './views/TownView';
+import { HideoutInteriorView } from './views/HideoutInteriorView';
 import { AsylumView } from './views/AsylumView';
 import { MarketView } from './views/MarketView';
 import { MysteriousCaveView } from './views/MysteriousCaveView';
@@ -1001,6 +1002,7 @@ export default function App() {
   const playerRef = useRef(player);
   const heroesRef = useRef(heroes);
   const lordsRef = useRef(lords);
+  const locationsRef = useRef(locations);
   const battleTimelineRef = useRef(battleTimeline);
   const worldDiplomacyRef = useRef(worldDiplomacy);
   const partyDiaryRef = useRef(partyDiary);
@@ -1319,6 +1321,10 @@ export default function App() {
   useEffect(() => {
     lordsRef.current = lords;
   }, [lords]);
+
+  useEffect(() => {
+    locationsRef.current = locations;
+  }, [locations]);
 
   useEffect(() => {
     battleTimelineRef.current = battleTimeline;
@@ -2296,6 +2302,62 @@ export default function App() {
   const getTroopTemplate = (id: string) => {
     const realId = id.startsWith('garrison_') ? id.replace('garrison_', '') : id;
     return customTroopTemplates[realId] ?? TROOP_TEMPLATES[realId];
+  };
+
+  const getUpgradeTargetOptions = (troopId: string): string[] => {
+    const tmpl = getTroopTemplate(troopId);
+    if (!tmpl) return [];
+    const explicit = Array.isArray(tmpl.upgradeTargetIds)
+      ? tmpl.upgradeTargetIds.map(x => String(x ?? '').trim()).filter(Boolean)
+      : (tmpl.upgradeTargetId ? [tmpl.upgradeTargetId] : []);
+    const primary = explicit[0] ?? '';
+    if (!primary) return [];
+    if (explicit.length >= 2) return Array.from(new Set(explicit)).slice(0, 3);
+
+    const allTemplates = { ...TROOP_TEMPLATES, ...customTroopTemplates } as Record<string, Omit<Troop, 'count' | 'xp'>>;
+    const primaryTmpl = allTemplates[primary] ?? getTroopTemplate(primary);
+
+    const getRole = (t: Omit<Troop, 'count' | 'xp'>) => {
+      const text = `${t.id} ${t.name} ${(t.equipment ?? []).join(' ')}`.toLowerCase();
+      if (/(骑|rider|caval|horse|warg|wolf)/i.test(text)) return 'CAV' as const;
+      if ((t.attributes?.range ?? 0) >= 90) return 'RANGED' as const;
+      if (/(弓|弩|射|箭)/.test(t.name ?? '') || /(bow|cross)/i.test(text)) return 'RANGED' as const;
+      return 'MELEE' as const;
+    };
+    const getGroup = (t: Omit<Troop, 'count' | 'xp'>) => {
+      if (t.id.includes('_')) return t.id.split('_')[0];
+      return getRole(t) === 'RANGED' ? 'core_ranged' : 'core_melee';
+    };
+
+    const group = getGroup(tmpl);
+    const tierNext = (tmpl.tier ?? 1) + 1;
+    const candidates = Object.values(allTemplates).filter(t => {
+      if (!t) return false;
+      if (t.id === primary) return false;
+      if ((t.tier ?? 1) !== tierNext) return false;
+      return getGroup(t) === group;
+    });
+
+    const primaryRole = primaryTmpl ? getRole(primaryTmpl) : 'MELEE' as const;
+    const wanted = primaryRole === 'RANGED' ? (['MELEE', 'CAV'] as const) : primaryRole === 'CAV' ? (['MELEE', 'RANGED'] as const) : (['RANGED', 'CAV'] as const);
+
+    const score = (t: Omit<Troop, 'count' | 'xp'>) => {
+      const p = primaryTmpl ?? tmpl;
+      const dp = Math.abs((t.basePower ?? 0) - (p.basePower ?? 0));
+      const dc = Math.abs((t.cost ?? 0) - (p.cost ?? 0)) * 0.01;
+      return dp + dc;
+    };
+
+    const picks: string[] = [];
+    for (const role of wanted) {
+      const best = candidates
+        .filter(t => getRole(t) === role)
+        .sort((a, b) => score(a) - score(b))[0];
+      if (best?.id) picks.push(best.id);
+      if (picks.length >= 2) break;
+    }
+
+    return Array.from(new Set([primary, ...picks])).slice(0, 3);
   };
 
   const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
@@ -5446,7 +5508,11 @@ export default function App() {
     }
 
     const finalLocation = location ? syncedLocations.find(l => l.id === location.id) ?? location : undefined;
-    if (!suppressEncounter && finalLocation && finalLocation.type !== 'TRAINING_GROUNDS' && finalLocation.type !== 'ASYLUM' && finalLocation.type !== 'CITY' && finalLocation.type !== 'MARKET' && finalLocation.type !== 'HOTPOT_RESTAURANT' && finalLocation.type !== 'BANDIT_CAMP' && finalLocation.type !== 'MYSTERIOUS_CAVE' && finalLocation.type !== 'COFFEE' && finalLocation.type !== 'IMPOSTER_PORTAL' && finalLocation.type !== 'WORLD_BOARD' && finalLocation.type !== 'ROACH_NEST' && finalLocation.type !== 'MAGICIAN_LIBRARY') {
+    if (finalLocation && finalLocation.type === 'HIDEOUT' && finalLocation.owner === 'PLAYER') {
+      enterLocation(finalLocation);
+      return;
+    }
+    if (!suppressEncounter && finalLocation && finalLocation.type !== 'TRAINING_GROUNDS' && finalLocation.type !== 'ASYLUM' && finalLocation.type !== 'CITY' && finalLocation.type !== 'MARKET' && finalLocation.type !== 'HOTPOT_RESTAURANT' && finalLocation.type !== 'BANDIT_CAMP' && finalLocation.type !== 'MYSTERIOUS_CAVE' && finalLocation.type !== 'COFFEE' && finalLocation.type !== 'IMPOSTER_PORTAL' && finalLocation.type !== 'WORLD_BOARD' && finalLocation.type !== 'ROACH_NEST' && finalLocation.type !== 'MAGICIAN_LIBRARY' && finalLocation.type !== 'HIDEOUT') {
       const relationTarget = getLocationRelationTarget(finalLocation);
       const relationValue = relationTarget ? getRelationValue(playerRef.current, relationTarget.type, relationTarget.id) : 0;
       const encounterChance = getEncounterChance(0.25, relationValue);
@@ -7944,17 +8010,21 @@ export default function App() {
     addLog(`招募了 ${countToRecruit} 名 ${template.name}。`);
   };
 
-  const handleUpgrade = (troopId: string) => {
+  const handleUpgrade = (troopId: string, overrideTargetId?: string) => {
     const prev = playerRef.current;
     
     const troopIndex = prev.troops.findIndex(t => t.id === troopId);
     if (troopIndex === -1) return;
     const troop = prev.troops[troopIndex];
-    if (!troop.upgradeTargetId || troop.xp < troop.maxXp || prev.gold < troop.upgradeCost) return;
+    const options = getUpgradeTargetOptions(troopId);
+    const chosen = (overrideTargetId ?? options[0] ?? troop.upgradeTargetId ?? '').trim();
+    if (!chosen) return;
+    if (options.length > 0 && !options.includes(chosen)) return;
+    if (troop.xp < troop.maxXp || prev.gold < troop.upgradeCost) return;
     
     const newTroops = [...prev.troops];
     newTroops[troopIndex] = { ...troop, count: troop.count - 1, xp: troop.xp - troop.maxXp };
-    const targetTemplate = getTroopTemplate(troop.upgradeTargetId);
+    const targetTemplate = getTroopTemplate(chosen);
     if (!targetTemplate) return;
     const existingTargetIndex = newTroops.findIndex(t => t.id === targetTemplate.id);
 
@@ -9230,7 +9300,7 @@ export default function App() {
   const normalizeView = (raw: unknown, hasLocation: boolean): GameView => {
     const value = typeof raw === 'string' ? raw : 'MAP';
     const safe = value as GameView;
-    const allowed: GameView[] = ['MAIN_MENU', 'INTRO', 'MAP', 'TOWN', 'PARTY', 'CHARACTER', 'BILLS', 'TRAINING', 'ASYLUM', 'MARKET', 'BANDIT_ENCOUNTER', 'CAVE', 'BATTLE', 'BATTLE_RESULT', 'ENDING', 'GAME_OVER', 'HERO_CHAT', 'WORLD_BOARD', 'TROOP_ARCHIVE', 'RELATIONS'];
+    const allowed: GameView[] = ['MAIN_MENU', 'INTRO', 'MAP', 'TOWN', 'PARTY', 'CHARACTER', 'BILLS', 'TRAINING', 'ASYLUM', 'MARKET', 'BANDIT_ENCOUNTER', 'CAVE', 'BATTLE', 'BATTLE_RESULT', 'ENDING', 'GAME_OVER', 'HERO_CHAT', 'WORLD_BOARD', 'TROOP_ARCHIVE', 'RELATIONS', 'HIDEOUT_INTERIOR'];
     if (!allowed.includes(safe)) return 'MAP';
     if (safe === 'ENDING' || safe === 'GAME_OVER' || safe === 'BATTLE' || safe === 'BATTLE_RESULT') return 'MAP';
     if (safe === 'TOWN' && !hasLocation) return 'MAP';
@@ -10608,6 +10678,7 @@ export default function App() {
       partyCategoryFilter={partyCategoryFilter}
       setPartyCategoryFilter={setPartyCategoryFilter}
       getTroopTemplate={getTroopTemplate}
+      getUpgradeTargetOptions={getUpgradeTargetOptions}
       handleUpgrade={handleUpgrade}
       handleDisband={handleDisband}
       getHeroRoleLabel={getHeroRoleLabel}
@@ -10620,6 +10691,33 @@ export default function App() {
       onBackToMap={() => setView('MAP')}
     />
   );
+
+  const renderHideoutInterior = () => {
+    const loc = currentLocation;
+    if (!loc || loc.type !== 'HIDEOUT' || loc.owner !== 'PLAYER') return null;
+    const hideout = loc.hideout;
+    const layerCount = hideout?.layers?.length ?? 0;
+    const safeLayerIndex = Math.max(0, Math.min(Math.max(0, layerCount - 1), Math.floor(hideout?.selectedLayer ?? 0)));
+    return (
+      <HideoutInteriorView
+        location={loc}
+        player={player}
+        heroes={heroes}
+        layerIndex={safeLayerIndex}
+        onChangeLayer={(nextLayerIndex) => {
+          const current = locationsRef.current.find(l => l.id === loc.id) ?? loc;
+          const h = current.hideout;
+          const layers = h?.layers ?? [];
+          const safe = Math.max(0, Math.min(Math.max(0, layers.length - 1), Math.floor(nextLayerIndex)));
+          updateLocationState({ ...current, hideout: { ...(h ?? { layers: [], selectedLayer: 0 }), selectedLayer: safe } });
+        }}
+        onBack={() => {
+          setView('TOWN');
+          setTownTab('HIDEOUT');
+        }}
+      />
+    );
+  };
 
   const renderHeroChat = () => {
     const activeHeroChat = activeHeroChatId
@@ -11200,7 +11298,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-sans selection:bg-amber-900 selection:text-white overflow-hidden flex flex-col">
-      {view !== 'MAIN_MENU' && view !== 'INTRO' && view !== 'ENDING' && view !== 'GAME_OVER' && view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && renderHeader()}
+      {view !== 'MAIN_MENU' && view !== 'INTRO' && view !== 'ENDING' && view !== 'GAME_OVER' && view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INTERIOR' && renderHeader()}
       
       <main className={view === 'MAP' || view === 'HERO_CHAT' || view === 'MAIN_MENU' ? "flex-1 w-full flex" : "flex-1 container mx-auto pb-8 pt-4"}>
         {view === 'MAIN_MENU' && (
@@ -11465,8 +11563,10 @@ export default function App() {
             recentLogs={logs.slice(0, 12)}
             playerReligionName={getPlayerReligion()?.religionName ?? null}
             onPreachInCity={preachInCity}
+            onInspectHideout={() => setView('HIDEOUT_INTERIOR')}
           />
         )}
+        {view === 'HIDEOUT_INTERIOR' && renderHideoutInterior()}
         {view === 'BANDIT_ENCOUNTER' && renderBanditEncounter()}
         {view === 'ASYLUM' && renderAsylum()}
         {view === 'MARKET' && renderMarket()}
@@ -11490,7 +11590,7 @@ export default function App() {
       {(isBattling || battleError) && renderBattleSimulation()}
 
       {/* Log Console */}
-      {view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && !isBattling && (
+      {view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INTERIOR' && !isBattling && (
         <div className={`fixed bottom-0 left-0 w-full md:w-96 md:left-4 md:bottom-4 bg-black/80 backdrop-blur-sm border-t md:border border-stone-800 transition-all duration-300 z-40 flex flex-col ${isLogExpanded ? 'h-96' : 'h-32'}`}>
            <div className="flex justify-between items-center p-2 bg-stone-900/50 border-b border-stone-800">
               <h4 className="text-xs uppercase text-stone-600 font-bold">日志 ({logs.length})</h4>
