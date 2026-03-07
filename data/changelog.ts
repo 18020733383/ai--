@@ -16,7 +16,7 @@ export const CHANGELOG: ChangelogEntry[] = [
       '兵种图片迁移到 public/image/troops，便于 Cloudflare 部署访问',
       '启动时自动注销旧 Service Worker，避免 Workbox 缓存导致白屏/Failed to fetch',
       '新增隐匿据点视察模式：可移动、巡逻/站岗、建筑映射、E对话、楼梯切层与英雄跟随',
-      '视察模式增强：楼层模板、施工脚手架、士兵随机巡游+碰撞、点击寻路与入口E键离开'
+      '视察模式增强：楼层专属场景、施工中可视化、点击移动、入口按E离开、士兵随机巡逻与碰撞'
     ]
   },
   {
