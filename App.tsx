@@ -932,6 +932,7 @@ export default function App() {
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveDataText, setSaveDataText] = useState('');
   const [saveDataNotice, setSaveDataNotice] = useState<string | null>(null);
+  const [manualSaveName, setManualSaveName] = useState('');
   const [battleError, setBattleError] = useState<string | null>(null);
   const [battleMeta, setBattleMeta] = useState<{ mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; siegeContext?: string; supportTroops?: Troop[]; supportLabel?: string } | null>(null);
   const [pendingBattleMeta, setPendingBattleMeta] = useState<{ mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; siegeContext?: string; supportTroops?: Troop[]; supportLabel?: string } | null>(null);
@@ -9418,6 +9419,21 @@ export default function App() {
     }
   };
 
+  const createManualSave = () => {
+    try {
+      const payload = buildSaveGame();
+      const now = Date.now();
+      const id = `SLOT_${now}_${Math.floor(Math.random() * 10000)}`;
+      const label = manualSaveName.trim() || `手动存档 第${player.day}天 ${new Date(now).toLocaleString('zh-CN', { hour12: false })}`;
+      writeSavePayload(id, label, false, payload);
+      setSelectedSaveId(id);
+      setManualSaveName('');
+      setSaveDataNotice(`已保存：${label}`);
+    } catch (e: any) {
+      setSaveDataNotice(e?.message || '手动存档失败。');
+    }
+  };
+
   const exportSaveData = () => {
     try {
       const payload = buildSaveGame();
@@ -10958,6 +10974,9 @@ export default function App() {
       saveDataText={saveDataText}
       setSaveDataText={setSaveDataText}
       saveDataNotice={saveDataNotice}
+      manualSaveName={manualSaveName}
+      setManualSaveName={setManualSaveName}
+      onManualSave={createManualSave}
       exportSaveData={exportSaveData}
       importSaveData={importSaveData}
       onClose={() => setIsSettingsOpen(false)}

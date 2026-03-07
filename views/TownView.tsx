@@ -1289,12 +1289,15 @@ export const TownView = ({
   const hideoutSiegeLayerIndex = isHideout && currentLocation.activeSiege
     ? Math.max(0, Math.floor((currentLocation.activeSiege as any).hideoutLayerIndex ?? 0))
     : 0;
+  const hideoutSiegeLayer = hideoutState?.layers?.[hideoutSiegeLayerIndex];
   const hideoutHasFallenLayers = isHideout && !!currentLocation.activeSiege && !!currentLocation.isUnderSiege && hideoutSiegeLayerIndex > 0;
   const hideoutSelectedLayerIndex = Math.max(0, Math.min((hideoutState?.layers?.length ?? 1) - 1, hideoutState?.selectedLayer ?? 0));
   const hideoutSelectedLayer = hideoutState?.layers?.[hideoutSelectedLayerIndex];
   const hideoutLayerTroops = (hideoutSelectedLayer?.garrison ?? []).filter(t => (t.count ?? 0) > 0);
   const hideoutLayerGarrisonCount = hideoutLayerTroops.reduce((sum, t) => sum + (t.count ?? 0), 0);
   const hideoutLayerGarrisonPower = hideoutLayerTroops.reduce((sum, t) => sum + (t.count ?? 0) * (t.basePower ?? 0), 0);
+  const hideoutSiegeLayerTroops = (hideoutSiegeLayer?.garrison ?? []).filter(t => (t.count ?? 0) > 0);
+  const hideoutSiegeLayerGarrisonCount = hideoutSiegeLayerTroops.reduce((sum, t) => sum + (t.count ?? 0), 0);
   const totalGarrisonCount = isHideout ? hideoutLayerGarrisonCount : localGarrison.reduce((sum, unit) => sum + unit.count, 0);
   const totalGarrisonPower = isHideout ? hideoutLayerGarrisonPower : localGarrison.reduce((sum, unit) => sum + unit.count * unit.troop.basePower, 0);
   const isImposterAlerted = (currentLocation.imposterAlertUntilDay ?? 0) >= player.day;
@@ -2086,8 +2089,13 @@ export const TownView = ({
               </h3>
               <p className="text-stone-400 text-sm mt-1">
                 <span className="text-red-300">{currentLocation.activeSiege.attackerName}</span> ({getGarrisonCount(currentLocation.activeSiege.troops)}人) 正在围攻据点。
-                守军剩余: <span className="text-green-300">{isHideout ? hideoutLayerGarrisonCount : getGarrisonCount(currentLocation.garrison ?? [])}人</span>。
+                守军剩余: <span className="text-green-300">{isHideout ? hideoutSiegeLayerGarrisonCount : getGarrisonCount(currentLocation.garrison ?? [])}人</span>。
               </p>
+              {isHideout && (
+                <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 rounded border border-red-700 text-red-300 bg-red-950/50 animate-pulse text-xs">
+                  被攻击层：{hideoutSiegeLayer?.name ?? `第${hideoutSiegeLayerIndex}层`}
+                </div>
+              )}
             </div>
           </div>
           <Button

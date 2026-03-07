@@ -39,6 +39,9 @@ type SettingsModalProps = {
   saveDataText: string;
   setSaveDataText: (value: string) => void;
   saveDataNotice: string | null;
+  manualSaveName: string;
+  setManualSaveName: (value: string) => void;
+  onManualSave: () => void;
   exportSaveData: () => void;
   importSaveData: () => void;
   onClose: () => void;
@@ -81,6 +84,9 @@ export const SettingsModal = ({
   saveDataText,
   setSaveDataText,
   saveDataNotice,
+  manualSaveName,
+  setManualSaveName,
+  onManualSave,
   exportSaveData,
   importSaveData,
   onClose,
@@ -317,6 +323,20 @@ export const SettingsModal = ({
           <div className="bg-stone-950/40 border border-stone-800 rounded p-4">
             <div className="text-sm text-stone-300 font-bold mb-3">存档导入导出</div>
             <div className="space-y-3">
+              <div className="bg-black/30 border border-stone-800 rounded p-3">
+                <div className="text-xs text-stone-500 mb-2">手动存档</div>
+                <div className="flex flex-col md:flex-row gap-2">
+                  <input
+                    value={manualSaveName}
+                    onChange={(e) => setManualSaveName(e.target.value)}
+                    className="flex-1 bg-stone-950 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 placeholder:text-stone-600"
+                    placeholder="存档名称（可留空）"
+                  />
+                  <Button variant="secondary" onClick={onManualSave}>
+                    立即保存
+                  </Button>
+                </div>
+              </div>
               <div className="flex flex-wrap gap-2">
                 <Button onClick={exportSaveData} variant="secondary">
                   导出存档
