@@ -11524,42 +11524,86 @@ export default function App() {
     return null;
   };
 
-  const renderBattleSimulation = () => (
-     <div className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center text-center p-4">
+  const renderBattleSimulation = () => {
+    const leftTroops = (battleSnapshot?.playerTroops ?? player.troops ?? []).filter(t => (t.count ?? 0) > 0);
+    const rightTroops = (battleSnapshot?.enemyTroops ?? activeEnemy?.troops ?? []).filter(t => (t.count ?? 0) > 0);
+    const leftMax = Math.max(1, ...leftTroops.map(t => t.count ?? 0));
+    const rightMax = Math.max(1, ...rightTroops.map(t => t.count ?? 0));
+    const leftSlice = leftTroops.slice(0, 6);
+    const rightSlice = rightTroops.slice(0, 6);
+    return (
+      <div className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center text-center p-4">
         {battleError ? (
-           <div className="animate-fade-in flex flex-col items-center">
-              <AlertTriangle size={64} className="text-red-500 mb-6" />
-              <h2 className="text-3xl font-serif font-bold text-red-500 mb-4">战局推演失败</h2>
-              <p className="text-stone-400 max-w-md mb-8">{battleError}</p>
-              
-              <div className="flex gap-4">
-                 <Button onClick={() => setBattleError(null)} variant="secondary">
-                    取消
-                 </Button>
-                 <Button onClick={() => setIsSettingsOpen(true)} variant="secondary">
-                    设置
-                 </Button>
-                 <Button 
-                    onClick={() => startBattle(currentLocation?.type === 'TRAINING_GROUNDS', battleMeta ?? undefined)} 
-                    size="lg"
-                    className="flex items-center gap-2"
-                 >
-                    <RefreshCw size={20}/> 重试
-                 </Button>
-              </div>
-           </div>
+          <div className="animate-fade-in flex flex-col items-center">
+            <AlertTriangle size={64} className="text-red-500 mb-6" />
+            <h2 className="text-3xl font-serif font-bold text-red-500 mb-4">战局推演失败</h2>
+            <p className="text-stone-400 max-w-md mb-8">{battleError}</p>
+            <div className="flex gap-4">
+              <Button onClick={() => setBattleError(null)} variant="secondary">
+                取消
+              </Button>
+              <Button onClick={() => setIsSettingsOpen(true)} variant="secondary">
+                设置
+              </Button>
+              <Button
+                onClick={() => startBattle(currentLocation?.type === 'TRAINING_GROUNDS', battleMeta ?? undefined)}
+                size="lg"
+                className="flex items-center gap-2"
+              >
+                <RefreshCw size={20}/> 重试
+              </Button>
+            </div>
+          </div>
         ) : (
-           <>
-              <div className="w-16 h-16 border-4 border-amber-600 border-t-transparent rounded-full animate-spin mb-8"></div>
-              <h2 className="text-3xl font-serif text-amber-500 mb-2">正在推演战局...</h2>
-              <div className="text-xs text-stone-500 mb-3">传输方式：{isBattleStreaming ? '流式' : '一次性'}</div>
-              <p className="text-stone-400 italic max-w-md animate-pulse">
-                 "战争的胜负往往在第一支箭射出之前就已经注定了。"
-              </p>
-           </>
+          <>
+            <div className="w-full max-w-4xl bg-stone-950/40 border border-stone-800 rounded p-4 mb-6">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
+                <div className="space-y-2">
+                  <div className="text-xs text-red-300">红方</div>
+                  {leftSlice.length === 0 ? (
+                    <div className="text-xs text-stone-500">无可见部队</div>
+                  ) : (
+                    leftSlice.map(t => (
+                      <div key={`left_${t.id}`} className="text-left">
+                        <div className="text-xs text-stone-200 truncate">{t.name ?? t.id} · {t.count}</div>
+                        <div className="h-1 bg-red-900/40 rounded">
+                          <div className="h-full bg-red-400/80 rounded animate-pulse" style={{ width: `${Math.max(6, Math.round((t.count ?? 0) / leftMax * 100))}%` }} />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+                <div className="flex flex-col items-center justify-center gap-2">
+                  <div className="text-4xl animate-bounce">⚔</div>
+                  <div className="text-xs text-stone-500">交战演算中</div>
+                </div>
+                <div className="space-y-2">
+                  <div className="text-xs text-blue-300">蓝方</div>
+                  {rightSlice.length === 0 ? (
+                    <div className="text-xs text-stone-500">无可见部队</div>
+                  ) : (
+                    rightSlice.map(t => (
+                      <div key={`right_${t.id}`} className="text-right">
+                        <div className="text-xs text-stone-200 truncate">{t.name ?? t.id} · {t.count}</div>
+                        <div className="h-1 bg-blue-900/40 rounded">
+                          <div className="h-full bg-blue-400/80 rounded animate-pulse ml-auto" style={{ width: `${Math.max(6, Math.round((t.count ?? 0) / rightMax * 100))}%` }} />
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            </div>
+            <h2 className="text-3xl font-serif text-amber-500 mb-2">正在推演战局...</h2>
+            <div className="text-xs text-stone-500 mb-3">传输方式：{isBattleStreaming ? '流式' : '一次性'}</div>
+            <p className="text-stone-400 italic max-w-md animate-pulse">
+              "战争的胜负往往在第一支箭射出之前就已经注定了。"
+            </p>
+          </>
         )}
-     </div>
-  );
+      </div>
+    );
+  };
 
   const endingKey = player.story?.endingId ?? player.story?.gameOverReason ?? '';
   const newCovenantAvailable = (() => {

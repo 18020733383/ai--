@@ -43,6 +43,26 @@ export const PartyView = ({
   const recruitedHeroes = heroes.filter(hero => hero.recruited && !hero.locationId);
   const [upgradePicker, setUpgradePicker] = React.useState<{ sourceId: string; options: string[]; soldiers: SoldierInstance[] } | null>(null);
   const [upgradeSoldierId, setUpgradeSoldierId] = React.useState<string | null>(null);
+  const getEligibleSoldiers = React.useCallback((sourceId: string) => {
+    return getTroopSoldiers(sourceId).filter(s => s.status === 'ACTIVE' && s.xp >= s.maxXp);
+  }, [getTroopSoldiers]);
+  React.useEffect(() => {
+    if (!upgradePicker) return;
+    const nextEligible = getEligibleSoldiers(upgradePicker.sourceId);
+    if (nextEligible.length === 0) {
+      setUpgradePicker(null);
+      setUpgradeSoldierId(null);
+      return;
+    }
+    const nextIds = nextEligible.map(s => s.id).join('|');
+    const prevIds = upgradePicker.soldiers.map(s => s.id).join('|');
+    if (nextIds !== prevIds) {
+      setUpgradePicker({ ...upgradePicker, soldiers: nextEligible });
+      if (!nextEligible.some(s => s.id === upgradeSoldierId)) {
+        setUpgradeSoldierId(nextEligible[0]?.id ?? null);
+      }
+    }
+  }, [getEligibleSoldiers, upgradePicker, upgradeSoldierId]);
   const partyCategoryLabel: Record<PartyCategoryFilter, string> = {
     ALL: '全部',
     NORMAL: '常规',
@@ -143,10 +163,6 @@ export const PartyView = ({
               onAction={() => handleDisband(troop.id, 'ALL')}
               canUpgrade={options.length > 0 && eligibleSoldiers.length > 0}
               onUpgrade={() => {
-                if (options.length <= 1 && eligibleSoldiers.length <= 1) {
-                  handleUpgrade(troop.id, options[0], eligibleSoldiers[0]?.id);
-                  return;
-                }
                 setUpgradePicker({ sourceId: troop.id, options, soldiers: eligibleSoldiers });
                 setUpgradeSoldierId(eligibleSoldiers[0]?.id ?? null);
               }}
@@ -213,7 +229,13 @@ export const PartyView = ({
                       key={targetId}
                       onClick={() => {
                         handleUpgrade(upgradePicker.sourceId, targetId, selectedSoldier?.id);
-                        close();
+                        const remaining = upgradePicker.soldiers.filter(s => s.id !== (selectedSoldier?.id ?? ''));
+                        if (remaining.length === 0) {
+                          close();
+                        } else {
+                          setUpgradePicker({ ...upgradePicker, soldiers: remaining });
+                          setUpgradeSoldierId(remaining[0]?.id ?? null);
+                        }
                       }}
                       className="text-left bg-stone-950/50 hover:bg-stone-950/70 border border-stone-800 hover:border-emerald-700 rounded p-3 transition-colors"
                     >
