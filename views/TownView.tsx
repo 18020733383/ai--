@@ -4,7 +4,7 @@ import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
 import { chatWithAltar, chatWithCampLeader, chatWithLord, proposeHeroPromotion, type HeroPromotionDraft } from '../services/geminiService';
 import { ANOMALY_CATALOG, getTroopRace, TROOP_RACE_LABELS } from '../constants';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, StayParty, Troop, TroopTier } from '../types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, SoldierInstance, StayParty, Troop, TroopTier } from '../types';
 
 type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER' | 'HABITAT' | 'HIDEOUT';
 
@@ -125,6 +125,8 @@ type TownViewProps = {
   handleRecruitOffer: (offer: RecruitOffer, type: 'VOLUNTEER' | 'MERCENARY', amountToRecruit?: number) => void;
   updateLocationState: (location: Location) => void;
   setPlayer: React.Dispatch<React.SetStateAction<PlayerState>>;
+  onRecruitHero: (hero: Hero) => void;
+  onLordProvoked: (lord: Lord, location: Location) => void;
   setActiveEnemy: React.Dispatch<React.SetStateAction<EnemyForce | null>>;
   setPendingBattleMeta: React.Dispatch<React.SetStateAction<{ mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; siegeContext?: string } | null>>;
   setPendingBattleIsTraining: React.Dispatch<React.SetStateAction<boolean>>;
@@ -224,6 +226,8 @@ export const TownView = ({
   handleRecruitOffer,
   updateLocationState,
   setPlayer,
+  onRecruitHero,
+  onLordProvoked,
   setActiveEnemy,
   setPendingBattleMeta,
   setPendingBattleIsTraining,
@@ -466,6 +470,7 @@ export const TownView = ({
       stayDays: undefined
     } : h));
     setHeroDialogue(null);
+    onRecruitHero(hero);
     addLog(`你花费 ${cost} 第纳尔招募了 ${hero.name}。`);
   };
   const workIncomePerDay = 20 + Math.max(0, player.attributes.commerce ?? 0) * 5;
@@ -848,6 +853,7 @@ export const TownView = ({
           const locationId = currentLocation.id;
           updateLocationState(attackPlan.updatedLocation);
           addLog(`${currentLord.name} 忍无可忍，派兵来袭${reasonText ? `（${reasonText}）` : ''}。`);
+            onLordProvoked(currentLord, currentLocation);
           const enemy: EnemyForce = {
             id: `lord_attack_${Date.now()}`,
             name: `${currentLord.title}${currentLord.name}的亲卫`,
@@ -1374,6 +1380,12 @@ export const TownView = ({
     b.type === 'AA_NET_I' ||
     b.type === 'AA_RADAR_I' ||
     b.type === 'CAMOUFLAGE_STRUCTURE' ||
+    b.type === 'FIRE_CRYSTAL_MINE' ||
+    b.type === 'MAGIC_CIRCLE_AMPLIFY' ||
+    b.type === 'MAGIC_CIRCLE_WARD' ||
+    b.type === 'MAGIC_CIRCLE_RESTORE' ||
+    b.type === 'ARCANE_CRYSTAL_ARRAY' ||
+    b.type === 'ANTI_MAGIC_PYLON' ||
     b.type === 'MAZE_I'
   ));
   const hideoutHasRefineryBuilt = hideoutFacilitySlots.some(slot => slot.type === 'ORE_REFINERY' && isSlotBuilt(slot));
@@ -1415,6 +1427,12 @@ export const TownView = ({
     if (type === 'CAMOUFLAGE_STRUCTURE') return ['仅地面层可建', '可花钱降低暴露（冷却）', '被动减缓暴露上升'];
     if (type === 'CAMOUFLAGE_STRUCTURE_II') return ['仅地面层可建', '降低暴露效果提升', '冷却缩短'];
     if (type === 'CAMOUFLAGE_STRUCTURE_III') return ['仅地面层可建', '大幅降低暴露', '冷却进一步缩短'];
+    if (type === 'FIRE_CRYSTAL_MINE') return ['防御槽可建', '接敌时触发爆燃', '提升防御火力'];
+    if (type === 'MAGIC_CIRCLE_AMPLIFY') return ['法阵增幅', '提升远程压制', '可叠加'];
+    if (type === 'MAGIC_CIRCLE_WARD') return ['护盾法阵', '削弱近战冲击', '可叠加'];
+    if (type === 'MAGIC_CIRCLE_RESTORE') return ['恢复法阵', '战斗中缓慢修复防线', '可叠加'];
+    if (type === 'ARCANE_CRYSTAL_ARRAY') return ['水晶供能', '稳定魔法输出', '可叠加'];
+    if (type === 'ANTI_MAGIC_PYLON') return ['反魔法干扰', '削弱空袭与远程', '可叠加'];
     if (type === 'MAZE_I') return ['仅地面层可建（唯一）', '讨伐军进入据点后需等待 1 天才会开战'];
     if (type === 'MAZE_II') return ['仅地面层可建（唯一）', '讨伐军进入据点后需等待 2 天才会开战'];
     if (type === 'MAZE_III') return ['仅地面层可建（唯一）', '讨伐军进入据点后需等待 3 天才会开战'];
@@ -1434,6 +1452,12 @@ export const TownView = ({
     if (type === 'CAMOUFLAGE_STRUCTURE') return ['伪装：启动后降低暴露 18，冷却 6 天'];
     if (type === 'CAMOUFLAGE_STRUCTURE_II') return ['伪装：启动后降低暴露 28，冷却 5 天'];
     if (type === 'CAMOUFLAGE_STRUCTURE_III') return ['伪装：启动后降低暴露 40，冷却 4 天'];
+    if (type === 'FIRE_CRYSTAL_MINE') return ['防御：提升近战伤害削减与防御火力'];
+    if (type === 'MAGIC_CIRCLE_AMPLIFY') return ['防御：提升远程命中与伤害'];
+    if (type === 'MAGIC_CIRCLE_WARD') return ['防御：提升近战伤害削减'];
+    if (type === 'MAGIC_CIRCLE_RESTORE') return ['防御：提升城墙与器械耐久'];
+    if (type === 'ARCANE_CRYSTAL_ARRAY') return ['防御：提升远程伤害'];
+    if (type === 'ANTI_MAGIC_PYLON') return ['防御：降低空袭伤害并削弱远程'];
     if (type === 'MAZE_I') return ['延缓：敌军抵达后需等待 1 天才会开战'];
     if (type === 'MAZE_II') return ['延缓：敌军抵达后需等待 2 天才会开战'];
     if (type === 'MAZE_III') return ['延缓：敌军抵达后需等待 3 天才会开战'];
@@ -1531,12 +1555,47 @@ export const TownView = ({
     addLog(`开始建造 ${building.name}，需要 ${building.days} 天。`);
   };
 
+  const buildSoldierFromTemplate = (troopId: string, xpValue: number, nextId: number, day: number) => {
+    const tmpl = getTroopTemplate(troopId);
+    if (!tmpl) return null;
+    return {
+      id: `S${nextId}`,
+      troopId,
+      name: tmpl.name,
+      tier: tmpl.tier,
+      xp: Math.max(0, Math.min(tmpl.maxXp, Math.floor(xpValue))),
+      maxXp: tmpl.maxXp,
+      createdDay: day,
+      history: [`Day ${day} · 补档入伍`],
+      status: 'ACTIVE' as const
+    };
+  };
+
+  const moveSoldiersStatus = (
+    roster: SoldierInstance[],
+    troopId: string,
+    fromStatus: SoldierInstance['status'],
+    toStatus: SoldierInstance['status'],
+    count: number,
+    note: string
+  ) => {
+    let remaining = count;
+    return roster.map(s => {
+      if (remaining <= 0) return s;
+      if (s.troopId !== troopId || s.status !== fromStatus) return s;
+      remaining -= 1;
+      const history = [...(s.history ?? []), note];
+      return { ...s, status: toStatus, history };
+    });
+  };
+
   const handleDepositToGarrison = (troopId: string, amount: number) => {
     if (!isOwnedByPlayer) return;
     const troop = player.troops.find(t => t.id === troopId);
     if (!troop) return;
     const availableCapacity = garrisonLimit - currentGarrisonCount;
-    const moveCount = Math.min(amount, troop.count, availableCapacity);
+    const availableActive = (player.soldiers ?? []).filter(s => s.troopId === troopId && s.status === 'ACTIVE').length || troop.count;
+    const moveCount = Math.min(amount, troop.count, availableCapacity, availableActive);
     if (moveCount <= 0) {
       addLog("驻军已达上限。");
       return;
@@ -1551,7 +1610,29 @@ export const TownView = ({
     } else {
       updatedGarrison.push({ ...troop, count: moveCount });
     }
-    setPlayer(prev => ({ ...prev, troops: updatedPlayerTroops }));
+    setPlayer(prev => {
+      let roster = Array.isArray(prev.soldiers) ? prev.soldiers.map(s => ({ ...s })) : [];
+      let nextId = typeof prev.nextSoldierId === 'number' ? prev.nextSoldierId : 1;
+      const activeCount = roster.filter(s => s.troopId === troopId && s.status === 'ACTIVE').length;
+      const deficit = Math.max(0, moveCount - activeCount);
+      const seedXp = Math.max(0, Math.floor(troop.xp ?? 0));
+      for (let i = 0; i < deficit; i += 1) {
+        const built = buildSoldierFromTemplate(troopId, seedXp, nextId, playerRef.current.day);
+        if (built) {
+          roster.push(built);
+          nextId += 1;
+        }
+      }
+      roster = moveSoldiersStatus(
+        roster,
+        troopId,
+        'ACTIVE',
+        'GARRISONED',
+        moveCount,
+        `Day ${playerRef.current.day} · 调入 ${currentLocation.name} 驻军`
+      );
+      return { ...prev, troops: updatedPlayerTroops, soldiers: roster, nextSoldierId: nextId };
+    });
     updateLocationState({ ...currentLocation, garrison: updatedGarrison });
     addLog(`已调入 ${moveCount} 名 ${troop.name}。`);
   };
@@ -1562,7 +1643,8 @@ export const TownView = ({
     if (!garrisonTroop) return;
     const currentCount = activeTroopCount + woundedTroopCount;
     const availableSpace = getMaxTroops() - currentCount;
-    const moveCount = Math.min(amount, garrisonTroop.count, availableSpace);
+    const availableGarrisoned = (player.soldiers ?? []).filter(s => s.troopId === troopId && s.status === 'GARRISONED').length || garrisonTroop.count;
+    const moveCount = Math.min(amount, garrisonTroop.count, availableSpace, availableGarrisoned);
     if (moveCount <= 0) {
       addLog("队伍人数已满，无法调回。");
       return;
@@ -1578,7 +1660,29 @@ export const TownView = ({
       const template = getTroopTemplate(troopId);
       if (template) updatedPlayerTroops.push({ ...template, count: moveCount, xp: 0 });
     }
-    setPlayer(prev => ({ ...prev, troops: updatedPlayerTroops }));
+    setPlayer(prev => {
+      let roster = Array.isArray(prev.soldiers) ? prev.soldiers.map(s => ({ ...s })) : [];
+      let nextId = typeof prev.nextSoldierId === 'number' ? prev.nextSoldierId : 1;
+      const garrisonedCount = roster.filter(s => s.troopId === troopId && s.status === 'GARRISONED').length;
+      const deficit = Math.max(0, moveCount - garrisonedCount);
+      const seedXp = Math.max(0, Math.floor(garrisonTroop.xp ?? 0));
+      for (let i = 0; i < deficit; i += 1) {
+        const built = buildSoldierFromTemplate(troopId, seedXp, nextId, playerRef.current.day);
+        if (built) {
+          roster.push({ ...built, status: 'GARRISONED' as const });
+          nextId += 1;
+        }
+      }
+      roster = moveSoldiersStatus(
+        roster,
+        troopId,
+        'GARRISONED',
+        'ACTIVE',
+        moveCount,
+        `Day ${playerRef.current.day} · 归队 ${currentLocation.name}`
+      );
+      return { ...prev, troops: updatedPlayerTroops, soldiers: roster, nextSoldierId: nextId };
+    });
     updateLocationState({ ...currentLocation, garrison: updatedGarrison });
     addLog(`已调回 ${moveCount} 名 ${garrisonTroop.name}。`);
   };
@@ -1676,7 +1780,8 @@ export const TownView = ({
     const limit = hasBarracks ? Math.floor(capBase * 1.5) : capBase;
     const currentCount = (layer.garrison ?? []).reduce((sum, t) => sum + (t.count ?? 0), 0);
     const availableCapacity = limit - currentCount;
-    const moveCount = Math.min(amount, troop.count, availableCapacity);
+    const availableActive = (player.soldiers ?? []).filter(s => s.troopId === troopId && s.status === 'ACTIVE').length || troop.count;
+    const moveCount = Math.min(amount, troop.count, availableCapacity, availableActive);
     if (moveCount <= 0) {
       addLog("该层驻军已达上限。");
       return;
@@ -1688,7 +1793,29 @@ export const TownView = ({
     const idx = nextGarrison.findIndex(t => t.id === troopId);
     if (idx >= 0) nextGarrison[idx] = { ...nextGarrison[idx], count: nextGarrison[idx].count + moveCount };
     else nextGarrison.push({ ...troop, count: moveCount });
-    setPlayer(prev => ({ ...prev, troops: updatedPlayerTroops }));
+    setPlayer(prev => {
+      let roster = Array.isArray(prev.soldiers) ? prev.soldiers.map(s => ({ ...s })) : [];
+      let nextId = typeof prev.nextSoldierId === 'number' ? prev.nextSoldierId : 1;
+      const activeCount = roster.filter(s => s.troopId === troopId && s.status === 'ACTIVE').length;
+      const deficit = Math.max(0, moveCount - activeCount);
+      const seedXp = Math.max(0, Math.floor(troop.xp ?? 0));
+      for (let i = 0; i < deficit; i += 1) {
+        const built = buildSoldierFromTemplate(troopId, seedXp, nextId, playerRef.current.day);
+        if (built) {
+          roster.push(built);
+          nextId += 1;
+        }
+      }
+      roster = moveSoldiersStatus(
+        roster,
+        troopId,
+        'ACTIVE',
+        'GARRISONED',
+        moveCount,
+        `Day ${playerRef.current.day} · 调入 ${layer.name} 驻军`
+      );
+      return { ...prev, troops: updatedPlayerTroops, soldiers: roster, nextSoldierId: nextId };
+    });
     updateHideoutLayer(layerIndex, l => ({ ...l, garrison: nextGarrison }));
     addLog(`已调入 ${moveCount} 名 ${troop.name} 到 ${layer.name}。`);
   };
@@ -1703,7 +1830,8 @@ export const TownView = ({
     if (!garrisonTroop) return;
     const currentCount = activeTroopCount + woundedTroopCount;
     const availableSpace = getMaxTroops() - currentCount;
-    const moveCount = Math.min(amount, garrisonTroop.count, availableSpace);
+    const availableGarrisoned = (player.soldiers ?? []).filter(s => s.troopId === troopId && s.status === 'GARRISONED').length || garrisonTroop.count;
+    const moveCount = Math.min(amount, garrisonTroop.count, availableSpace, availableGarrisoned);
     if (moveCount <= 0) {
       addLog("队伍人数已满，无法调回。");
       return;
@@ -1718,7 +1846,29 @@ export const TownView = ({
       const template = getTroopTemplate(troopId);
       if (template) updatedPlayerTroops.push({ ...template, count: moveCount, xp: 0 });
     }
-    setPlayer(prev => ({ ...prev, troops: updatedPlayerTroops }));
+    setPlayer(prev => {
+      let roster = Array.isArray(prev.soldiers) ? prev.soldiers.map(s => ({ ...s })) : [];
+      let nextId = typeof prev.nextSoldierId === 'number' ? prev.nextSoldierId : 1;
+      const garrisonedCount = roster.filter(s => s.troopId === troopId && s.status === 'GARRISONED').length;
+      const deficit = Math.max(0, moveCount - garrisonedCount);
+      const seedXp = Math.max(0, Math.floor(garrisonTroop.xp ?? 0));
+      for (let i = 0; i < deficit; i += 1) {
+        const built = buildSoldierFromTemplate(troopId, seedXp, nextId, playerRef.current.day);
+        if (built) {
+          roster.push({ ...built, status: 'GARRISONED' as const });
+          nextId += 1;
+        }
+      }
+      roster = moveSoldiersStatus(
+        roster,
+        troopId,
+        'GARRISONED',
+        'ACTIVE',
+        moveCount,
+        `Day ${playerRef.current.day} · 归队 ${layer.name}`
+      );
+      return { ...prev, troops: updatedPlayerTroops, soldiers: roster, nextSoldierId: nextId };
+    });
     updateHideoutLayer(layerIndex, l => ({ ...l, garrison: updatedGarrison }));
     addLog(`已从 ${layer.name} 调回 ${moveCount} 名 ${garrisonTroop.name}。`);
   };

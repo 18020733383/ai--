@@ -1672,12 +1672,22 @@ export default function App() {
   };
 
   const getEncounterChance = (baseChance: number, relationValue: number) => {
-    if (relationValue >= 60) return Math.min(baseChance, 0.08);
-    if (relationValue >= 40) return Math.min(baseChance, 0.12);
-    if (relationValue >= 20) return Math.min(baseChance, 0.18);
-    if (relationValue <= -50) return Math.max(baseChance, 0.5);
-    if (relationValue <= -30) return Math.max(baseChance, 0.4);
+    if (relationValue >= 60) return Math.min(baseChance, 0.06);
+    if (relationValue >= 40) return Math.min(baseChance, 0.1);
+    if (relationValue >= 20) return Math.min(baseChance, 0.14);
+    if (relationValue <= -70) return Math.max(baseChance, 0.45);
+    if (relationValue <= -50) return Math.max(baseChance, 0.35);
+    if (relationValue <= -30) return Math.max(baseChance, 0.28);
     return baseChance;
+  };
+
+  const getRelationScale = (relationValue: number) => {
+    if (relationValue <= -70) return 1.45;
+    if (relationValue <= -55) return 1.3;
+    if (relationValue <= -35) return 1.2;
+    if (relationValue >= 50) return 0.75;
+    if (relationValue >= 30) return 0.85;
+    return 1;
   };
 
   const buildSupportTroops = (location: Location, ratio: number) => {
@@ -1743,6 +1753,23 @@ export default function App() {
         : (prev.relationEvents ?? []);
       return { ...prev, relationMatrix: nextMatrix, relationEvents: nextEvents };
     });
+  };
+
+  const handleRecruitHeroRelation = (hero: Hero) => {
+    const race = hero.race ?? 'HUMAN';
+    if (race === 'HUMAN') return;
+    updateRelation('RACE', race, 8, `招募${RACE_LABELS[race]}英雄 ${hero.name}`);
+  };
+
+  const handleLordProvoked = (lord: Lord, location: Location) => {
+    if (lord.factionId) {
+      updateRelation('FACTION', lord.factionId, -8, `激怒${lord.title}${lord.name}`);
+      return;
+    }
+    const race = getLocationRace(location);
+    if (race) {
+      updateRelation('RACE', race, -6, `激怒${RACE_LABELS[race]}领主`);
+    }
   };
 
   const updateLocationRelation = (locationId: string, delta: number, text: string) => {
@@ -2383,7 +2410,7 @@ export default function App() {
     let nextId = typeof player.nextSoldierId === 'number' ? player.nextSoldierId : 1;
     let changed = false;
 
-    soldiers = soldiers.filter(s => troopMap.has(s.troopId));
+    soldiers = soldiers.filter(s => troopMap.has(s.troopId) || s.status === 'GARRISONED');
     const activeSoldiers = soldiers.filter(s => (s.status ?? 'ACTIVE') === 'ACTIVE');
     const woundedSoldiers = soldiers.filter(s => (s.status ?? 'ACTIVE') !== 'ACTIVE');
 
@@ -3313,13 +3340,17 @@ export default function App() {
     { type: 'RAM', name: '攻城锤', cost: 400, days: 2, description: '破门专用，短时间内撕开城门。' },
     { type: 'TOWER', name: '攻城塔', cost: 700, days: 3, description: '掩护士兵登墙，减少远程伤亡。' },
     { type: 'CATAPULT', name: '投石机', cost: 900, days: 4, description: '远程轰击，摧毁防御器械。' },
-    { type: 'SIMPLE_LADDER', name: '简易攻城梯', cost: 0, days: 0, description: '无需建造，直接攻城（高伤亡风险）。' }
+    { type: 'SIMPLE_LADDER', name: '简易攻城梯', cost: 0, days: 0, description: '无需建造，直接攻城（高伤亡风险）。' },
+    { type: 'CHAINBREAKER_CANNON', name: '断链者火炮', cost: 1200, days: 5, description: '镶嵌火水晶的重炮，远程粉碎敌方法阵阵地。' },
+    { type: 'ARCANE_MISSILE', name: '魔法导弹', cost: 1500, days: 6, description: '法师引导的魔法导弹，精准摧毁关键据点。' }
   ];
   const siegeEngineCombatStats: Record<SiegeEngineType, { hp: number; wallDamage: number; attackerRangedHit: number; attackerRangedDamage: number; attackerMeleeHit: number; attackerMeleeDamage: number; defenderRangedHitPenalty: number; defenderRangedDamagePenalty: number }> = {
     RAM: { hp: 520, wallDamage: 160, attackerRangedHit: 0, attackerRangedDamage: 0, attackerMeleeHit: 0.08, attackerMeleeDamage: 0.12, defenderRangedHitPenalty: 0.03, defenderRangedDamagePenalty: 0 },
     TOWER: { hp: 480, wallDamage: 70, attackerRangedHit: 0.05, attackerRangedDamage: 0.06, attackerMeleeHit: 0.04, attackerMeleeDamage: 0.04, defenderRangedHitPenalty: 0.08, defenderRangedDamagePenalty: 0.05 },
     CATAPULT: { hp: 380, wallDamage: 210, attackerRangedHit: 0.02, attackerRangedDamage: 0.03, attackerMeleeHit: 0, attackerMeleeDamage: 0, defenderRangedHitPenalty: 0.06, defenderRangedDamagePenalty: 0.08 },
-    SIMPLE_LADDER: { hp: 160, wallDamage: 35, attackerRangedHit: -0.02, attackerRangedDamage: 0, attackerMeleeHit: 0.06, attackerMeleeDamage: 0.08, defenderRangedHitPenalty: 0, defenderRangedDamagePenalty: 0 }
+    SIMPLE_LADDER: { hp: 160, wallDamage: 35, attackerRangedHit: -0.02, attackerRangedDamage: 0, attackerMeleeHit: 0.06, attackerMeleeDamage: 0.08, defenderRangedHitPenalty: 0, defenderRangedDamagePenalty: 0 },
+    CHAINBREAKER_CANNON: { hp: 420, wallDamage: 260, attackerRangedHit: 0.04, attackerRangedDamage: 0.08, attackerMeleeHit: 0, attackerMeleeDamage: 0, defenderRangedHitPenalty: 0.1, defenderRangedDamagePenalty: 0.12 },
+    ARCANE_MISSILE: { hp: 260, wallDamage: 300, attackerRangedHit: 0.06, attackerRangedDamage: 0.1, attackerMeleeHit: -0.01, attackerMeleeDamage: 0, defenderRangedHitPenalty: 0.12, defenderRangedDamagePenalty: 0.1 }
   };
 
   const buildingOptions: { type: BuildingType; name: string; cost: number; days: number; description: string }[] = [
@@ -3330,6 +3361,12 @@ export default function App() {
     { type: 'TRAINING_CAMP', name: '训练营', cost: 500, days: 3, description: '驻军获得经验并自动晋升。' },
     { type: 'BARRACKS', name: '兵营', cost: 800, days: 4, description: '驻军容量提升 50%。' },
     { type: 'DEFENSE', name: '防御建筑', cost: 700, days: 4, description: '增强据点防御强度。' },
+    { type: 'FIRE_CRYSTAL_MINE', name: '火水晶地雷', cost: 520, days: 3, description: '埋设魔法地雷，冲锋时爆燃。' },
+    { type: 'MAGIC_CIRCLE_AMPLIFY', name: '增幅法阵', cost: 680, days: 4, description: '放大术式火力，提升远程压制。' },
+    { type: 'MAGIC_CIRCLE_WARD', name: '护盾法阵', cost: 680, days: 4, description: '护盾覆盖防线，削弱近战冲击。' },
+    { type: 'MAGIC_CIRCLE_RESTORE', name: '恢复法阵', cost: 780, days: 5, description: '修复受损工事，延长防线维持。' },
+    { type: 'ARCANE_CRYSTAL_ARRAY', name: '魔法水晶阵列', cost: 620, days: 3, description: '稳定供能，提高防御效率。' },
+    { type: 'ANTI_MAGIC_PYLON', name: '反魔法尖塔', cost: 980, days: 5, description: '干扰敌方法阵与空袭。' },
     { type: 'RECRUITER', name: '征兵官', cost: 650, days: 3, description: '定期招募新兵加入驻军。' },
     { type: 'CHAPEL', name: '小教堂', cost: 720, days: 4, description: '提高传教效率，缓冲信教比例的负面波动。' },
     { type: 'SHRINE', name: '神殿', cost: 720, days: 4, description: '若你已确立宗教，会周期性招募信徒守卫此层。' },
@@ -3729,6 +3766,7 @@ export default function App() {
             lines: ['民兵要求提升待遇与装备，否则将减少巡防力度。', '权衡成本与稳定性至关重要。']
           }
         ];
+        const relationCandidates = (Object.keys(RACE_LABELS) as RaceId[]).filter(r => r !== 'HUMAN');
         newLocations = newLocations.map(loc => {
           if (loc.type !== 'HIDEOUT' || loc.owner !== 'PLAYER' || !loc.hideout) return loc;
           const gov = loc.hideout.governance ?? { stability: 60, productivity: 55, prosperity: 50, harmony: 55 };
@@ -3744,6 +3782,12 @@ export default function App() {
             return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, stability: clampPct(gov.stability), productivity: clampPct(gov.productivity), prosperity: clampPct(gov.prosperity), harmony: clampPct(gov.harmony), nextEventDay, lastEventDay } } };
           }
           const evt = govEvents[Math.floor(Math.random() * govEvents.length)];
+          const relationImpact = Math.random() < 0.45
+            ? {
+                raceId: relationCandidates[Math.floor(Math.random() * relationCandidates.length)],
+                onlyTwoChoices: Math.random() < 0.35
+              }
+            : null;
           decisionsToAdd.push({
             id: `hideout_gov_${loc.id}_${nextDay}_${Math.floor(Math.random() * 10000)}`,
             kind: 'HIDEOUT_GOV',
@@ -3752,10 +3796,11 @@ export default function App() {
             title: `内政事件：${evt.title}（${loc.name}）`,
             description: [
               ...evt.lines,
+              relationImpact ? `牵涉与 ${RACE_LABELS[relationImpact.raceId]} 的关系走向。` : '',
               `稳定性 ${clampPct(gov.stability)}｜生产力 ${clampPct(gov.productivity)}｜繁荣度 ${clampPct(gov.prosperity)}｜和谐度 ${clampPct(gov.harmony)}`,
               clampPct(gov.stability) <= 20 ? '警告：稳定性过低，叛乱风险上升。' : ''
             ].filter(Boolean).join('\n'),
-            payload: { gov, eventId: evt.id }
+            payload: { gov, eventId: evt.id, relationImpact }
           });
           return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, nextEventDay: nextDay + rollInt(3, 6), lastEventDay } } };
         });
@@ -5171,6 +5216,101 @@ export default function App() {
         newLocations.push(camp);
       });
 
+      const hostileRaces = (Object.keys(RACE_LABELS) as RaceId[])
+        .filter(race => race !== 'HUMAN' && getRelationValue(playerRef.current, 'RACE', race) <= -45);
+      hostileRaces.forEach(race => {
+        if (playerTargets.length === 0) return;
+        const relationValue = getRelationValue(playerRef.current, 'RACE', race);
+        const baseChance = relationValue <= -70 ? 0.45 : relationValue <= -55 ? 0.32 : 0.2;
+        if (Math.random() > baseChance) return;
+        const raceLocations = newLocations.filter(loc => getLocationRace(loc) === race);
+        if (raceLocations.length === 0) return;
+        const source = [...raceLocations].sort((a, b) => getGarrisonCount(getLocationTroops(b)) - getGarrisonCount(getLocationTroops(a)))[0];
+        if (!source) return;
+        const target = (() => {
+          const weights = playerTargets.map(t => t.type === 'HIDEOUT'
+            ? 1 + (clampValue(t.hideout?.exposure ?? 0, 0, 100) / 100) * 2.2
+            : 1
+          );
+          const sum = weights.reduce((a, b) => a + b, 0);
+          let roll = Math.random() * (sum > 0 ? sum : playerTargets.length);
+          for (let i = 0; i < playerTargets.length; i++) {
+            roll -= weights[i] ?? 1;
+            if (roll <= 0) return playerTargets[i];
+          }
+          return playerTargets[Math.floor(Math.random() * playerTargets.length)];
+        })();
+        const hasExistingRaidCamp = newLocations.some(loc => (
+          loc.type === 'FIELD_CAMP' &&
+          loc.owner === 'ENEMY' &&
+          loc.camp?.kind === 'FACTION_RAID' &&
+          loc.camp?.targetLocationId === target.id
+        ));
+        if (hasExistingRaidCamp || target.activeSiege || target.isUnderSiege) return;
+        const sourceTroops = getLocationTroops(source);
+        const { attackers, remaining } = splitTroops(sourceTroops, 0.5);
+        const scaledAttackers = attackers.map(t => ({ ...t, count: Math.max(1, Math.floor(t.count * getRelationScale(relationValue))) }));
+        if (getGarrisonCount(scaledAttackers) < 40) return;
+        const marchDays = 2 + Math.floor(Math.random() * 3);
+        const etaDay = nextDay + marchDays;
+        const raceLabel = RACE_LABELS[race] ?? race;
+        const attackerName = `${raceLabel}讨伐队`;
+        const leaderName = `${raceLabel}先锋`;
+        logsToAdd.push(`【讨伐】${raceLabel} 讨伐队从 ${source.name} 出发，目标 ${target.name}，预计 ${marchDays} 天后抵达。`);
+        addLocalLog(target.id, `侦查到 ${raceLabel} 讨伐队逼近。`);
+        const campId = `field_camp_race_${source.id}_${target.id}_${nextDay}`;
+        const dx = target.coordinates.x - source.coordinates.x;
+        const dy = target.coordinates.y - source.coordinates.y;
+        const distance = Math.hypot(dx, dy);
+        const fraction = distance > 0 ? Math.min(0.18, 1 / Math.max(2, Math.round(marchDays * 1.2))) : 0;
+        const initialCoordinates = {
+          x: source.coordinates.x + dx * fraction,
+          y: source.coordinates.y + dy * fraction
+        };
+        const camp: Location = {
+          id: campId,
+          name: `${attackerName}·行军营地`,
+          type: 'FIELD_CAMP',
+          description: `一支正在行军的${raceLabel}讨伐队。目标：${target.name}。`,
+          coordinates: initialCoordinates,
+          terrain: source.terrain,
+          factionId: undefined,
+          lastRefreshDay: 0,
+          volunteers: [],
+          mercenaries: [],
+          owner: 'ENEMY',
+          isUnderSiege: false,
+          siegeProgress: 0,
+          siegeEngines: [],
+          garrison: scaledAttackers.map(t => ({ ...t })),
+          buildings: ['DEFENSE'],
+          constructionQueue: [],
+          siegeEngineQueue: [],
+          lastIncomeDay: 0,
+          camp: {
+            kind: 'FACTION_RAID',
+            sourceLocationId: source.id,
+            targetLocationId: target.id,
+            totalDays: marchDays,
+            daysLeft: marchDays,
+            attackerName,
+            leaderName
+          }
+        };
+        const sourceIndex = newLocations.findIndex(loc => loc.id === source.id);
+        if (sourceIndex >= 0) {
+          const sourceLoc = newLocations[sourceIndex];
+          newLocations[sourceIndex] = {
+            ...sourceLoc,
+            garrison: remaining,
+            factionRaidTargetId: target.id,
+            factionRaidEtaDay: etaDay,
+            factionRaidAttackerName: attackerName
+          };
+        }
+        newLocations.push(camp);
+      });
+
       const hideoutTarget = newLocations.find(loc => loc.type === 'HIDEOUT' && loc.owner === 'PLAYER');
       if (hideoutTarget && !hideoutTarget.activeSiege && !hideoutTarget.isUnderSiege && hideoutTarget.hideout) {
         const exposure = clampValue(hideoutTarget.hideout.exposure ?? 0, 0, 100);
@@ -5739,7 +5879,7 @@ export default function App() {
     if (!suppressEncounter && finalLocation && finalLocation.type !== 'TRAINING_GROUNDS' && finalLocation.type !== 'ASYLUM' && finalLocation.type !== 'CITY' && finalLocation.type !== 'MARKET' && finalLocation.type !== 'HOTPOT_RESTAURANT' && finalLocation.type !== 'BANDIT_CAMP' && finalLocation.type !== 'MYSTERIOUS_CAVE' && finalLocation.type !== 'COFFEE' && finalLocation.type !== 'IMPOSTER_PORTAL' && finalLocation.type !== 'WORLD_BOARD' && finalLocation.type !== 'ROACH_NEST' && finalLocation.type !== 'MAGICIAN_LIBRARY' && finalLocation.type !== 'HIDEOUT') {
       const relationTarget = getLocationRelationTarget(finalLocation);
       const relationValue = relationTarget ? getRelationValue(playerRef.current, relationTarget.type, relationTarget.id) : 0;
-      const encounterChance = getEncounterChance(0.25, relationValue);
+      const encounterChance = getEncounterChance(0.18, relationValue);
       if (Math.random() < encounterChance) {
         triggerRandomEncounter(finalLocation.terrain, finalLocation);
       }
@@ -5762,7 +5902,7 @@ export default function App() {
       if (allEnemyTroops.length > 0) {
          const relationTarget = getLocationRelationTarget(finalLocation);
          const relationValue = relationTarget ? getRelationValue(playerRef.current, relationTarget.type, relationTarget.id) : 0;
-         const ambushChance = getEncounterChance(0.35, relationValue);
+         const ambushChance = getEncounterChance(0.26, relationValue);
          if (Math.random() < ambushChance) {
          const attackRatio = 0.2 + Math.random() * 0.3; // 20-50%
          const ambushTroops = allEnemyTroops.map(t => ({
@@ -6378,6 +6518,12 @@ export default function App() {
     const maze1 = countOf('MAZE_I');
     const maze2 = countOf('MAZE_II');
     const maze3 = countOf('MAZE_III');
+    const fireCrystalMine = countOf('FIRE_CRYSTAL_MINE');
+    const magicAmplify = countOf('MAGIC_CIRCLE_AMPLIFY');
+    const magicWard = countOf('MAGIC_CIRCLE_WARD');
+    const magicRestore = countOf('MAGIC_CIRCLE_RESTORE');
+    const crystalArray = countOf('ARCANE_CRYSTAL_ARRAY');
+    const antiMagicPylon = countOf('ANTI_MAGIC_PYLON');
     pushMechanism("防空箭塔·I", "加固箭塔与集束瞄具，可稳定压制低空目标。", aaTower1);
     details.antiAirPowerBonus += 0.12 * aaTower1;
     extraMechanismHp += 120 * aaTower1;
@@ -6413,6 +6559,27 @@ export default function App() {
     pushMechanism("迷宫·I", "迷阵与岔路将敌军拖慢。", maze1);
     pushMechanism("迷宫·II", "更复杂的回廊网络，将敌军拖慢更久。", maze2);
     pushMechanism("迷宫·III", "成体系的迷宫网络，把时间榨干。", maze3);
+    pushMechanism("火水晶地雷", "埋设火水晶引爆点，冲锋时爆燃。", fireCrystalMine);
+    extraMechanismHp += 180 * fireCrystalMine;
+    extraMeleeReduction += 0.02 * fireCrystalMine;
+    extraRangedDamage += 0.01 * fireCrystalMine;
+    pushMechanism("增幅法阵", "强化术式输出，远程火力更密集。", magicAmplify);
+    extraMechanismHp += 140 * magicAmplify;
+    extraRangedHit += 0.02 * magicAmplify;
+    extraRangedDamage += 0.03 * magicAmplify;
+    pushMechanism("护盾法阵", "护盾阵列覆盖城防，近战冲击被削弱。", magicWard);
+    extraMechanismHp += 160 * magicWard;
+    extraMeleeReduction += 0.03 * magicWard;
+    pushMechanism("恢复法阵", "战斗中自我修复，提升防御持续力。", magicRestore);
+    extraMechanismHp += 220 * magicRestore;
+    details.wallHp += 120 * magicRestore;
+    pushMechanism("魔法水晶阵列", "稳定输出法力，强化防御火力。", crystalArray);
+    extraMechanismHp += 150 * crystalArray;
+    extraRangedDamage += 0.02 * crystalArray;
+    pushMechanism("反魔法尖塔", "扰动敌方法阵，削弱空袭与远程。", antiMagicPylon);
+    extraMechanismHp += 260 * antiMagicPylon;
+    details.airstrikeDamageReduction += 0.18 * antiMagicPylon;
+    extraRangedHit += 0.02 * antiMagicPylon;
 
     const mechanismCount = details.mechanisms.length;
     details.wallHp = Math.max(0, details.wallLevel) * 650 + (hasDefenseBuilding ? 260 : 0);
@@ -6788,7 +6955,7 @@ export default function App() {
           'imperial_rider_trainee'
         ];
      } else {
-        const basePool = ['footman', 'archer', 'wolf_rider', 'alchemist', 'flagellant'];
+        const basePool = ['footman', 'archer', 'wolf_rider', 'alchemist', 'flagellant', 'arcane_apprentice'];
         if (location.type === 'CITY' || location.type === 'CASTLE' || location.type === 'VILLAGE') {
           const airPool = location.type === 'CITY' || location.type === 'CASTLE'
             ? ['arcane_glider', 'arcane_biplane', 'arcane_airship']
@@ -6817,6 +6984,16 @@ export default function App() {
       terrain: terrain,
       baseTroopId: enemyType.baseTroopId
     };
+    const enemyRace = getEnemyRace(enemy);
+    const relationValue = enemyRace ? getRelationValue(playerRef.current, 'RACE', enemyRace) : 0;
+    const encounterScale = getRelationScale(relationValue);
+    const scaledEnemy: EnemyForce = {
+      ...enemy,
+      troops: enemy.troops.map(t => ({
+        ...t,
+        count: Math.max(1, Math.floor((t.count ?? 0) * encounterScale))
+      }))
+    };
 
     let supportTroops: Troop[] | null = null;
     let supportLabel = '';
@@ -6825,7 +7002,7 @@ export default function App() {
       const relationTarget = getLocationRelationTarget(atLocation);
       const relationValue = relationTarget ? getRelationValue(playerRef.current, relationTarget.type, relationTarget.id) : 0;
       const locationRace = getLocationRace(atLocation);
-      const enemyRace = getEnemyRace(enemy);
+      const enemyRace = getEnemyRace(scaledEnemy);
       if (relationValue >= 20 && (enemyRace ? enemyRace !== locationRace : true)) {
         const ratio = relationValue >= 60 ? 0.35 : relationValue >= 40 ? 0.25 : 0.15;
         const supportCandidates = buildSupportTroops(atLocation, ratio);
@@ -6841,7 +7018,7 @@ export default function App() {
         }
       }
     }
-    setActiveEnemy(enemy);
+    setActiveEnemy(scaledEnemy);
     if (atLocation && supportTroops) {
       setPendingBattleMeta({ mode: 'DEFENSE_AID', targetLocationId: atLocation.id, supportTroops, supportLabel });
     } else {
@@ -6921,6 +7098,38 @@ export default function App() {
     const escapeBonus = (escapeLevel ?? 0) * 0.015;
     const successChance = Math.min(0.9, Math.max(0.2, 0.55 + diffRatio + escapeBonus));
     return { ratio, lost, successChance };
+  };
+
+  const getBattleRelationValue = () => {
+    if (!activeEnemy) return 0;
+    const target = pendingBattleMeta?.targetLocationId
+      ? locations.find(l => l.id === pendingBattleMeta.targetLocationId) ?? null
+      : null;
+    const relationTarget = target ? getLocationRelationTarget(target) : null;
+    if (relationTarget) return getRelationValue(playerRef.current, relationTarget.type, relationTarget.id);
+    const enemyRace = getEnemyRace(activeEnemy);
+    return enemyRace ? getRelationValue(playerRef.current, 'RACE', enemyRace) : 0;
+  };
+
+  const exitEncounter = (logText: string, cost?: number) => {
+    if (typeof cost === 'number' && cost > 0) {
+      setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - cost) }));
+    }
+    setActiveEnemy(null);
+    setPendingBattleMeta(null);
+    setPendingBattleIsTraining(false);
+    setBattleError(null);
+    setIsBattling(false);
+    setIsBattleStreaming(false);
+    setIsBattleResultFinal(true);
+    setBattleResult(null);
+    setBattleSnapshot(null);
+    if (currentLocation && pendingBattleMeta?.targetLocationId === currentLocation.id) {
+      setView('TOWN');
+    } else {
+      setView('MAP');
+    }
+    if (logText) addLog(logText);
   };
 
   const getEncounterPlayerTroops = (currentPlayer: PlayerState, currentHeroes: Hero[]) => {
@@ -8436,14 +8645,30 @@ export default function App() {
     const updatedLocation = { ...location, isUnderSiege: true };
     updateLocationState(updatedLocation);
     addLocationLog(location.id, `玩家军队开始围攻 ${location.name}。`);
+    const relationTarget = getLocationRelationTarget(location);
+    if (relationTarget?.type === 'FACTION') {
+      const factionPenalty = location.type === 'CITY' ? -20 : location.type === 'CASTLE' ? -16 : location.type === 'VILLAGE' ? -12 : -10;
+      updateRelation(relationTarget.type, relationTarget.id, factionPenalty, `进攻 ${location.name}`);
+    }
+    if (relationTarget?.type === 'RACE') {
+      const racePenalty = location.type === 'ROACH_NEST'
+        ? -14
+        : location.type === 'IMPOSTER_PORTAL'
+          ? -14
+          : location.type === 'GRAVEYARD'
+            ? (isUndeadFortressLocation(location) ? -16 : -12)
+            : location.type === 'BANDIT_CAMP'
+              ? -10
+              : location.type === 'MYSTERIOUS_CAVE'
+                ? -12
+                : location.type === 'ASYLUM'
+                  ? -12
+                  : -8;
+      updateRelation(relationTarget.type, relationTarget.id, racePenalty, `进攻 ${location.name}`);
+    }
     if (location.type === 'CITY' || location.type === 'CASTLE' || location.type === 'VILLAGE') {
-      const relationTarget = getLocationRelationTarget(location);
-      const factionPenalty = location.type === 'CITY' ? -20 : location.type === 'CASTLE' ? -16 : -12;
       const lordPenalty = location.type === 'CITY' ? -18 : location.type === 'CASTLE' ? -14 : -10;
       const localPenalty = location.type === 'CITY' ? -28 : location.type === 'CASTLE' ? -24 : -18;
-      if (relationTarget?.type === 'FACTION') {
-        updateRelation(relationTarget.type, relationTarget.id, factionPenalty, `进攻 ${location.name}`);
-      }
       if (location.lord) {
         updateLordRelation(location.id, lordPenalty, `遭到玩家围攻`);
       }
@@ -9924,7 +10149,28 @@ export default function App() {
         if (baseLoc.type !== 'HIDEOUT') return baseLoc;
         const hideout = baseLoc.hideout;
         const layersRaw = Array.isArray(hideout?.layers) ? hideout!.layers : [];
-        const defenseSet = new Set<BuildingType>(['DEFENSE', 'AA_TOWER_I', 'AA_TOWER_II', 'AA_TOWER_III', 'AA_NET_I', 'AA_NET_II', 'AA_RADAR_I', 'AA_RADAR_II', 'CAMOUFLAGE_STRUCTURE', 'CAMOUFLAGE_STRUCTURE_II', 'CAMOUFLAGE_STRUCTURE_III', 'MAZE_I', 'MAZE_II', 'MAZE_III']);
+        const defenseSet = new Set<BuildingType>([
+          'DEFENSE',
+          'AA_TOWER_I',
+          'AA_TOWER_II',
+          'AA_TOWER_III',
+          'AA_NET_I',
+          'AA_NET_II',
+          'AA_RADAR_I',
+          'AA_RADAR_II',
+          'CAMOUFLAGE_STRUCTURE',
+          'CAMOUFLAGE_STRUCTURE_II',
+          'CAMOUFLAGE_STRUCTURE_III',
+          'MAZE_I',
+          'MAZE_II',
+          'MAZE_III',
+          'FIRE_CRYSTAL_MINE',
+          'MAGIC_CIRCLE_AMPLIFY',
+          'MAGIC_CIRCLE_WARD',
+          'MAGIC_CIRCLE_RESTORE',
+          'ARCANE_CRYSTAL_ARRAY',
+          'ANTI_MAGIC_PYLON'
+        ]);
         const normalizeSlots = (slots: any[] | undefined, fallbackBuildings: BuildingType[] | undefined, pickDefense: boolean) => {
           const safe = Array.isArray(slots) ? slots : [];
           const base = Array.from({ length: 10 }, (_, i) => {
@@ -11261,6 +11507,19 @@ export default function App() {
       startBattle={startBattle}
       attemptFlee={attemptFlee}
       sacrificeRetreat={sacrificeRetreat}
+      onIgnoreEncounter={() => {
+        if (!activeEnemy) return;
+        exitEncounter(`你选择无视 ${activeEnemy.name}，继续前进。`);
+      }}
+      onPayToll={(cost) => {
+        if (!activeEnemy) return;
+        if (player.gold < cost) {
+          addLog("资金不足，无法支付过路费。");
+          return;
+        }
+        exitEncounter(`你支付 ${cost} 第纳尔作为过路费，避免冲突。`, cost);
+      }}
+      battleRelationValue={getBattleRelationValue()}
       onStartNegotiation={startNegotiation}
       onAcceptNegotiation={acceptNegotiationTerms}
       onRejectNegotiation={rejectNegotiationTerms}
@@ -11470,6 +11729,8 @@ export default function App() {
     if (active.kind === 'HIDEOUT_GOV') {
       if (!loc || loc.type !== 'HIDEOUT' || loc.owner !== 'PLAYER' || !loc.hideout) return null;
       const gov = loc.hideout.governance ?? { stability: 60, productivity: 55, prosperity: 50, harmony: 55 };
+      const relationImpact = (active as any)?.payload?.relationImpact as { raceId: RaceId; onlyTwoChoices?: boolean } | null;
+      const relationLabel = relationImpact ? RACE_LABELS[relationImpact.raceId] : '';
       const applyGov = (delta: { stability: number; productivity: number; prosperity: number; harmony: number }, cost: number, label: string) => {
         if (cost > 0) setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - cost) }));
         const nextGov = {
@@ -11522,10 +11783,15 @@ export default function App() {
           setView('BATTLE');
         }
       };
+      const applyRelation = (delta: number, label: string) => {
+        if (!relationImpact || !delta) return;
+        updateRelation('RACE', relationImpact.raceId, delta, `内政处理：${label}（${relationLabel}）`);
+      };
       const costRelief = 140;
       const costMediate = 80;
       const canRelief = player.gold >= costRelief;
       const canMediate = player.gold >= costMediate;
+      const onlyTwoChoices = !!relationImpact?.onlyTwoChoices;
 
       return (
         <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
@@ -11538,6 +11804,7 @@ export default function App() {
               <button
                 onClick={() => {
                   applyGov({ stability: -2, productivity: 0, prosperity: 0, harmony: -1 }, 0, '观望不决');
+                  if (relationImpact) applyRelation(-4, '观望不决');
                   shift();
                 }}
                 className="text-stone-400 hover:text-white"
@@ -11547,37 +11814,69 @@ export default function App() {
             </div>
             <pre className="whitespace-pre-wrap text-sm text-stone-300 bg-black/30 border border-stone-800 rounded p-4">{active.description}</pre>
             <div className="flex flex-col md:flex-row gap-2 justify-end">
-              <Button
-                variant="secondary"
-                disabled={!canRelief}
-                onClick={() => {
-                  if (!canRelief) return;
-                  applyGov({ stability: 10, productivity: -3, prosperity: -1, harmony: 4 }, costRelief, `安抚民心（-${costRelief}）`);
-                  shift();
-                }}
-              >
-                安抚民心（{costRelief}）
-              </Button>
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  applyGov({ stability: -9, productivity: 8, prosperity: 5, harmony: -2 }, 0, '强化生产');
-                  shift();
-                }}
-              >
-                强化生产
-              </Button>
-              <Button
-                variant="gold"
-                disabled={!canMediate}
-                onClick={() => {
-                  if (!canMediate) return;
-                  applyGov({ stability: 3, productivity: -2, prosperity: 0, harmony: 10 }, costMediate, `调停冲突（-${costMediate}）`);
-                  shift();
-                }}
-              >
-                调停冲突（{costMediate}）
-              </Button>
+              {onlyTwoChoices ? (
+                <>
+                  <Button
+                    variant="secondary"
+                    disabled={!canMediate}
+                    onClick={() => {
+                      if (!canMediate) return;
+                      applyGov({ stability: 6, productivity: -2, prosperity: 0, harmony: 8 }, costMediate, `安抚使者（-${costMediate}）`);
+                      applyRelation(10, '安抚使者');
+                      shift();
+                    }}
+                  >
+                    安抚使者（{costMediate}）
+                  </Button>
+                  <Button
+                    variant="gold"
+                    onClick={() => {
+                      applyGov({ stability: -6, productivity: 6, prosperity: 3, harmony: -6 }, 0, '强硬清剿');
+                      applyRelation(-10, '强硬清剿');
+                      shift();
+                    }}
+                  >
+                    强硬清剿
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button
+                    variant="secondary"
+                    disabled={!canRelief}
+                    onClick={() => {
+                      if (!canRelief) return;
+                      applyGov({ stability: 10, productivity: -3, prosperity: -1, harmony: 4 }, costRelief, `安抚民心（-${costRelief}）`);
+                      applyRelation(8, '安抚民心');
+                      shift();
+                    }}
+                  >
+                    安抚民心（{costRelief}）
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    onClick={() => {
+                      applyGov({ stability: -9, productivity: 8, prosperity: 5, harmony: -2 }, 0, '强化生产');
+                      applyRelation(-8, '强化生产');
+                      shift();
+                    }}
+                  >
+                    强化生产
+                  </Button>
+                  <Button
+                    variant="gold"
+                    disabled={!canMediate}
+                    onClick={() => {
+                      if (!canMediate) return;
+                      applyGov({ stability: 3, productivity: -2, prosperity: 0, harmony: 10 }, costMediate, `调停冲突（-${costMediate}）`);
+                      applyRelation(4, '调停冲突');
+                      shift();
+                    }}
+                  >
+                    调停冲突（{costMediate}）
+                  </Button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -12038,6 +12337,8 @@ export default function App() {
             handleRecruitOffer={handleRecruitOffer}
             updateLocationState={updateLocationState}
             setPlayer={setPlayer}
+            onRecruitHero={handleRecruitHeroRelation}
+            onLordProvoked={handleLordProvoked}
             setActiveEnemy={setActiveEnemy}
             setPendingBattleMeta={setPendingBattleMeta}
             setPendingBattleIsTraining={setPendingBattleIsTraining}

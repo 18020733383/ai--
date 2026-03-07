@@ -43,6 +43,7 @@ export const PartyView = ({
   const recruitedHeroes = heroes.filter(hero => hero.recruited && !hero.locationId);
   const [upgradePicker, setUpgradePicker] = React.useState<{ sourceId: string; options: string[]; soldiers: SoldierInstance[] } | null>(null);
   const [upgradeSoldierId, setUpgradeSoldierId] = React.useState<string | null>(null);
+  const [troopDetailId, setTroopDetailId] = React.useState<string | null>(null);
   const getEligibleSoldiers = React.useCallback((sourceId: string) => {
     return getTroopSoldiers(sourceId).filter(s => s.status === 'ACTIVE' && s.xp >= s.maxXp);
   }, [getTroopSoldiers]);
@@ -156,6 +157,7 @@ export const PartyView = ({
             <TroopCard
               key={troop.id}
               troop={troop}
+              onInspect={() => setTroopDetailId(troop.id)}
               count={troop.count}
               secondaryActionLabel="遣散1个"
               onSecondaryAction={() => handleDisband(troop.id, 'ONE')}
@@ -172,6 +174,58 @@ export const PartyView = ({
           );
         })}
       </div>
+
+      {troopDetailId && (() => {
+        const troop = player.troops.find(t => t.id === troopDetailId) ?? null;
+        const template = getTroopTemplate(troopDetailId) ?? troop;
+        const soldiers = troop ? getTroopSoldiers(troopDetailId) : [];
+        return (
+          <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
+            <div className="bg-stone-900 border border-stone-700 rounded p-4 w-full max-w-4xl max-h-[85vh] overflow-hidden flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-stone-200 text-lg font-semibold">{template?.name ?? troopDetailId}</div>
+                  <div className="text-xs text-stone-500">T{template?.tier ?? '？'} · 数量 {troop?.count ?? 0}</div>
+                </div>
+                <button onClick={() => setTroopDetailId(null)} className="text-stone-400 hover:text-stone-200">关闭</button>
+              </div>
+              <div className="text-xs text-stone-400 flex items-center gap-3">
+                <span>攻击 {template?.attributes?.attack ?? 0}</span>
+                <span>血量 {template?.attributes?.hp ?? 0}</span>
+                <span>敏捷 {template?.attributes?.agility ?? 0}</span>
+              </div>
+              <div className="flex-1 overflow-auto">
+                {soldiers.length === 0 ? (
+                  <div className="text-sm text-stone-500">暂无个体记录。</div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {soldiers.map(soldier => (
+                      <div key={soldier.id} className="bg-stone-950/50 border border-stone-700 rounded p-3 space-y-2">
+                        <div className="flex items-center justify-between text-sm text-stone-200">
+                          <span>{soldier.name} · {soldier.id}</span>
+                          <span className="text-xs text-stone-500">{soldier.status === 'WOUNDED' ? '负伤' : soldier.status === 'GARRISONED' ? '驻军' : '现役'}</span>
+                        </div>
+                        <div className="text-xs text-stone-400">经验 {soldier.xp}/{soldier.maxXp}</div>
+                        <div className="text-xs text-stone-500">
+                          {(soldier.history ?? []).length > 0 ? (
+                            <div className="space-y-1">
+                              {soldier.history.map((line, idx) => (
+                                <div key={`${soldier.id}_${idx}`} className="truncate">{line}</div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div>（暂无战斗记录）</div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {upgradePicker && (() => {
         const sourceStack = player.troops.find(t => t.id === upgradePicker.sourceId) ?? null;

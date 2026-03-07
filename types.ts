@@ -86,7 +86,7 @@ export type SoldierInstance = {
   maxXp: number;
   createdDay: number;
   history: string[];
-  status: 'ACTIVE' | 'WOUNDED';
+  status: 'ACTIVE' | 'WOUNDED' | 'GARRISONED';
   recoverDay?: number;
 };
 
@@ -426,6 +426,12 @@ export type BuildingType =
   | 'TRAINING_CAMP'
   | 'BARRACKS'
   | 'DEFENSE'
+  | 'FIRE_CRYSTAL_MINE'
+  | 'MAGIC_CIRCLE_AMPLIFY'
+  | 'MAGIC_CIRCLE_WARD'
+  | 'MAGIC_CIRCLE_RESTORE'
+  | 'ARCANE_CRYSTAL_ARRAY'
+  | 'ANTI_MAGIC_PYLON'
   | 'RECRUITER'
   | 'CHAPEL'
   | 'SHRINE'
@@ -446,7 +452,7 @@ export type BuildingType =
   | 'AA_NET_II'
   | 'AA_RADAR_I'
   | 'AA_RADAR_II';
-export type SiegeEngineType = 'RAM' | 'TOWER' | 'CATAPULT' | 'SIMPLE_LADDER';
+export type SiegeEngineType = 'RAM' | 'TOWER' | 'CATAPULT' | 'SIMPLE_LADDER' | 'CHAINBREAKER_CANNON' | 'ARCANE_MISSILE';
 
 export interface ConstructionQueueItem {
   type: BuildingType;

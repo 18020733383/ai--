@@ -52,6 +52,9 @@ type BattleViewProps = {
   startBattle: (isTraining: boolean, meta?: BattleMeta) => void;
   attemptFlee: () => void;
   sacrificeRetreat: () => void;
+  onIgnoreEncounter: () => void;
+  onPayToll: (cost: number) => void;
+  battleRelationValue: number;
   onStartNegotiation: () => void;
   onAcceptNegotiation: () => void;
   onRejectNegotiation: () => void;
@@ -93,6 +96,9 @@ export const BattleView = ({
   startBattle,
   attemptFlee,
   sacrificeRetreat,
+  onIgnoreEncounter,
+  onPayToll,
+  battleRelationValue,
   onStartNegotiation,
   onAcceptNegotiation,
   onRejectNegotiation,
@@ -123,6 +129,12 @@ export const BattleView = ({
   const myPower = calculatePower([...battleTroops, ...garrisonTroops]);
   const enemyPower = calculatePower(activeEnemy.troops);
   const winChance = myPower / (myPower + enemyPower);
+  const relationValue = battleRelationValue ?? 0;
+  const ignoreAvailable = !pendingBattleIsTraining && winChance >= 0.8;
+  const tollAvailable = !pendingBattleIsTraining && winChance >= 0.55 && winChance <= 0.7;
+  const tollMultiplier = relationValue <= -60 ? 1.8 : relationValue <= -30 ? 1.4 : relationValue >= 40 ? 0.8 : 1;
+  const tollCost = Math.max(30, Math.floor(enemyPower * 0.08 * tollMultiplier));
+  const canPayToll = player.gold >= tollCost;
   const fleeChance = calculateFleeChance(battleTroops, activeEnemy.troops, player.attributes.escape ?? 0);
   const rearGuardPlan = calculateRearGuardPlan(battleTroops, activeEnemy.troops, player.attributes.escape ?? 0);
   const estimatedVictoryRewards = estimateBattleRewards(activeEnemy, player);
@@ -795,13 +807,31 @@ export const BattleView = ({
               </Button>
             </div>
           ) : (
-            <div className="flex gap-3">
-              <Button onClick={attemptFlee} className="flex-1" variant="secondary">
-                <Flag className="inline mr-2" size={14} /> 尝试逃跑 ({Math.floor(fleeChance * 100)}% 成功率)
-              </Button>
-              <Button onClick={sacrificeRetreat} className="flex-1" variant="secondary">
-                <Skull className="inline mr-2" size={14} /> 断尾求生 (牺牲 {rearGuardPlan.lost} 人 | {Math.floor(rearGuardPlan.successChance * 100)}% 成功率)
-              </Button>
+            <div className="flex flex-col gap-3">
+              {tollAvailable && (
+                <Button
+                  onClick={() => onPayToll(tollCost)}
+                  className="flex-1"
+                  variant="secondary"
+                  disabled={!canPayToll}
+                >
+                  支付过路费（{tollCost}）
+                </Button>
+              )}
+              {ignoreAvailable ? (
+                <Button onClick={onIgnoreEncounter} className="flex-1" variant="secondary">
+                  无视对方
+                </Button>
+              ) : (
+                <div className="flex gap-3">
+                  <Button onClick={attemptFlee} className="flex-1" variant="secondary">
+                    <Flag className="inline mr-2" size={14} /> 尝试逃跑 ({Math.floor(fleeChance * 100)}% 成功率)
+                  </Button>
+                  <Button onClick={sacrificeRetreat} className="flex-1" variant="secondary">
+                    <Skull className="inline mr-2" size={14} /> 断尾求生 (牺牲 {rearGuardPlan.lost} 人 | {Math.floor(rearGuardPlan.successChance * 100)}% 成功率)
+                  </Button>
+                </div>
+              )}
             </div>
           )}
         </div>

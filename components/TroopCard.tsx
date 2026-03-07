@@ -19,6 +19,7 @@ interface TroopCardProps {
   upgradeDisabled?: boolean;
   upgradeLabel?: string;
   countLabel?: string;
+  onInspect?: () => void;
 }
 
 export const TroopCard: React.FC<TroopCardProps> = ({ 
@@ -35,7 +36,8 @@ export const TroopCard: React.FC<TroopCardProps> = ({
   onUpgrade,
   upgradeDisabled,
   upgradeLabel,
-  countLabel
+  countLabel,
+  onInspect
 }) => {
   const [portraitSrc, setPortraitSrc] = React.useState<string | null>(null);
 
@@ -63,7 +65,10 @@ export const TroopCard: React.FC<TroopCardProps> = ({
   ]), [normalizedId]);
 
   return (
-    <div className="bg-stone-900/80 border border-stone-700 p-4 rounded-sm flex flex-col gap-3 group hover:border-stone-500 transition-colors relative overflow-hidden">
+    <div
+      className={`bg-stone-900/80 border border-stone-700 p-4 rounded-sm flex flex-col gap-3 group hover:border-stone-500 transition-colors relative overflow-hidden ${onInspect ? 'cursor-pointer' : ''}`}
+      onClick={onInspect}
+    >
        {/* Count Label Badge (Top Right) */}
        {count !== undefined && countLabel && (
           <div className="absolute top-2 right-2 bg-stone-800 text-stone-400 text-[10px] px-2 py-0.5 rounded border border-stone-700">
@@ -170,7 +175,10 @@ export const TroopCard: React.FC<TroopCardProps> = ({
           <div className="flex gap-2">
             {onSecondaryAction && (
                 <button 
-                onClick={onSecondaryAction}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onSecondaryAction();
+                }}
                 disabled={secondaryDisabled}
                 className="flex-1 px-2 py-1 bg-stone-800 hover:bg-stone-700 text-stone-300 text-xs uppercase border border-stone-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                 >
@@ -179,7 +187,10 @@ export const TroopCard: React.FC<TroopCardProps> = ({
             )}
             {onAction && (
                 <button 
-                onClick={onAction}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onAction();
+                }}
                 disabled={disabled}
                 className="flex-1 px-2 py-1 bg-amber-900/50 hover:bg-amber-800 text-amber-200 text-xs uppercase border border-amber-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap disabled:bg-stone-800 disabled:text-stone-500 disabled:border-stone-600"
                 >
@@ -213,7 +224,10 @@ export const TroopCard: React.FC<TroopCardProps> = ({
 
                 {canUpgrade && isReadyToUpgrade && (
                     <button 
-                    onClick={onUpgrade}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onUpgrade();
+                    }}
                     disabled={upgradeDisabled}
                     className="w-full flex items-center justify-center gap-2 bg-green-900/30 hover:bg-green-900/50 border border-green-800 text-green-400 text-xs py-1 mt-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-stone-800 disabled:text-stone-500 disabled:border-stone-700"
                     >
