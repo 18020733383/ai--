@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Hero, HeroChatLine, PartyDiaryEntry } from './types';
 import { Button } from './components/Button';
-import { MessageCircle, Plus, Heart, Zap, Copy } from 'lucide-react';
+import { MessageCircle, Plus, Heart, Zap, Copy, Flag } from 'lucide-react';
 
 type CharacterProps = {
   hero: Hero;
@@ -18,7 +18,7 @@ type CharacterProps = {
   onAddDiaryEntry: (text: string) => void;
   onUpdateDiaryEntry: (entryId: string, nextText: string) => void;
   onDeleteDiaryEntry: (entryId: string) => void;
-  onSpendAttribute: (key: 'attack' | 'hp' | 'agility') => void;
+  onSpendAttribute: (key: 'attack' | 'hp' | 'agility' | 'leadership') => void;
   onClose: () => void;
   listRef: React.RefObject<HTMLDivElement>;
 };
@@ -213,12 +213,20 @@ export default function Character({
                 >
                   <Zap size={12} />
                 </button>
+                <button
+                  disabled={hero.attributePoints <= 0 || hero.status === 'DEAD'}
+                  onClick={() => onSpendAttribute('leadership')}
+                  className="w-7 h-7 rounded bg-stone-700 hover:bg-green-700 flex items-center justify-center disabled:opacity-20 disabled:cursor-not-allowed text-white"
+                >
+                  <Flag size={12} />
+                </button>
               </div>
             </div>
             <div className="flex items-center justify-between text-xs text-stone-400">
               <span>攻击 {hero.attributes.attack}</span>
               <span>血量 {hero.attributes.hp}</span>
               <span>敏捷 {hero.attributes.agility}</span>
+              <span>统御 {hero.attributes.leadership ?? 0}</span>
             </div>
             <div className="text-xs text-stone-400 leading-relaxed">{hero.background}</div>
             <div className="flex flex-wrap gap-2 text-[11px] text-stone-400">

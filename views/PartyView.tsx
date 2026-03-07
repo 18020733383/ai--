@@ -1,5 +1,5 @@
 import React from 'react';
-import { Bird, MessageCircle, Plus, Heart, Zap, Star } from 'lucide-react';
+import { Bird, MessageCircle, Plus, Heart, Zap, Star, Flag } from 'lucide-react';
 import { Hero, PlayerState, SoldierInstance } from '../types';
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
@@ -20,6 +20,7 @@ type PartyViewProps = {
   getHeroRoleLabel: (role: Hero['role']) => string;
   spendHeroAttributePoint: (heroId: string, key: keyof Hero['attributes']) => void;
   onOpenHeroChat: (heroId: string) => void;
+  onLeaveHero: (heroId: string) => void;
   onBackToMap: () => void;
 };
 
@@ -36,6 +37,7 @@ export const PartyView = ({
   getHeroRoleLabel,
   spendHeroAttributePoint,
   onOpenHeroChat,
+  onLeaveHero,
   onBackToMap
 }: PartyViewProps) => {
   const recruitedHeroes = heroes.filter(hero => hero.recruited && !hero.locationId);
@@ -307,6 +309,7 @@ export const PartyView = ({
                     <span>攻击 {hero.attributes.attack}</span>
                     <span>血量 {hero.attributes.hp}</span>
                     <span>敏捷 {hero.attributes.agility}</span>
+                    <span>统御 {hero.attributes.leadership ?? 0}</span>
                   </div>
                   <div className="bg-stone-900/60 border border-stone-700 rounded px-2 py-1 text-[11px] text-stone-400 overflow-hidden">
                     {shouldScroll ? (
@@ -346,17 +349,33 @@ export const PartyView = ({
                       >
                         <Zap size={12} />
                       </button>
+                      <button
+                        disabled={hero.attributePoints <= 0 || hero.status === 'DEAD'}
+                        onClick={() => spendHeroAttributePoint(hero.id, 'leadership')}
+                        className="w-6 h-6 rounded bg-stone-700 hover:bg-green-700 flex items-center justify-center disabled:opacity-20 disabled:cursor-not-allowed text-white"
+                      >
+                        <Flag size={12} />
+                      </button>
                     </div>
                   </div>
                   <div className="flex items-center justify-end">
-                    <Button
-                      onClick={() => onOpenHeroChat(hero.id)}
-                      variant="secondary"
-                      disabled={hero.status === 'DEAD'}
-                    >
-                      <MessageCircle size={14} className="inline mr-2" />
-                      聊天
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        onClick={() => onLeaveHero(hero.id)}
+                        variant="danger"
+                        disabled={hero.status === 'DEAD'}
+                      >
+                        离队
+                      </Button>
+                      <Button
+                        onClick={() => onOpenHeroChat(hero.id)}
+                        variant="secondary"
+                        disabled={hero.status === 'DEAD'}
+                      >
+                        <MessageCircle size={14} className="inline mr-2" />
+                        聊天
+                      </Button>
+                    </div>
                   </div>
                 </div>
               );

@@ -173,6 +173,13 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
     baseX: 0,
     baseY: 0
   });
+  const mouseRef = React.useRef<{ active: boolean; startX: number; startY: number; baseX: number; baseY: number }>({
+    active: false,
+    startX: 0,
+    startY: 0,
+    baseX: 0,
+    baseY: 0
+  });
 
   const loweredQuery = query.trim().toLowerCase();
 
@@ -301,9 +308,11 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
   const selectedNode = selectedId ? nodeMap.get(selectedId) ?? null : null;
 
   const fitToView = React.useCallback((targetLayout: NonNullable<typeof layout>) => {
-    const scale = Math.max(0.35, Math.min(1.2, Math.min((size.w - 40) / targetLayout.width, (size.h - 40) / targetLayout.height)));
-    const x = (size.w - targetLayout.width * scale) / 2;
-    const y = (size.h - targetLayout.height * scale) / 2;
+    const safeW = Math.max(1, size.w);
+    const safeH = Math.max(1, size.h);
+    const scale = Math.max(0.35, Math.min(1.2, Math.min((safeW - 40) / targetLayout.width, (safeH - 40) / targetLayout.height)));
+    const x = (safeW - targetLayout.width * scale) / 2;
+    const y = (safeH - targetLayout.height * scale) / 2;
     setTransform({ x, y, scale });
   }, [size.h, size.w]);
 
@@ -312,8 +321,10 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
     const node = nodeMap.get(id);
     if (!node) return;
     const scale = Math.max(0.3, Math.min(2.4, nextScale ?? transform.scale));
-    const x = size.w / 2 - node.px * scale;
-    const y = size.h / 2 - node.py * scale;
+    const safeW = Math.max(1, size.w);
+    const safeH = Math.max(1, size.h);
+    const x = safeW / 2 - node.px * scale;
+    const y = safeH / 2 - node.py * scale;
     setTransform({ x, y, scale });
   }, [layout, nodeMap, size.w, size.h, transform.scale]);
 
@@ -370,21 +381,72 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
   }, [transform.scale, transform.x, transform.y]);
 
   React.useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
     const handler = (ev: WheelEvent) => {
+      const el = containerRef.current;
+      if (!el) return;
+      if (!(ev.target instanceof Node) || !el.contains(ev.target)) return;
       ev.preventDefault();
       const rect = el.getBoundingClientRect();
       applyWheelZoom(ev.clientX, ev.clientY, ev.deltaY, rect);
     };
-    el.addEventListener('wheel', handler, { passive: false });
-    return () => el.removeEventListener('wheel', handler as EventListener);
+    window.addEventListener('wheel', handler, { passive: false, capture: true });
+    return () => window.removeEventListener('wheel', handler as EventListener);
   }, [applyWheelZoom, isFullscreen]);
+
+  const applyDragMove = React.useCallback((clientX: number, clientY: number) => {
+    if (!pointerRef.current.active) return;
+    const dx = clientX - pointerRef.current.startX;
+    const dy = clientY - pointerRef.current.startY;
+    setTransform({ x: pointerRef.current.baseX + dx, y: pointerRef.current.baseY + dy, scale: transform.scale });
+  }, [transform.scale]);
+
+  const applyMouseMove = React.useCallback((clientX: number, clientY: number) => {
+    if (!mouseRef.current.active) return;
+    const dx = clientX - mouseRef.current.startX;
+    const dy = clientY - mouseRef.current.startY;
+    setTransform({ x: mouseRef.current.baseX + dx, y: mouseRef.current.baseY + dy, scale: transform.scale });
+  }, [transform.scale]);
+
+  React.useEffect(() => {
+    const onMove = (ev: PointerEvent) => {
+      if (!pointerRef.current.active || pointerRef.current.id !== ev.pointerId) return;
+      applyDragMove(ev.clientX, ev.clientY);
+    };
+    const onUp = (ev: PointerEvent) => {
+      if (pointerRef.current.id !== ev.pointerId) return;
+      pointerRef.current.active = false;
+    };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+    return () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+    };
+  }, [applyDragMove]);
+
+  React.useEffect(() => {
+    const onMove = (ev: MouseEvent) => {
+      if (!mouseRef.current.active) return;
+      applyMouseMove(ev.clientX, ev.clientY);
+    };
+    const onUp = () => {
+      mouseRef.current.active = false;
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    return () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+    };
+  }, [applyMouseMove]);
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
     if (target.closest('[data-node-card]') || target.closest('[data-minimap]') || target.closest('[data-ui-control]')) return;
     e.preventDefault();
+    e.currentTarget.focus();
     pointerRef.current = {
       active: true,
       id: e.pointerId,
@@ -393,14 +455,28 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
       baseX: transform.x,
       baseY: transform.y
     };
-    e.currentTarget.setPointerCapture(e.pointerId);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {}
+  };
+
+  const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (target.closest('[data-node-card]') || target.closest('[data-minimap]') || target.closest('[data-ui-control]')) return;
+    e.preventDefault();
+    e.currentTarget.focus();
+    mouseRef.current = {
+      active: true,
+      startX: e.clientX,
+      startY: e.clientY,
+      baseX: transform.x,
+      baseY: transform.y
+    };
   };
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!pointerRef.current.active || pointerRef.current.id !== e.pointerId) return;
-    const dx = e.clientX - pointerRef.current.startX;
-    const dy = e.clientY - pointerRef.current.startY;
-    setTransform(prev => ({ ...prev, x: pointerRef.current.baseX + dx, y: pointerRef.current.baseY + dy }));
+    applyDragMove(e.clientX, e.clientY);
   };
 
   const onPointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -461,12 +537,14 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
     <div className={isFullscreen ? 'fixed inset-2 z-[70] bg-black/90 rounded border border-stone-700' : ''}>
       <div
         ref={containerRef}
-        className={`relative overflow-hidden border border-stone-800 rounded bg-stone-950/40 ${isFullscreen ? 'h-full' : 'h-[70vh]'}`}
+        className={`relative overflow-hidden border border-stone-800 rounded bg-stone-950/40 pointer-events-auto ${isFullscreen ? 'h-full' : 'h-[70vh]'}`}
+        tabIndex={0}
         style={{ touchAction: 'none' }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onMouseDown={onMouseDown}
       >
         <div
           className="absolute left-0 top-0"

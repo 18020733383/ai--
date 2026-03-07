@@ -17,7 +17,7 @@ type HeroChatViewProps = {
   onDeleteDiaryEntry: (entryId: string) => void;
   onUpdateMemory: (memoryId: string, nextText: string) => void;
   onDeleteMemory: (memoryId: string) => void;
-  onSpendAttribute: (key: 'attack' | 'hp' | 'agility') => void;
+  onSpendAttribute: (key: 'attack' | 'hp' | 'agility' | 'leadership') => void;
   onClose: () => void;
   onBackToParty: () => void;
   listRef: React.RefObject<HTMLDivElement>;

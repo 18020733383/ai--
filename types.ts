@@ -182,6 +182,7 @@ export interface HeroAttributes {
   attack: number;
   hp: number;
   agility: number;
+  leadership?: number;
 }
 
 export type HeroChatLine = { role: 'PLAYER' | 'HERO'; text: string; day?: number };

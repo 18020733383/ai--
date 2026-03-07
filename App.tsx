@@ -2638,12 +2638,13 @@ export default function App() {
 
   const buildHeroAttributesFromTroop = (troop: Troop) => {
     if (!troop.attributes) {
-      return { attack: 12, hp: 90, agility: 12 };
+      return { attack: 12, hp: 90, agility: 12, leadership: 0 };
     }
     return {
       attack: clampValue(Math.round(troop.attributes.attack / 5), 8, 30),
       hp: clampValue(Math.round(troop.attributes.hp * 1.4), 60, 220),
-      agility: clampValue(Math.round(troop.attributes.agility / 5), 8, 30)
+      agility: clampValue(Math.round(troop.attributes.agility / 5), 8, 30),
+      leadership: 0
     };
   };
 
@@ -2659,7 +2660,7 @@ export default function App() {
     xp: 0,
     maxXp: 200,
     attributePoints: 0,
-    attributes: { attack: 14, hp: 100, agility: 12 },
+    attributes: { attack: 14, hp: 100, agility: 12, leadership: 0 },
     currentHp: 100,
     maxHp: 100,
     status: 'ACTIVE',
@@ -3138,11 +3139,12 @@ export default function App() {
     });
   };
 
-  const spendHeroAttributePoint = (heroId: string, key: 'attack' | 'hp' | 'agility') => {
+  const spendHeroAttributePoint = (heroId: string, key: keyof Hero['attributes']) => {
     setHeroes(prev => prev.map(hero => {
       if (hero.id !== heroId) return hero;
       if (hero.attributePoints <= 0) return hero;
-      const nextAttributes = { ...hero.attributes, [key]: hero.attributes[key] + 1 };
+      const currentValue = typeof hero.attributes[key] === 'number' ? hero.attributes[key] : 0;
+      const nextAttributes = { ...hero.attributes, [key]: currentValue + 1 };
       const extra = key === 'hp'
         ? { maxHp: hero.maxHp + 10, currentHp: hero.currentHp + 10 }
         : {};
@@ -3155,7 +3157,52 @@ export default function App() {
     }));
   };
 
-  const getMaxTroops = () => 20 + player.attributes.leadership * 5;
+  const getHeroLeadershipBonus = () => {
+    const guardianIds = new Set<string>();
+    locations.forEach(loc => {
+      if (!loc.hideout?.layers) return;
+      loc.hideout.layers.forEach(layer => {
+        if (layer.guardianHeroId) guardianIds.add(layer.guardianHeroId);
+      });
+    });
+    const activeHeroes = heroes.filter(h => h.recruited && !h.locationId && h.status !== 'DEAD' && !guardianIds.has(h.id));
+    const total = activeHeroes.reduce((sum, h) => sum + Math.max(0, h.attributes.leadership ?? 0), 0);
+    return total * 5;
+  };
+
+  const getMaxTroops = () => 20 + player.attributes.leadership * 5 + getHeroLeadershipBonus();
+
+  const handleHeroLeave = (heroId: string) => {
+    const hero = heroes.find(h => h.id === heroId);
+    if (!hero || !hero.recruited) return;
+    const returnCity = currentLocation?.type === 'CITY'
+      ? currentLocation
+      : locations.find(l => l.type === 'CITY') ?? locations[0] ?? null;
+    const stayDays = Math.max(2, Math.min(6, 2 + Math.floor(Math.random() * 5)));
+    const returnCityId = returnCity?.id;
+    setHeroes(prev => prev.map(h => {
+      if (h.id !== heroId) return h;
+      return {
+        ...h,
+        recruited: false,
+        locationId: returnCityId,
+        stayDays
+      };
+    }));
+    setLocations(prev => prev.map(loc => {
+      if (!loc.hideout?.layers) return loc;
+      const nextLayers = loc.hideout.layers.map(layer => layer.guardianHeroId === heroId ? { ...layer, guardianHeroId: undefined } : layer);
+      const changed = nextLayers.some((layer, idx) => layer.guardianHeroId !== loc.hideout?.layers?.[idx]?.guardianHeroId);
+      if (!changed) return loc;
+      return { ...loc, hideout: { ...loc.hideout, layers: nextLayers } };
+    }));
+    if (activeHeroChatId === heroId) {
+      setActiveHeroChatId(null);
+      setView('PARTY');
+    }
+    if (returnCity) addLog(`${hero.name} 已离队，返回 ${returnCity.name}。`);
+    else addLog(`${hero.name} 已离队。`);
+  };
 
   const recoverHp = () => {
     if (player.currentHp < player.maxHp) {
@@ -9668,11 +9715,21 @@ export default function App() {
       if (raw && allowed.includes(raw as any)) return raw as any;
       return 'HUMAN';
     })();
+    const mergedAttributes = (() => {
+      const raw = hero.attributes ?? base.attributes ?? { attack: 10, hp: 80, agility: 10 };
+      return {
+        attack: typeof raw.attack === 'number' ? raw.attack : 10,
+        hp: typeof raw.hp === 'number' ? raw.hp : 80,
+        agility: typeof raw.agility === 'number' ? raw.agility : 10,
+        leadership: typeof raw.leadership === 'number' ? raw.leadership : 0
+      };
+    })();
 
     return {
       ...base,
       ...hero,
       race: mergedRace,
+      attributes: mergedAttributes,
       personality: personalityRaw.trim() ? personalityRaw : (base.personality || '沉稳可靠'),
       profile: mergedProfile,
       joinedDay: mergedJoinedDay,
@@ -11002,6 +11059,7 @@ export default function App() {
         setHeroChatInput('');
         setView('HERO_CHAT');
       }}
+      onLeaveHero={handleHeroLeave}
       onBackToMap={() => setView('MAP')}
     />
   );

@@ -3844,13 +3844,15 @@ export const TownView = ({
                       ? {
                         attack: clampValue(Math.round(tmpl.attributes.attack / 5), 8, 30),
                         hp: clampValue(Math.round(tmpl.attributes.hp * 1.4), 60, 220),
-                        agility: clampValue(Math.round(tmpl.attributes.agility / 5), 8, 30)
+                        agility: clampValue(Math.round(tmpl.attributes.agility / 5), 8, 30),
+                        leadership: 0
                       }
-                      : { attack: 12, hp: 90, agility: 12 };
+                      : { attack: 12, hp: 90, agility: 12, leadership: 0 };
                     const boosted = {
                       attack: clampValue(Math.round(baseHeroAttributes.attack * (1 + selectedTier.boost)), 8, 180),
                       hp: clampValue(Math.round(baseHeroAttributes.hp * (1 + selectedTier.boost)), 60, 1200),
-                      agility: clampValue(Math.round(baseHeroAttributes.agility * (1 + selectedTier.boost)), 8, 180)
+                      agility: clampValue(Math.round(baseHeroAttributes.agility * (1 + selectedTier.boost)), 8, 180),
+                      leadership: baseHeroAttributes.leadership
                     };
                     const race = getTroopRace({ id: troopStack.id, name: troopStack.name, doctrine: troopStack.doctrine, evangelist: troopStack.evangelist, race: troopStack.race as any });
                     const chosenSoldier = (player.soldiers ?? []).find(s => s.id === recompilerSoldierId && s.status === 'ACTIVE') ?? null;
