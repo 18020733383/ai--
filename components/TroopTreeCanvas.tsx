@@ -3,6 +3,7 @@ import * as d3 from 'd3';
 import { Crosshair, Flag, Heart, Maximize2, Minimize2, Shield, Sword, Zap } from 'lucide-react';
 import { Troop, TroopTier } from '../types';
 import { Button } from './Button';
+import { createPortal } from 'react-dom';
 
 type TroopTemplate = Omit<Troop, 'count' | 'xp'>;
 
@@ -134,6 +135,26 @@ const TroopRadar = ({ attributes, size = 140 }: { attributes: Troop['attributes'
         );
       })}
     </svg>
+  );
+};
+
+const TroopPortrait = ({ troopId, alt, className }: { troopId: string; alt: string; className?: string }) => {
+  const normalized = troopId.startsWith('garrison_') ? troopId.slice('garrison_'.length) : troopId;
+  const sources = React.useMemo(() => ([
+    `/image/troops/${normalized}.png`,
+    `/image/troops/${normalized}.jpg`,
+    `/image/troops/${normalized}.jpeg`
+  ]), [normalized]);
+  const [index, setIndex] = React.useState(0);
+  React.useEffect(() => setIndex(0), [normalized]);
+  const src = sources[Math.min(index, sources.length - 1)];
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setIndex(prev => (prev + 1 < sources.length ? prev + 1 : prev))}
+    />
   );
 };
 
@@ -334,9 +355,35 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
     fitToView(layout);
   }, [layout, fitToView]);
 
+  const applyWheelZoom = React.useCallback((clientX: number, clientY: number, deltaY: number, rect: DOMRect) => {
+    const px = clientX - rect.left;
+    const py = clientY - rect.top;
+    const delta = -deltaY * 0.0012;
+    const nextScale = Math.max(0.3, Math.min(2.4, transform.scale * (1 + delta)));
+    const worldX = (px - transform.x) / transform.scale;
+    const worldY = (py - transform.y) / transform.scale;
+    setTransform({
+      scale: nextScale,
+      x: px - worldX * nextScale,
+      y: py - worldY * nextScale
+    });
+  }, [transform.scale, transform.x, transform.y]);
+
+  React.useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const handler = (ev: WheelEvent) => {
+      ev.preventDefault();
+      const rect = el.getBoundingClientRect();
+      applyWheelZoom(ev.clientX, ev.clientY, ev.deltaY, rect);
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler as EventListener);
+  }, [applyWheelZoom, isFullscreen]);
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     const target = e.target as HTMLElement;
-    if (target.closest('[data-node-card]') || target.closest('[data-minimap]')) return;
+    if (target.closest('[data-node-card]') || target.closest('[data-minimap]') || target.closest('[data-ui-control]')) return;
     e.preventDefault();
     pointerRef.current = {
       active: true,
@@ -362,22 +409,6 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {}
-  };
-
-  const onWheel = (e: React.WheelEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    const rect = e.currentTarget.getBoundingClientRect();
-    const px = e.clientX - rect.left;
-    const py = e.clientY - rect.top;
-    const delta = -e.deltaY * 0.0012;
-    const nextScale = Math.max(0.3, Math.min(2.4, transform.scale * (1 + delta)));
-    const worldX = (px - transform.x) / transform.scale;
-    const worldY = (py - transform.y) / transform.scale;
-    setTransform({
-      scale: nextScale,
-      x: px - worldX * nextScale,
-      y: py - worldY * nextScale
-    });
   };
 
   const moveFromMiniMap = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -426,7 +457,7 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
   const viewW = worldViewW * miniScale;
   const viewH = worldViewH * miniScale;
 
-  return (
+  const canvas = (
     <div className={isFullscreen ? 'fixed inset-2 z-[70] bg-black/90 rounded border border-stone-700' : ''}>
       <div
         ref={containerRef}
@@ -436,7 +467,6 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
-        onWheel={onWheel}
       >
         <div
           className="absolute left-0 top-0"
@@ -483,6 +513,7 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
               >
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
+                    <TroopPortrait troopId={node.id} alt={node.troop.name} className="w-5 h-5 rounded border border-stone-700 object-cover bg-stone-900 shrink-0" />
                     <Icon size={14} className="text-amber-300 shrink-0" />
                     <div className="text-xs text-stone-100 truncate">{node.troop.name}</div>
                   </div>
@@ -497,7 +528,7 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
           })}
         </div>
 
-        <div className="absolute left-3 top-3 flex items-center gap-2">
+        <div className="absolute left-3 top-3 flex items-center gap-2" data-ui-control="1">
           <Button variant="secondary" size="sm" onClick={() => fitToView(layout)}>重置视图</Button>
           <Button
             variant="secondary"
@@ -510,13 +541,14 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
           </Button>
         </div>
 
-        <div className="absolute right-3 top-3 text-[11px] text-stone-500 bg-black/40 border border-stone-800 rounded px-2 py-1">
+        <div className="absolute right-3 top-3 text-[11px] text-stone-500 bg-black/40 border border-stone-800 rounded px-2 py-1" data-ui-control="1">
           拖拽平移 · 滚轮缩放（{Math.round(transform.scale * 100)}%）
         </div>
 
         <div
           data-minimap="1"
           className="absolute left-3 bottom-3 w-[220px] h-[140px] bg-black/60 border border-stone-700 rounded p-1 cursor-crosshair"
+          data-ui-control="1"
           onMouseDown={(e) => {
             e.preventDefault();
             moveFromMiniMap(e);
@@ -566,11 +598,14 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
         </div>
 
         {selectedNode && (
-          <div className="absolute right-3 bottom-3 w-[320px] max-h-[60%] overflow-auto bg-stone-900/95 border border-stone-700 rounded p-3 space-y-3">
+          <div className="absolute right-3 bottom-3 w-[340px] max-h-[60%] overflow-auto bg-stone-900/95 border border-stone-700 rounded p-3 space-y-3" data-ui-control="1">
             <div className="flex items-center justify-between gap-2">
-              <div>
-                <div className="text-stone-100 font-semibold">{selectedNode.troop.name}</div>
-                <div className="text-xs text-stone-500 mt-0.5">{selectedNode.id} · T{selectedNode.troop.tier}</div>
+              <div className="flex items-center gap-2 min-w-0">
+                <TroopPortrait troopId={selectedNode.id} alt={selectedNode.troop.name} className="w-10 h-10 rounded border border-stone-700 object-cover bg-stone-900 shrink-0" />
+                <div>
+                  <div className="text-stone-100 font-semibold">{selectedNode.troop.name}</div>
+                  <div className="text-xs text-stone-500 mt-0.5">{selectedNode.id} · T{selectedNode.troop.tier}</div>
+                </div>
               </div>
               <Button
                 variant="secondary"
@@ -605,4 +640,8 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
       </div>
     </div>
   );
+
+  if (!isFullscreen) return canvas;
+  if (typeof document === 'undefined') return canvas;
+  return createPortal(canvas, document.body);
 };
