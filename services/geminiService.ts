@@ -1011,6 +1011,16 @@ export type WorldNewspaperSection = {
   body: string;
 };
 
+export type WorldNewspaperVisuals = {
+  lineTrend: number[];
+  columnStats: Array<{ label: string; value: number }>;
+  barStats: Array<{ label: string; value: number }>;
+  relationNodes: string[];
+  relationEdges: Array<{ from: string; to: string; value: number }>;
+  mermaidFlow: string;
+  keywords: string[];
+};
+
 export type WorldNewspaperIssue = {
   masthead: string;
   subtitle: string;
@@ -1026,6 +1036,7 @@ export type WorldNewspaperIssue = {
   sections: WorldNewspaperSection[];
   briefs: string[];
   ticker: string[];
+  visuals: WorldNewspaperVisuals;
 };
 
 export const generateWorldNewspaper = async (
@@ -1056,8 +1067,9 @@ export const generateWorldNewspaper = async (
 1) 语气像严肃但有戏剧性的战地新闻。
 2) 信息尽量覆盖：最近战斗、关系恶化、入侵风险、重点兵力动向。
 3) 不要胡编世界外设定，不确定时使用“据传”“尚待核实”等表达。
-4) 所有字段必须有值；sections 给 5~8 条；briefs 给 4~8 条；ticker 给 4~8 条。
+4) 所有字段必须有值；sections 给 5~8 条；briefs 给 4~8 条；ticker 给 4~8 条；keywords 给 8~16 条。
 5) 每段中文尽量简洁，leadBody 160~320 字，sections.body 60~160 字。
+6) 你可以使用“数据可视化”思维，但必须按 JSON 字段返回，不要输出 markdown 代码块。
 
 返回 JSON 字段：
 - masthead, subtitle, dateLine, issueNo, editorNote
@@ -1066,6 +1078,15 @@ export const generateWorldNewspaper = async (
 - sections: [{ tag, title, body }]
 - briefs: string[]
 - ticker: string[]
+- visuals: {
+    lineTrend: number[] (6~16个非负整数),
+    columnStats: [{ label, value }] (4~8条，value为非负整数),
+    barStats: [{ label, value }] (4~8条，value为非负整数),
+    relationNodes: string[] (3~8条短名),
+    relationEdges: [{ from, to, value }] (3~12条，value范围 -100~100),
+    mermaidFlow: string (一段 flowchart LR 语法文本),
+    keywords: string[] (8~16条关键词，不要带#)
+  }
 
 【世界日期】第 ${payload.day} 天
 【当前地点】${payload.locationName}
@@ -1115,6 +1136,34 @@ ${forceBlock}
       .map((x: any) => String(x ?? '').trim())
       .filter(Boolean)
       .slice(0, 8);
+    const normalizeStats = (arr: any, max = 8) => (Array.isArray(arr) ? arr : [])
+      .map((x: any, idx: number) => ({
+        label: normalizeText(x?.label, `项${idx + 1}`),
+        value: Math.max(0, Math.round(Number(x?.value ?? 0)))
+      }))
+      .filter((x: any) => x.label)
+      .slice(0, max);
+    const lineTrend = (Array.isArray(raw?.visuals?.lineTrend) ? raw.visuals.lineTrend : [])
+      .map((x: any) => Math.max(0, Math.round(Number(x ?? 0))))
+      .filter((x: number) => Number.isFinite(x))
+      .slice(0, 16);
+    const relationNodes = (Array.isArray(raw?.visuals?.relationNodes) ? raw.visuals.relationNodes : [])
+      .map((x: any) => String(x ?? '').trim())
+      .filter(Boolean)
+      .slice(0, 8);
+    const relationEdges = (Array.isArray(raw?.visuals?.relationEdges) ? raw.visuals.relationEdges : [])
+      .map((x: any) => ({
+        from: String(x?.from ?? '').trim(),
+        to: String(x?.to ?? '').trim(),
+        value: Math.max(-100, Math.min(100, Math.round(Number(x?.value ?? 0))))
+      }))
+      .filter((x: any) => x.from && x.to)
+      .slice(0, 12);
+    const mermaidFlow = normalizeText(raw?.visuals?.mermaidFlow, 'flowchart LR\nA[战线升温]-->B[关系紧张]\nB-->C[局部冲突]');
+    const keywords = (Array.isArray(raw?.visuals?.keywords) ? raw.visuals.keywords : [])
+      .map((x: any) => String(x ?? '').trim())
+      .filter(Boolean)
+      .slice(0, 16);
     return {
       masthead: normalizeText(raw?.masthead, '卡拉迪亚纪闻'),
       subtitle: normalizeText(raw?.subtitle, '战火、盟约与阴影'),
@@ -1129,7 +1178,24 @@ ${forceBlock}
       sideNote: normalizeText(raw?.sideNote, '注：本版内容来自前线记录、议会通报与城镇口述，部分仍待核实。'),
       sections: sections.length > 0 ? sections : [{ tag: '快讯', title: '暂无更多栏目', body: '今日信息量较少，报社将持续追踪。' }],
       briefs: briefs.length > 0 ? briefs : ['暂无简讯。'],
-      ticker: ticker.length > 0 ? ticker : ['暂无滚动快讯。']
+      ticker: ticker.length > 0 ? ticker : ['暂无滚动快讯。'],
+      visuals: {
+        lineTrend: lineTrend.length > 0 ? lineTrend : [2, 3, 5, 4, 6, 7],
+        columnStats: normalizeStats(raw?.visuals?.columnStats, 8).length > 0 ? normalizeStats(raw?.visuals?.columnStats, 8) : [
+          { label: '战斗', value: 7 }, { label: '围攻', value: 3 }, { label: '袭扰', value: 5 }, { label: '停战', value: 1 }
+        ],
+        barStats: normalizeStats(raw?.visuals?.barStats, 8).length > 0 ? normalizeStats(raw?.visuals?.barStats, 8) : [
+          { label: '北境', value: 68 }, { label: '河谷', value: 47 }, { label: '边陲', value: 82 }, { label: '沿海', value: 39 }
+        ],
+        relationNodes: relationNodes.length > 0 ? relationNodes : ['王国', '同盟', '商会', '边军'],
+        relationEdges: relationEdges.length > 0 ? relationEdges : [
+          { from: '王国', to: '同盟', value: 35 },
+          { from: '王国', to: '商会', value: -20 },
+          { from: '边军', to: '王国', value: 15 }
+        ],
+        mermaidFlow,
+        keywords: keywords.length > 0 ? keywords : ['前线', '围攻', '停战', '贸易线', '边境', '兵力调动', '外交', '叛乱']
+      }
     };
   };
 

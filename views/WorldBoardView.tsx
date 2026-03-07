@@ -142,6 +142,31 @@ export const WorldBoardView = ({
     })
     .sort((a, b) => (b.power - a.power) || (b.troopCount - a.troopCount) || a.name.localeCompare(b.name));
 
+  const paperLinePoints = (values: number[], width: number, height: number, pad = 12) => {
+    const safe = values.length > 0 ? values : [0];
+    const max = Math.max(1, ...safe);
+    const step = safe.length > 1 ? (width - pad * 2) / (safe.length - 1) : 0;
+    return safe.map((v, i) => {
+      const x = pad + step * i;
+      const y = height - pad - (v / max) * (height - pad * 2);
+      return { x, y, v };
+    });
+  };
+  const paperLinePath = (values: number[], width: number, height: number, pad = 12) => {
+    const points = paperLinePoints(values, width, height, pad);
+    return points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(' ');
+  };
+  const relationLayout = (nodes: string[]) => {
+    const safe = nodes.length > 0 ? nodes : ['A', 'B', 'C'];
+    const cx = 150;
+    const cy = 110;
+    const r = 78;
+    return safe.map((name, idx) => {
+      const angle = (Math.PI * 2 * idx) / safe.length - Math.PI / 2;
+      return { name, x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r };
+    });
+  };
+
   const escapeHtml = (value: string) => String(value ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -162,6 +187,34 @@ export const WorldBoardView = ({
       .join('\n');
     const briefs = issue.briefs.map(line => `<li>${escapeHtml(line)}</li>`).join('\n');
     const ticker = issue.ticker.map(line => `<span>${escapeHtml(line)}</span>`).join('\n');
+    const keywordBar = issue.visuals.keywords.map(line => `<span>${escapeHtml(line)}</span>`).join('\n');
+    const linePath = paperLinePath(issue.visuals.lineTrend, 300, 120, 14);
+    const lineDots = paperLinePoints(issue.visuals.lineTrend, 300, 120, 14)
+      .map(p => `<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="2.5" fill="#8b0000"></circle>`)
+      .join('');
+    const colMax = Math.max(1, ...issue.visuals.columnStats.map(x => x.value));
+    const colBars = issue.visuals.columnStats.slice(0, 6).map((item, idx) => {
+      const h = Math.max(6, (item.value / colMax) * 90);
+      const x = 14 + idx * 46;
+      return `<g><rect x="${x}" y="${104 - h}" width="30" height="${h}" fill="#3f3f46"></rect><text x="${x + 15}" y="116" text-anchor="middle" font-size="10">${escapeHtml(item.label)}</text></g>`;
+    }).join('');
+    const barMax = Math.max(1, ...issue.visuals.barStats.map(x => x.value));
+    const barRows = issue.visuals.barStats.slice(0, 6).map((item, idx) => {
+      const w = Math.max(12, (item.value / barMax) * 180);
+      const y = 14 + idx * 18;
+      return `<g><text x="2" y="${y + 10}" font-size="10">${escapeHtml(item.label)}</text><rect x="76" y="${y}" width="${w}" height="11" fill="#57534e"></rect></g>`;
+    }).join('');
+    const relNodes = relationLayout(issue.visuals.relationNodes);
+    const relMap = new Map(relNodes.map(n => [n.name, n]));
+    const relEdges = issue.visuals.relationEdges.slice(0, 12).map(edge => {
+      const a = relMap.get(edge.from);
+      const b = relMap.get(edge.to);
+      if (!a || !b) return '';
+      const color = edge.value >= 0 ? '#166534' : '#991b1b';
+      const width = 1 + Math.min(2.4, Math.abs(edge.value) / 45);
+      return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${color}" stroke-width="${width.toFixed(2)}"></line>`;
+    }).join('');
+    const relLabels = relNodes.map(n => `<g><circle cx="${n.x.toFixed(1)}" cy="${n.y.toFixed(1)}" r="11" fill="#f4e6c8" stroke="#57534e"></circle><text x="${n.x.toFixed(1)}" y="${(n.y + 4).toFixed(1)}" font-size="9" text-anchor="middle">${escapeHtml(n.name)}</text></g>`).join('');
     return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -169,13 +222,13 @@ export const WorldBoardView = ({
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(issue.masthead)}</title>
   <style>
-    body{margin:0;background:#e8e4d8;font-family: "Noto Serif SC","Songti SC",serif;color:#111}
-    .paper{max-width:1200px;margin:16px auto;background:#f7f2e6;border:1px solid #b7b1a3;box-shadow:0 6px 20px rgba(0,0,0,.18)}
-    .head{padding:18px 24px;border-bottom:2px solid #111}
+    body{margin:0;background:#d8d2c3;font-family: "Noto Serif SC","Songti SC",serif;color:#111}
+    .paper{max-width:1240px;margin:16px auto;background:#efe3c7;border:1px solid #978d7a;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+    .head{padding:18px 24px;border-bottom:2px solid #1c1917;background:linear-gradient(180deg,#f4ead4 0%,#e8dcc0 100%)}
     .mast{font-size:48px;font-weight:700;letter-spacing:2px}
     .sub{margin-top:4px;font-size:13px;color:#333}
     .meta{display:flex;justify-content:space-between;font-size:12px;margin-top:10px;color:#444}
-    .body{display:grid;grid-template-columns:1.45fr 1fr 0.9fr;gap:16px;padding:16px 20px}
+    .body{display:grid;grid-template-columns:1.42fr 1fr 0.92fr;gap:16px;padding:16px 20px}
     .lead h1{font-size:44px;line-height:1.08;margin:8px 0}
     .lead .deck{font-size:16px;color:#222;border-left:4px solid #111;padding-left:10px}
     .lead p{font-size:16px;line-height:1.7;text-align:justify}
@@ -186,11 +239,19 @@ export const WorldBoardView = ({
     .col-item p{font-size:14px;line-height:1.65}
     .side .quote{border:1px solid #111;padding:10px;background:#f3ead7;font-size:18px;line-height:1.5}
     .side .note{margin-top:10px;font-size:13px;line-height:1.6;color:#333}
+    .viz{margin-top:14px;border-top:1px solid #111;padding-top:8px}
+    .viz h4{margin:2px 0 8px;font-size:13px;letter-spacing:1px}
+    .viz-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .viz-card{border:1px solid #44403c;background:#f6edd8;padding:6px}
+    .mermaid{margin-top:10px;border:1px dashed #57534e;background:#f8f1df;padding:8px;white-space:pre-wrap;font-family:ui-monospace,Menlo,monospace;font-size:11px}
     .briefs{margin-top:16px;border-top:2px solid #111;padding-top:8px}
     .briefs h4{font-size:18px;margin:4px 0 8px}
     .briefs li{margin:6px 0;line-height:1.5;font-size:14px}
-    .ticker{border-top:1px solid #111;padding:10px 18px;display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:#333}
+    .ticker{border-top:1px solid #111;padding:8px 18px;display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:#333}
     .ticker span{padding-right:10px;border-right:1px solid #999}
+    .keywords{border-top:1px solid #44403c;background:#d6c39e;padding:8px 18px;display:flex;flex-wrap:wrap;gap:8px;font-size:12px}
+    .keywords .label{font-weight:700;margin-right:6px}
+    .keywords span{background:#f4ecd9;border:1px solid #6b5f46;padding:1px 6px}
   </style>
 </head>
 <body>
@@ -219,9 +280,42 @@ export const WorldBoardView = ({
         <div class="tag">社评</div>
         <div class="quote">${escapeHtml(issue.sideQuote)}</div>
         <div class="note">${escapeHtml(issue.sideNote)}</div>
+        <div class="viz">
+          <h4>数据图版</h4>
+          <div class="viz-grid">
+            <div class="viz-card">
+              <svg width="300" height="120" viewBox="0 0 300 120">
+                <rect x="0" y="0" width="300" height="120" fill="none" stroke="#78716c"></rect>
+                <path d="${linePath}" fill="none" stroke="#7f1d1d" stroke-width="2"></path>
+                ${lineDots}
+              </svg>
+            </div>
+            <div class="viz-card">
+              <svg width="300" height="120" viewBox="0 0 300 120">
+                <rect x="0" y="0" width="300" height="120" fill="none" stroke="#78716c"></rect>
+                ${colBars}
+              </svg>
+            </div>
+            <div class="viz-card">
+              <svg width="300" height="130" viewBox="0 0 300 130">
+                <rect x="0" y="0" width="300" height="130" fill="none" stroke="#78716c"></rect>
+                ${barRows}
+              </svg>
+            </div>
+            <div class="viz-card">
+              <svg width="300" height="220" viewBox="0 0 300 220">
+                <rect x="0" y="0" width="300" height="220" fill="none" stroke="#78716c"></rect>
+                ${relEdges}
+                ${relLabels}
+              </svg>
+            </div>
+          </div>
+          <pre class="mermaid">${escapeHtml(issue.visuals.mermaidFlow)}</pre>
+        </div>
       </aside>
     </section>
     <footer class="ticker">${ticker}</footer>
+    <footer class="keywords"><span class="label">关键词：</span>${keywordBar}</footer>
   </main>
 </body>
 </html>`;
@@ -283,19 +377,19 @@ export const WorldBoardView = ({
         </div>
         {paperError && <div className="mb-4 text-sm text-red-300 bg-red-950/40 border border-red-900 rounded px-3 py-2">{paperError}</div>}
         {newspaper && (
-          <div className="mb-6 bg-[#f7f2e6] text-stone-900 border border-[#b8b2a5] rounded overflow-hidden shadow-xl">
-            <div className="border-b-2 border-stone-900 px-4 py-3 bg-[#f5efdf]">
-              <div className="text-3xl md:text-4xl font-black tracking-widest">{newspaper.masthead}</div>
+          <div className="mb-6 bg-[#efe3c7] text-stone-900 border border-[#9a8d78] rounded overflow-hidden shadow-2xl">
+            <div className="border-b-2 border-stone-900 px-4 py-3 bg-gradient-to-b from-[#f6ecd7] to-[#e8dbc0]">
+              <div className="text-3xl md:text-5xl font-black tracking-[0.2em]">{newspaper.masthead}</div>
               <div className="text-xs text-stone-700 mt-1">{newspaper.subtitle}</div>
               <div className="text-[11px] text-stone-600 mt-2 flex justify-between">
                 <span>{newspaper.dateLine}</span>
                 <span>{newspaper.issueNo}</span>
               </div>
             </div>
-            <div className="p-4 grid grid-cols-1 xl:grid-cols-[1.45fr_1fr_0.9fr] gap-4">
+            <div className="p-4 grid grid-cols-1 xl:grid-cols-[1.42fr_1fr_0.92fr] gap-4">
               <div>
                 <div className="inline-flex text-[10px] tracking-widest border border-stone-800 px-2 py-0.5">{newspaper.leadTag}</div>
-                <div className="text-3xl md:text-4xl font-black leading-tight mt-2">{newspaper.leadTitle}</div>
+                <div className="text-3xl md:text-5xl font-black leading-[1.05] mt-2">{newspaper.leadTitle}</div>
                 <div className="text-sm mt-2 border-l-4 border-stone-900 pl-3 text-stone-800">{newspaper.leadDeck}</div>
                 <div className="text-[15px] leading-7 mt-3 whitespace-pre-wrap">{newspaper.leadBody}</div>
                 <div className="mt-4 border-t-2 border-stone-900 pt-2">
@@ -314,14 +408,100 @@ export const WorldBoardView = ({
                   </div>
                 ))}
               </div>
-              <div>
-                <div className="inline-flex text-[10px] tracking-widest border border-stone-800 px-2 py-0.5">社评</div>
-                <div className="mt-2 border border-stone-800 bg-[#efe3c8] p-3 text-lg leading-8">{newspaper.sideQuote}</div>
-                <div className="mt-3 text-sm leading-6 text-stone-800">{newspaper.sideNote}</div>
+              <div className="space-y-3">
+                <div>
+                  <div className="inline-flex text-[10px] tracking-widest border border-stone-800 px-2 py-0.5">社评</div>
+                  <div className="mt-2 border border-stone-800 bg-[#efe3c8] p-3 text-lg leading-8">{newspaper.sideQuote}</div>
+                  <div className="mt-2 text-sm leading-6 text-stone-800">{newspaper.sideNote}</div>
+                </div>
+                <div className="border-t border-stone-900 pt-2">
+                  <div className="font-semibold text-sm mb-2 tracking-widest">数据图版</div>
+                  <div className="grid grid-cols-1 gap-2">
+                    <div className="bg-[#f7efdd] border border-stone-700 p-1">
+                      <svg width={300} height={120} viewBox="0 0 300 120" className="w-full h-auto">
+                        <rect x={0} y={0} width={300} height={120} fill="none" stroke="rgba(120,113,108,0.8)" />
+                        <path d={paperLinePath(newspaper.visuals.lineTrend, 300, 120, 14)} fill="none" stroke="rgba(127,29,29,0.9)" strokeWidth={2} />
+                        {paperLinePoints(newspaper.visuals.lineTrend, 300, 120, 14).map((p, idx) => <circle key={`lp_${idx}`} cx={p.x} cy={p.y} r={2.5} fill="rgba(127,29,29,0.9)" />)}
+                      </svg>
+                    </div>
+                    <div className="bg-[#f7efdd] border border-stone-700 p-1">
+                      <svg width={300} height={120} viewBox="0 0 300 120" className="w-full h-auto">
+                        <rect x={0} y={0} width={300} height={120} fill="none" stroke="rgba(120,113,108,0.8)" />
+                        {(() => {
+                          const list = newspaper.visuals.columnStats.slice(0, 6);
+                          const max = Math.max(1, ...list.map(x => x.value));
+                          return list.map((item, idx) => {
+                            const h = Math.max(6, (item.value / max) * 90);
+                            const x = 14 + idx * 46;
+                            return (
+                              <g key={`cb_${idx}`}>
+                                <rect x={x} y={104 - h} width={30} height={h} fill="rgba(63,63,70,0.92)" />
+                                <text x={x + 15} y={116} fontSize={10} textAnchor="middle">{item.label}</text>
+                              </g>
+                            );
+                          });
+                        })()}
+                      </svg>
+                    </div>
+                    <div className="bg-[#f7efdd] border border-stone-700 p-1">
+                      <svg width={300} height={132} viewBox="0 0 300 132" className="w-full h-auto">
+                        <rect x={0} y={0} width={300} height={132} fill="none" stroke="rgba(120,113,108,0.8)" />
+                        {(() => {
+                          const list = newspaper.visuals.barStats.slice(0, 6);
+                          const max = Math.max(1, ...list.map(x => x.value));
+                          return list.map((item, idx) => {
+                            const w = Math.max(12, (item.value / max) * 180);
+                            const y = 12 + idx * 19;
+                            return (
+                              <g key={`hb_${idx}`}>
+                                <text x={2} y={y + 10} fontSize={10}>{item.label}</text>
+                                <rect x={76} y={y} width={w} height={11} fill="rgba(87,83,78,0.92)" />
+                              </g>
+                            );
+                          });
+                        })()}
+                      </svg>
+                    </div>
+                    <div className="bg-[#f7efdd] border border-stone-700 p-1">
+                      <svg width={300} height={220} viewBox="0 0 300 220" className="w-full h-auto">
+                        <rect x={0} y={0} width={300} height={220} fill="none" stroke="rgba(120,113,108,0.8)" />
+                        {(() => {
+                          const nodes = relationLayout(newspaper.visuals.relationNodes);
+                          const map = new Map(nodes.map(n => [n.name, n]));
+                          return (
+                            <>
+                              {newspaper.visuals.relationEdges.slice(0, 12).map((edge, idx) => {
+                                const a = map.get(edge.from);
+                                const b = map.get(edge.to);
+                                if (!a || !b) return null;
+                                const color = edge.value >= 0 ? 'rgba(22,101,52,0.85)' : 'rgba(153,27,27,0.85)';
+                                const width = 1 + Math.min(2.4, Math.abs(edge.value) / 45);
+                                return <line key={`re_${idx}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color} strokeWidth={width} />;
+                              })}
+                              {nodes.map((n, idx) => (
+                                <g key={`rn_${idx}`}>
+                                  <circle cx={n.x} cy={n.y} r={11} fill="rgba(244,230,200,1)" stroke="rgba(87,83,78,0.9)" />
+                                  <text x={n.x} y={n.y + 4} fontSize={9} textAnchor="middle">{n.name}</text>
+                                </g>
+                              ))}
+                            </>
+                          );
+                        })()}
+                      </svg>
+                    </div>
+                  </div>
+                  <pre className="mt-2 text-[11px] leading-4 bg-[#f8f1df] border border-dashed border-stone-600 p-2 whitespace-pre-wrap">{newspaper.visuals.mermaidFlow}</pre>
+                </div>
               </div>
             </div>
             <div className="border-t border-stone-900 px-4 py-2 text-xs text-stone-700 flex flex-wrap gap-2">
-              {newspaper.ticker.map((line, idx) => <span key={`ticker_${idx}`} className="pr-2 border-r border-stone-400">#{line}</span>)}
+              {newspaper.ticker.map((line, idx) => <span key={`ticker_${idx}`} className="pr-2 border-r border-stone-400">• {line}</span>)}
+            </div>
+            <div className="border-t border-stone-700 bg-[#d6c39e] px-4 py-2 text-xs text-stone-900 flex flex-wrap items-center gap-2">
+              <span className="font-bold mr-1">关键词：</span>
+              {newspaper.visuals.keywords.map((word, idx) => (
+                <span key={`kw_${idx}`} className="px-2 py-0.5 border border-[#6b5f46] bg-[#f4ecd9]">{word}</span>
+              ))}
             </div>
           </div>
         )}
