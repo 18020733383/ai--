@@ -31,6 +31,7 @@ type NpcAgent = {
   r: number;
   speed: number;
   waitMs: number;
+  homeIndex: number;
   targetIndex: number;
 };
 type SimState = {
@@ -210,13 +211,13 @@ export const HideoutInspectView: React.FC<HideoutInspectViewProps> = ({
     const workerCount = Math.max(1, Math.min(6, Math.max(1, Math.floor(buildingNodes.length / 3))));
     const make = (id: string, role: Role, name: string, wp: number, r: number, speed: number): NpcAgent => {
       const p = template.waypoints[wp % template.waypoints.length] ?? { x: 140, y: 140 };
-      return { id, role, name, x: p.x, y: p.y, r, speed, waitMs: 0, targetIndex: (wp + 1) % template.waypoints.length };
+      return { id, role, name, x: p.x, y: p.y, r, speed, waitMs: 0, homeIndex: wp % template.waypoints.length, targetIndex: (wp + 1) % template.waypoints.length };
     };
     const npcs: NpcAgent[] = [];
-    for (let i = 0; i < guardCount; i++) npcs.push(make(`guard_${i}`, 'GUARD', `岗哨 ${i + 1}`, i, 9, 1.8));
-    for (let i = 0; i < patrolCount; i++) npcs.push(make(`patrol_${i}`, 'PATROL', `巡逻兵 ${i + 1}`, i + 3, 8, 2.25));
-    for (let i = 0; i < workerCount; i++) npcs.push(make(`worker_${i}`, 'WORKER', `工务员 ${i + 1}`, i + 5, 8, 1.7));
-    if (guardHero) npcs.push(make(`guardian_${guardHero.id}`, 'GUARDIAN', `${guardHero.title}${guardHero.name}`, template.waypoints.length - 1, 10, 2));
+    for (let i = 0; i < guardCount; i++) npcs.push(make(`guard_${i}`, 'GUARD', `岗哨 ${i + 1}`, i, 9, 1.2));
+    for (let i = 0; i < patrolCount; i++) npcs.push(make(`patrol_${i}`, 'PATROL', `巡逻兵 ${i + 1}`, i + 3, 8, 1.45));
+    for (let i = 0; i < workerCount; i++) npcs.push(make(`worker_${i}`, 'WORKER', `工务员 ${i + 1}`, i + 5, 8, 1.05));
+    if (guardHero) npcs.push(make(`guardian_${guardHero.id}`, 'GUARDIAN', `${guardHero.title}${guardHero.name}`, template.waypoints.length - 1, 10, 1.25));
     simRef.current = { player: template.waypoints[0] ?? { x: 180, y: 320 }, npcs, trail: [template.waypoints[0] ?? { x: 180, y: 320 }], patrolTick: 0 };
     setDialogText(`进入${template.name}，巡逻系统已切换。`);
   }, [layerIndex, layer?.id, guardHero?.id, garrisonCount, template.id]);
@@ -312,9 +313,9 @@ export const HideoutInspectView: React.FC<HideoutInspectViewProps> = ({
       }
 
       const heroNodes = followedHeroes.map((h, i) => {
-        const idx = Math.max(0, s.trail.length - 1 - (i + 1) * 24);
+        const idx = Math.max(0, s.trail.length - 1 - (i + 1) * 28);
         const p = s.trail[idx] ?? s.player;
-        return { id: h.id, x: p.x - 10 + i * 4, y: p.y + 16 + i * 4, name: `${h.title}${h.name}` };
+        return { id: h.id, x: p.x - 26 + i * 18, y: p.y + 22 + i * 10, name: `${h.title}${h.name}` };
       });
       for (const h of heroNodes) {
         ctx.fillStyle = '#a78bfa';
@@ -407,52 +408,32 @@ export const HideoutInspectView: React.FC<HideoutInspectViewProps> = ({
         let y = agent.y;
         let waitMs = Math.max(0, agent.waitMs - dt);
         let targetIndex = agent.targetIndex;
-
-        // Special logic for GUARD: they should stay close to their initial spot or just stand still?
-        // For now, let's treat GUARD as very stationary patrols or just static.
-        // If we want them to stand guard, maybe they shouldn't move much.
-        // Let's make GUARDs just stand still if they are close to target, or return to it.
-        // But for now, let's apply the role-based logic.
-
         if (waitMs <= 0) {
           const target = template.waypoints[targetIndex] ?? template.waypoints[0];
           const vx = target.x - x;
           const vy = target.y - y;
           const dist = Math.hypot(vx, vy);
-
           if (dist < 6) {
-            // Reached target
-            if (agent.role === 'PATROL') {
-              // Patrols follow a route
-              waitMs = 1500 + Math.floor(Math.random() * 2000); // 1.5s - 3.5s wait
-              targetIndex = (targetIndex + 1) % template.waypoints.length;
-            } else if (agent.role === 'GUARD') {
-               // Guards stay put longer, and maybe just look around (simulate by waiting)
-               // If they are guards, maybe they shouldn't move between waypoints?
-               // Let's keep them moving for now but very slowly/rarely?
-               // User said "Standing guard". Let's make them wait very long.
-               waitMs = 5000 + Math.floor(Math.random() * 5000);
-               // Guards might just patrol the entrance area (first few waypoints)?
-               // Or just stay at their current waypoint?
-               // Let's make them stick to their current spot effectively by setting target to itself or not changing it?
-               // If we want them to patrol a small area, we need specific waypoints.
-               // For simplicity, let's make GUARDs behave like PATROLs but slower?
-               // No, user wants them to "stand guard".
-               // Let's make them not move if they are GUARD.
-               waitMs = 10000; // Just wait.
-               // But if they are just initialized, they are at a waypoint.
+            waitMs = agent.role === 'PATROL'
+              ? 2200 + Math.floor(Math.random() * 5200)
+              : agent.role === 'GUARD'
+                ? 2600 + Math.floor(Math.random() * 6400)
+                : agent.role === 'WORKER'
+                  ? 2800 + Math.floor(Math.random() * 7000)
+                  : 2600 + Math.floor(Math.random() * 6000);
+            if (agent.role === 'GUARD' || agent.role === 'GUARDIAN') {
+              const offset = Math.floor(Math.random() * 3) - 1;
+              targetIndex = (agent.homeIndex + offset + template.waypoints.length) % template.waypoints.length;
+            } else if (agent.role === 'WORKER') {
+              const workerBase = template.waypoints.length >= 6 ? Math.floor(template.waypoints.length / 2) : 0;
+              targetIndex = (workerBase + Math.floor(Math.random() * Math.max(3, Math.floor(template.waypoints.length / 3)))) % template.waypoints.length;
             } else {
-              // Workers and others wander randomly
-              waitMs = 3000 + Math.floor(Math.random() * 4000); // 3s - 7s wait
               targetIndex = Math.floor(Math.random() * template.waypoints.length);
             }
           } else {
-            // Moving
-            if (agent.role !== 'GUARD') {
-               const step = Math.min(agent.speed * (dt / 16) * 2.8, dist);
-               x += (vx / dist) * step;
-               y += (vy / dist) * step;
-            }
+            const step = Math.min(agent.speed * (dt / 16) * 2.8, dist);
+            x += (vx / dist) * step;
+            y += (vy / dist) * step;
           }
         }
         x = clamp(x, 12, MAP_W - 12);

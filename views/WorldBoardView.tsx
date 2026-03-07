@@ -1,13 +1,11 @@
 import React from 'react';
-import { Hammer, History, Scroll, Shield, FileText, Loader2 } from 'lucide-react';
-import { BattleResult, FactionSpecialization, Location, NewspaperData, SiegeEngineType, WorldBattleReport } from '../types';
+import { Hammer, History, Scroll, Shield } from 'lucide-react';
+import { BattleResult, FactionSpecialization, Location, SiegeEngineType, WorldBattleReport } from '../types';
 import { Button } from '../components/Button';
-import { generateNewspaper } from '../services/geminiService';
-import { NewspaperOverlay } from '../components/NewspaperOverlay';
+import { WorldNewspaperIssue } from '../services/geminiService';
 
 type WorldBoardViewProps = {
   currentLocation: Location | null;
-  currentDay: number;
   logs: string[];
   worldBattleReports: WorldBattleReport[];
   activeBattles: Array<{
@@ -72,11 +70,11 @@ type WorldBoardViewProps = {
   onOpenTroopArchive: () => void;
   onBackToMap: () => void;
   onExportMarkdown: () => void;
+  onGenerateNewspaper: () => Promise<WorldNewspaperIssue>;
 };
 
 export const WorldBoardView = ({
   currentLocation,
-  currentDay,
   logs,
   worldBattleReports,
   activeBattles,
@@ -88,28 +86,9 @@ export const WorldBoardView = ({
   worldForces,
   onOpenTroopArchive,
   onBackToMap,
-  onExportMarkdown
+  onExportMarkdown,
+  onGenerateNewspaper
 }: WorldBoardViewProps) => {
-  const [newspaperData, setNewspaperData] = React.useState<NewspaperData | null>(null);
-  const [isGenerating, setIsGenerating] = React.useState(false);
-
-  const handleGenerateNewspaper = async () => {
-    setIsGenerating(true);
-    try {
-      const data = await generateNewspaper(
-        logs,
-        activeBattles,
-        worldBattleReports,
-        `第 ${currentDay} 天`
-      );
-      setNewspaperData(data);
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
   if (!currentLocation) return null;
   const outcomeLabel = (outcome: BattleResult['outcome']) => outcome === 'A' ? '胜利' : '战败';
   const formatTroopLoss = (list: Array<{ name: string; count: number; cause?: string }>) => {
@@ -130,6 +109,9 @@ export const WorldBoardView = ({
   const [forceQuery, setForceQuery] = React.useState('');
   const [forceKind, setForceKind] = React.useState<'ALL' | string>('ALL');
   const [expandedForceId, setExpandedForceId] = React.useState<string | null>(null);
+  const [newspaper, setNewspaper] = React.useState<WorldNewspaperIssue | null>(null);
+  const [isGeneratingPaper, setIsGeneratingPaper] = React.useState(false);
+  const [paperError, setPaperError] = React.useState('');
   const formatTroops = (troops: Array<{ id: string; name?: string; count: number }>) => {
     if (!troops || troops.length === 0) return '无';
     return troops.filter(t => t.count > 0).map(t => `${t.name ?? t.id}x${t.count}`).join('，') || '无';
@@ -160,6 +142,119 @@ export const WorldBoardView = ({
     })
     .sort((a, b) => (b.power - a.power) || (b.troopCount - a.troopCount) || a.name.localeCompare(b.name));
 
+  const escapeHtml = (value: string) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+  const buildPaperHtml = (issue: WorldNewspaperIssue) => {
+    const columns = issue.sections
+      .slice(0, 6)
+      .map(section => `
+        <article class="col-item">
+          <div class="tag">${escapeHtml(section.tag)}</div>
+          <h3>${escapeHtml(section.title)}</h3>
+          <p>${escapeHtml(section.body)}</p>
+        </article>
+      `)
+      .join('\n');
+    const briefs = issue.briefs.map(line => `<li>${escapeHtml(line)}</li>`).join('\n');
+    const ticker = issue.ticker.map(line => `<span>${escapeHtml(line)}</span>`).join('\n');
+    return `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>${escapeHtml(issue.masthead)}</title>
+  <style>
+    body{margin:0;background:#e8e4d8;font-family: "Noto Serif SC","Songti SC",serif;color:#111}
+    .paper{max-width:1200px;margin:16px auto;background:#f7f2e6;border:1px solid #b7b1a3;box-shadow:0 6px 20px rgba(0,0,0,.18)}
+    .head{padding:18px 24px;border-bottom:2px solid #111}
+    .mast{font-size:48px;font-weight:700;letter-spacing:2px}
+    .sub{margin-top:4px;font-size:13px;color:#333}
+    .meta{display:flex;justify-content:space-between;font-size:12px;margin-top:10px;color:#444}
+    .body{display:grid;grid-template-columns:1.45fr 1fr 0.9fr;gap:16px;padding:16px 20px}
+    .lead h1{font-size:44px;line-height:1.08;margin:8px 0}
+    .lead .deck{font-size:16px;color:#222;border-left:4px solid #111;padding-left:10px}
+    .lead p{font-size:16px;line-height:1.7;text-align:justify}
+    .tag{display:inline-block;font-size:11px;padding:2px 8px;border:1px solid #111;letter-spacing:1px}
+    .cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+    .col-item{border-top:1px solid #1f2937;padding-top:8px}
+    .col-item h3{font-size:24px;line-height:1.2;margin:6px 0}
+    .col-item p{font-size:14px;line-height:1.65}
+    .side .quote{border:1px solid #111;padding:10px;background:#f3ead7;font-size:18px;line-height:1.5}
+    .side .note{margin-top:10px;font-size:13px;line-height:1.6;color:#333}
+    .briefs{margin-top:16px;border-top:2px solid #111;padding-top:8px}
+    .briefs h4{font-size:18px;margin:4px 0 8px}
+    .briefs li{margin:6px 0;line-height:1.5;font-size:14px}
+    .ticker{border-top:1px solid #111;padding:10px 18px;display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:#333}
+    .ticker span{padding-right:10px;border-right:1px solid #999}
+  </style>
+</head>
+<body>
+  <main class="paper">
+    <header class="head">
+      <div class="mast">${escapeHtml(issue.masthead)}</div>
+      <div class="sub">${escapeHtml(issue.subtitle)}</div>
+      <div class="meta">
+        <span>${escapeHtml(issue.dateLine)}</span>
+        <span>${escapeHtml(issue.issueNo)}</span>
+      </div>
+    </header>
+    <section class="body">
+      <article class="lead">
+        <div class="tag">${escapeHtml(issue.leadTag)}</div>
+        <h1>${escapeHtml(issue.leadTitle)}</h1>
+        <div class="deck">${escapeHtml(issue.leadDeck)}</div>
+        <p>${escapeHtml(issue.leadBody)}</p>
+        <div class="briefs">
+          <h4>快讯</h4>
+          <ul>${briefs}</ul>
+        </div>
+      </article>
+      <section class="cols">${columns}</section>
+      <aside class="side">
+        <div class="tag">社评</div>
+        <div class="quote">${escapeHtml(issue.sideQuote)}</div>
+        <div class="note">${escapeHtml(issue.sideNote)}</div>
+      </aside>
+    </section>
+    <footer class="ticker">${ticker}</footer>
+  </main>
+</body>
+</html>`;
+  };
+
+  const downloadPaperHtml = () => {
+    if (!newspaper) return;
+    const html = buildPaperHtml(newspaper);
+    const blob = new Blob([html], { type: 'text/html;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${(newspaper.masthead || 'world-newspaper').replace(/[^\w\u4e00-\u9fa5-]+/g, '_')}.html`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleGeneratePaper = async () => {
+    if (isGeneratingPaper) return;
+    setPaperError('');
+    setIsGeneratingPaper(true);
+    try {
+      const issue = await onGenerateNewspaper();
+      setNewspaper(issue);
+    } catch (e: any) {
+      setPaperError(e?.message || '报纸生成失败。');
+    } finally {
+      setIsGeneratingPaper(false);
+    }
+  };
+
   return (
     <div className="min-h-[80vh] p-4 pt-6">
       <div className="max-w-6xl mx-auto">
@@ -180,18 +275,56 @@ export const WorldBoardView = ({
             >
               <Scroll size={16} /> 兵种档案
             </Button>
-            <Button
-              onClick={handleGenerateNewspaper}
-              disabled={isGenerating}
-              className="flex items-center gap-2"
-            >
-              {isGenerating ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}
-              生成异世界报纸
-            </Button>
             <Button variant="secondary" onClick={onBackToMap}>返回地图</Button>
             <Button onClick={onExportMarkdown}>导出 Markdown</Button>
+            <Button onClick={handleGeneratePaper} disabled={isGeneratingPaper}>{isGeneratingPaper ? '生成中...' : '生成异世界报纸'}</Button>
+            <Button variant="secondary" onClick={downloadPaperHtml} disabled={!newspaper}>下载报纸 HTML</Button>
           </div>
         </div>
+        {paperError && <div className="mb-4 text-sm text-red-300 bg-red-950/40 border border-red-900 rounded px-3 py-2">{paperError}</div>}
+        {newspaper && (
+          <div className="mb-6 bg-[#f7f2e6] text-stone-900 border border-[#b8b2a5] rounded overflow-hidden shadow-xl">
+            <div className="border-b-2 border-stone-900 px-4 py-3 bg-[#f5efdf]">
+              <div className="text-3xl md:text-4xl font-black tracking-widest">{newspaper.masthead}</div>
+              <div className="text-xs text-stone-700 mt-1">{newspaper.subtitle}</div>
+              <div className="text-[11px] text-stone-600 mt-2 flex justify-between">
+                <span>{newspaper.dateLine}</span>
+                <span>{newspaper.issueNo}</span>
+              </div>
+            </div>
+            <div className="p-4 grid grid-cols-1 xl:grid-cols-[1.45fr_1fr_0.9fr] gap-4">
+              <div>
+                <div className="inline-flex text-[10px] tracking-widest border border-stone-800 px-2 py-0.5">{newspaper.leadTag}</div>
+                <div className="text-3xl md:text-4xl font-black leading-tight mt-2">{newspaper.leadTitle}</div>
+                <div className="text-sm mt-2 border-l-4 border-stone-900 pl-3 text-stone-800">{newspaper.leadDeck}</div>
+                <div className="text-[15px] leading-7 mt-3 whitespace-pre-wrap">{newspaper.leadBody}</div>
+                <div className="mt-4 border-t-2 border-stone-900 pt-2">
+                  <div className="font-bold text-lg">快讯</div>
+                  <ul className="mt-1 text-sm leading-6 list-disc pl-5">
+                    {newspaper.briefs.map((line, idx) => <li key={`brief_${idx}`}>{line}</li>)}
+                  </ul>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-3">
+                {newspaper.sections.slice(0, 6).map((section, idx) => (
+                  <div key={`section_${idx}`} className="border-t border-stone-700 pt-2">
+                    <div className="inline-flex text-[10px] tracking-widest border border-stone-800 px-2 py-0.5">{section.tag}</div>
+                    <div className="text-xl font-black leading-tight mt-1">{section.title}</div>
+                    <div className="text-sm leading-6 mt-1 text-stone-800">{section.body}</div>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div className="inline-flex text-[10px] tracking-widest border border-stone-800 px-2 py-0.5">社评</div>
+                <div className="mt-2 border border-stone-800 bg-[#efe3c8] p-3 text-lg leading-8">{newspaper.sideQuote}</div>
+                <div className="mt-3 text-sm leading-6 text-stone-800">{newspaper.sideNote}</div>
+              </div>
+            </div>
+            <div className="border-t border-stone-900 px-4 py-2 text-xs text-stone-700 flex flex-wrap gap-2">
+              {newspaper.ticker.map((line, idx) => <span key={`ticker_${idx}`} className="pr-2 border-r border-stone-400">#{line}</span>)}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
           <div className="bg-stone-900/70 border border-stone-700 rounded p-4">
@@ -520,7 +653,6 @@ export const WorldBoardView = ({
           </div>
         </div>
       </div>
-      {newspaperData && <NewspaperOverlay data={newspaperData} onClose={() => setNewspaperData(null)} />}
     </div>
   );
 };

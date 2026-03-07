@@ -2,7 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
 import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './constants';
-import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
+import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { Button } from './components/Button';
 import { BigMapView } from './components/BigMapView';
 import { BattleView } from './components/BattleView';
@@ -10279,10 +10279,60 @@ export default function App() {
         return rows;
       })
     ].filter(f => f.troopCount > 0);
+    const buildRelationAlerts = () => {
+      const rows: string[] = [];
+      for (let i = 0; i < FACTIONS.length; i += 1) {
+        for (let j = i + 1; j < FACTIONS.length; j += 1) {
+          const a = FACTIONS[i];
+          const b = FACTIONS[j];
+          const val = clampRelation(Number((worldDiplomacy.factionRelations as any)?.[a.id]?.[b.id] ?? 0));
+          if (val <= -30 || val >= 35) rows.push(`${a.shortName} vs ${b.shortName}：${val}`);
+        }
+      }
+      return rows
+        .sort((x, y) => {
+          const nx = Number((x.match(/：(-?\d+)/)?.[1] ?? 0));
+          const ny = Number((y.match(/：(-?\d+)/)?.[1] ?? 0));
+          return Math.abs(ny) - Math.abs(nx);
+        })
+        .slice(0, 16);
+    };
+    const generateBoardNewspaper = async () => {
+      const aiConfig = buildAIConfig();
+      if (!aiConfig) throw new Error('请先在设置里配置 AI 模型与 Key。');
+      const battleReports = worldBattleReports
+        .slice(0, 14)
+        .map(r => `第${r.day}天 ${r.battleLocation} ${r.enemyName} ${r.outcome === 'A' ? '战败' : '胜利'} 伤情:${r.keyUnitDamageSummary || '无'}`);
+      const activeBattleLines = activeBattles
+        .slice(0, 12)
+        .map(b => `${b.locationName} 攻:${b.attackerName} 守:${b.defenderName} 开战日:${b.startDay}`);
+      const diplomacyLines = (worldDiplomacy.events ?? [])
+        .slice(0, 18)
+        .map(e => `第${e.day}天 ${e.text} (${e.delta >= 0 ? '+' : ''}${e.delta})`);
+      const relationAlerts = buildRelationAlerts();
+      const invasionAlerts = logs
+        .filter(line => /入侵|袭掠|逼近|围攻|传送门|叛乱/.test(line))
+        .slice(0, 18);
+      const forceLines = [...worldForces]
+        .sort((a, b) => b.power - a.power)
+        .slice(0, 20)
+        .map(f => `${f.kind} ${f.name} @ ${f.locationName} 兵力${f.troopCount} 战力${Math.round(f.power)}`);
+      return generateWorldNewspaper({
+        day: player.day,
+        locationName: currentLocation?.name ?? '野外',
+        worldSummary: `当前共 ${locations.length} 个据点，进行中战斗 ${activeBattles.length} 场，世界势力 ${FACTIONS.length} 个，记录部队 ${worldForces.length} 支。`,
+        eventLogs: logs.slice(0, 40),
+        battleReports,
+        activeBattles: activeBattleLines,
+        diplomacyEvents: diplomacyLines,
+        relationAlerts,
+        invasionAlerts,
+        worldForces: forceLines
+      }, aiConfig);
+    };
     return (
       <WorldBoardView
         currentLocation={currentLocation}
-        currentDay={player.day}
         logs={logs}
         worldBattleReports={worldBattleReports}
         activeBattles={activeBattles}
@@ -10295,6 +10345,7 @@ export default function App() {
         onOpenTroopArchive={() => setView('TROOP_ARCHIVE')}
         onBackToMap={() => setView('MAP')}
         onExportMarkdown={exportWorldBoardMarkdown}
+        onGenerateNewspaper={generateBoardNewspaper}
       />
     );
   };

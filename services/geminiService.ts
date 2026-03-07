@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, HeroRole, Location, Lord, NegotiationResult, NewspaperData, PartyDiaryEntry, PlayerState, TerrainType, Troop, TroopAttributes, TroopRace } from '../types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, HeroRole, Location, Lord, NegotiationResult, PartyDiaryEntry, PlayerState, TerrainType, Troop, TroopAttributes, TroopRace } from '../types';
 import { normalizeOpenAIBattle, parseCasualties, parseInjuries, parseOutcome } from './battleParsing';
 import { WORLD_BOOK } from '../constants';
 
@@ -1004,6 +1004,177 @@ export interface OpenAIConfig {
   model: string;
   provider: AIProvider;
 }
+
+export type WorldNewspaperSection = {
+  tag: string;
+  title: string;
+  body: string;
+};
+
+export type WorldNewspaperIssue = {
+  masthead: string;
+  subtitle: string;
+  dateLine: string;
+  issueNo: string;
+  editorNote: string;
+  leadTag: string;
+  leadTitle: string;
+  leadDeck: string;
+  leadBody: string;
+  sideQuote: string;
+  sideNote: string;
+  sections: WorldNewspaperSection[];
+  briefs: string[];
+  ticker: string[];
+};
+
+export const generateWorldNewspaper = async (
+  payload: {
+    day: number;
+    locationName: string;
+    worldSummary: string;
+    eventLogs: string[];
+    battleReports: string[];
+    activeBattles: string[];
+    diplomacyEvents: string[];
+    relationAlerts: string[];
+    invasionAlerts: string[];
+    worldForces: string[];
+  },
+  openAI?: OpenAIConfig
+): Promise<WorldNewspaperIssue> => {
+  const logsBlock = payload.eventLogs.filter(Boolean).slice(0, 36).map(x => `- ${x}`).join('\n') || '（无）';
+  const battleBlock = payload.battleReports.filter(Boolean).slice(0, 18).map(x => `- ${x}`).join('\n') || '（无）';
+  const activeBlock = payload.activeBattles.filter(Boolean).slice(0, 12).map(x => `- ${x}`).join('\n') || '（无）';
+  const diplomacyBlock = payload.diplomacyEvents.filter(Boolean).slice(0, 16).map(x => `- ${x}`).join('\n') || '（无）';
+  const relationBlock = payload.relationAlerts.filter(Boolean).slice(0, 16).map(x => `- ${x}`).join('\n') || '（无）';
+  const invasionBlock = payload.invasionAlerts.filter(Boolean).slice(0, 10).map(x => `- ${x}`).join('\n') || '（无）';
+  const forceBlock = payload.worldForces.filter(Boolean).slice(0, 20).map(x => `- ${x}`).join('\n') || '（无）';
+  const prompt = `
+你是“异世界报社总编”。你将根据世界战况和外交动态，产出一版中文报纸数据（JSON）。
+要求：
+1) 语气像严肃但有戏剧性的战地新闻。
+2) 信息尽量覆盖：最近战斗、关系恶化、入侵风险、重点兵力动向。
+3) 不要胡编世界外设定，不确定时使用“据传”“尚待核实”等表达。
+4) 所有字段必须有值；sections 给 5~8 条；briefs 给 4~8 条；ticker 给 4~8 条。
+5) 每段中文尽量简洁，leadBody 160~320 字，sections.body 60~160 字。
+
+返回 JSON 字段：
+- masthead, subtitle, dateLine, issueNo, editorNote
+- leadTag, leadTitle, leadDeck, leadBody
+- sideQuote, sideNote
+- sections: [{ tag, title, body }]
+- briefs: string[]
+- ticker: string[]
+
+【世界日期】第 ${payload.day} 天
+【当前地点】${payload.locationName}
+【世界概览】${payload.worldSummary}
+
+【近期日志】
+${logsBlock}
+
+【战报摘要】
+${battleBlock}
+
+【进行中的战斗】
+${activeBlock}
+
+【外交事件】
+${diplomacyBlock}
+
+【关系预警】
+${relationBlock}
+
+【入侵预警】
+${invasionBlock}
+
+【兵力快照】
+${forceBlock}
+  `.trim();
+
+  const normalizeText = (v: any, fallback: string) => {
+    const t = String(v ?? '').trim();
+    return t || fallback;
+  };
+  const parseIssue = (raw: any): WorldNewspaperIssue => {
+    const sectionsRaw = Array.isArray(raw?.sections) ? raw.sections : [];
+    const sections = sectionsRaw
+      .map((s: any, index: number) => ({
+        tag: normalizeText(s?.tag, `栏目${index + 1}`),
+        title: normalizeText(s?.title, `无题${index + 1}`),
+        body: normalizeText(s?.body, '暂无内容。')
+      }))
+      .filter((s: WorldNewspaperSection) => s.title && s.body)
+      .slice(0, 8);
+    const briefs = (Array.isArray(raw?.briefs) ? raw.briefs : [])
+      .map((x: any) => String(x ?? '').trim())
+      .filter(Boolean)
+      .slice(0, 8);
+    const ticker = (Array.isArray(raw?.ticker) ? raw.ticker : [])
+      .map((x: any) => String(x ?? '').trim())
+      .filter(Boolean)
+      .slice(0, 8);
+    return {
+      masthead: normalizeText(raw?.masthead, '卡拉迪亚纪闻'),
+      subtitle: normalizeText(raw?.subtitle, '战火、盟约与阴影'),
+      dateLine: normalizeText(raw?.dateLine, `第 ${payload.day} 天 · ${payload.locationName}`),
+      issueNo: normalizeText(raw?.issueNo, `第${payload.day}期`),
+      editorNote: normalizeText(raw?.editorNote, '编辑部提示：战况瞬息万变，读者需持续关注后续快讯。'),
+      leadTag: normalizeText(raw?.leadTag, '头条'),
+      leadTitle: normalizeText(raw?.leadTitle, '前线与议会在同一夜改变走向'),
+      leadDeck: normalizeText(raw?.leadDeck, '数条战线同时升温，势力关系再度重排。'),
+      leadBody: normalizeText(raw?.leadBody, '据各地信使回报，战事与外交变化正在同一天叠加。'),
+      sideQuote: normalizeText(raw?.sideQuote, '“今天的停战，可能只是明天更大规模动员的前奏。”'),
+      sideNote: normalizeText(raw?.sideNote, '注：本版内容来自前线记录、议会通报与城镇口述，部分仍待核实。'),
+      sections: sections.length > 0 ? sections : [{ tag: '快讯', title: '暂无更多栏目', body: '今日信息量较少，报社将持续追踪。' }],
+      briefs: briefs.length > 0 ? briefs : ['暂无简讯。'],
+      ticker: ticker.length > 0 ? ticker : ['暂无滚动快讯。']
+    };
+  };
+
+  const openAIConfig = requireOpenAIConfig(openAI);
+  if (openAIConfig) {
+    const url = `${normalizeProviderBaseUrl(openAIConfig.provider, openAIConfig.baseUrl)}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openAIConfig.apiKey}`,
+      },
+      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+        model: openAIConfig.model,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: '只返回 JSON。' }
+        ],
+        temperature: 0.88,
+        jsonOnly: true
+      }))
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
+    }
+    const json = await res.json().catch(() => null) as any;
+    const text = json?.choices?.[0]?.message?.content;
+    if (!text) throw new Error('OpenAI 返回为空');
+    return parseIssue(JSON.parse(text));
+  }
+
+  const model = "gemini-3-flash-preview";
+  const response = await getGeminiClient(openAI?.provider === 'GEMINI' ? openAI.apiKey : undefined).models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      temperature: 0.88
+    },
+  });
+  const text = response.text;
+  if (!text) throw new Error("No response from AI");
+  return parseIssue(JSON.parse(text));
+};
 
 export interface ShaperContext {
   lastProposal?: ShaperProposal;
@@ -2501,108 +2672,6 @@ ${historyText || "（暂无）"}
                 ? { attack: 75, defense: 85, agility: 50, hp: 80, range: 5, morale: 75 }
                 : { attack: 30, defense: 20, agility: 25, hp: 30, range: 5, morale: 25 }
       }
-    };
-  }
-};
-
-const newspaperSchema: Schema = {
-  type: Type.OBJECT,
-  properties: {
-    title: { type: Type.STRING, description: "Newspaper name, e.g., 'Calradia Chronicle'" },
-    issueNumber: { type: Type.STRING, description: "e.g., 'Issue 42'" },
-    date: { type: Type.STRING, description: "Game date" },
-    leadStory: {
-      type: Type.OBJECT,
-      properties: {
-        headline: { type: Type.STRING },
-        subhead: { type: Type.STRING },
-        content: { type: Type.STRING, description: "Main article text, multiple paragraphs." },
-        imagePrompt: { type: Type.STRING, description: "Description for an illustration (optional)" }
-      },
-      required: ["headline", "subhead", "content"]
-    },
-    sideStories: {
-      type: Type.ARRAY,
-      items: {
-        type: Type.OBJECT,
-        properties: {
-          headline: { type: Type.STRING },
-          content: { type: Type.STRING }
-        },
-        required: ["headline", "content"]
-      }
-    },
-    briefs: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING, description: "Short news items." }
-    },
-    rumors: {
-      type: Type.ARRAY,
-      items: { type: Type.STRING, description: "Gossip or unconfirmed reports." }
-    }
-  },
-  required: ["title", "issueNumber", "date", "leadStory", "sideStories", "briefs", "rumors"]
-};
-
-export const generateNewspaper = async (
-  logs: string[],
-  activeBattles: any[],
-  worldBattleReports: any[],
-  currentDate: string,
-  apiKey?: string
-): Promise<NewspaperData> => {
-  const client = getGeminiClient(apiKey);
-  const prompt = `
-    You are the editor of a medieval fantasy newspaper in the world of Calradia.
-    Based on the following recent events, generate a newspaper issue.
-    
-    Current Date: ${currentDate}
-
-    Recent Logs:
-    ${logs.slice(0, 30).join('\n')}
-
-    Active Battles:
-    ${activeBattles.map((b: any) => `- ${b.attackerName} vs ${b.defenderName} at ${b.locationName}`).join('\n')}
-
-    Recent Battle Reports:
-    ${worldBattleReports.slice(0, 5).map((r: any) => `- Day ${r.day}: ${r.battleLocation} (${r.outcome === 'A' ? 'Victory' : 'Defeat'})`).join('\n')}
-
-    Instructions:
-    - Create a catchy title for the newspaper.
-    - Select the most important event for the lead story.
-    - Create side stories for other significant events.
-    - Write briefs for minor events.
-    - Invent some rumors based on the context.
-    - Use a formal but engaging journalistic tone suitable for a fantasy setting.
-    - Output strictly in JSON format matching the schema.
-  `;
-
-  try {
-    const response = await client.models.generateContent({
-      model: 'gemini-2.0-flash',
-      contents: prompt,
-      config: {
-        responseMimeType: 'application/json',
-        responseSchema: newspaperSchema
-      }
-    });
-    const text = response.text;
-    if (!text) throw new Error("Empty response");
-    return JSON.parse(text) as NewspaperData;
-  } catch (error) {
-    console.error("Newspaper generation failed:", error);
-    return {
-      title: "The Calradia Times",
-      issueNumber: "Issue ???",
-      date: currentDate,
-      leadStory: {
-        headline: "Printing Press Jammed!",
-        subhead: "Editors struggle with ink shortage",
-        content: "Due to a magical interference, the news could not be retrieved today."
-      },
-      sideStories: [],
-      briefs: ["Weather is nice today."],
-      rumors: ["The developer might be fixing bugs."]
     };
   }
 };
