@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, SoldierInstance, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
 import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { Button } from './components/Button';
@@ -2356,6 +2356,134 @@ export default function App() {
     return Array.from(new Set([primary, ...picks])).slice(0, 3);
   };
 
+  const buildSoldierId = (seed: number) => `S${seed}`;
+
+  const buildTroopsFromSoldiers = (soldiers: SoldierInstance[]): Troop[] => {
+    const grouped = soldiers.reduce<Record<string, SoldierInstance[]>>((acc, s) => {
+      if (s.status !== 'ACTIVE') return acc;
+      (acc[s.troopId] ??= []).push(s);
+      return acc;
+    }, {});
+    return Object.entries(grouped)
+      .map(([troopId, list]) => {
+        const template = getTroopTemplate(troopId);
+        if (!template) return null;
+        const count = list.length;
+        const maxXpValue = count > 0 ? Math.max(...list.map(s => s.xp ?? 0)) : 0;
+        return { ...template, count, xp: maxXpValue };
+      })
+      .filter((t): t is Troop => !!t && t.count > 0);
+  };
+
+  const normalizePlayerSoldiers = (player: PlayerState): PlayerState => {
+    const troops = Array.isArray(player.troops) ? player.troops : [];
+    const troopMap = new Map(troops.map(t => [t.id, t]));
+    let soldiers = Array.isArray(player.soldiers) ? player.soldiers.map(s => ({ ...s })) : [];
+    let nextId = typeof player.nextSoldierId === 'number' ? player.nextSoldierId : 1;
+    let changed = false;
+
+    soldiers = soldiers.filter(s => troopMap.has(s.troopId));
+    const activeSoldiers = soldiers.filter(s => (s.status ?? 'ACTIVE') === 'ACTIVE');
+    const woundedSoldiers = soldiers.filter(s => (s.status ?? 'ACTIVE') !== 'ACTIVE');
+
+    const byTroop = activeSoldiers.reduce<Record<string, SoldierInstance[]>>((acc, s) => {
+      (acc[s.troopId] ??= []).push(s);
+      return acc;
+    }, {});
+
+    troops.forEach(t => {
+      const template = getTroopTemplate(t.id);
+      if (!template) return;
+      const list = byTroop[t.id] ?? [];
+      const diff = t.count - list.length;
+      if (diff > 0) {
+        changed = true;
+        for (let i = 0; i < diff; i += 1) {
+          const id = buildSoldierId(nextId++);
+          const xp = Math.max(0, Math.min(template.maxXp, Math.floor(t.xp ?? 0)));
+          list.push({
+            id,
+            troopId: t.id,
+            name: template.name,
+            tier: template.tier,
+            xp,
+            maxXp: template.maxXp,
+            createdDay: player.day,
+            history: [`Day ${player.day} · 招募入伍`],
+            status: 'ACTIVE'
+          });
+        }
+        byTroop[t.id] = list;
+      } else if (diff < 0) {
+        changed = true;
+        byTroop[t.id] = list.slice(0, t.count);
+      }
+    });
+
+    soldiers = [...Object.values(byTroop).flat(), ...woundedSoldiers];
+    soldiers = soldiers.map(s => {
+      const tmpl = getTroopTemplate(s.troopId);
+      if (!tmpl) return s;
+      const nextXp = Math.max(0, Math.min(tmpl.maxXp, Math.floor(s.xp ?? 0)));
+      return {
+        ...s,
+        name: tmpl.name,
+        tier: tmpl.tier,
+        xp: nextXp,
+        maxXp: tmpl.maxXp,
+        status: s.status ?? 'ACTIVE'
+      };
+    });
+
+    const normalizedTroops = buildTroopsFromSoldiers(soldiers);
+    if (!changed && normalizedTroops.length === troops.length) {
+      const sameCounts = normalizedTroops.every(t => {
+        const raw = troopMap.get(t.id);
+        return raw && raw.count === t.count;
+      });
+      if (sameCounts && player.soldiers === soldiers && player.nextSoldierId === nextId) return player;
+    }
+
+    return { ...player, soldiers, nextSoldierId: nextId, troops: normalizedTroops, woundedTroops: buildWoundedEntriesFromSoldiers(soldiers, player.day) };
+  };
+
+  const buildWoundedEntriesFromSoldiers = (soldiers: SoldierInstance[], currentDay: number): WoundedTroopEntry[] => {
+    const map = new Map<string, WoundedTroopEntry>();
+    soldiers.forEach(s => {
+      if (s.status !== 'WOUNDED') return;
+      const recoverDay = Math.max(0, Math.floor(s.recoverDay ?? currentDay));
+      const key = `${s.troopId}__${recoverDay}`;
+      const cur = map.get(key);
+      if (cur) {
+        cur.count += 1;
+        if (cur.soldierIds) cur.soldierIds.push(s.id);
+      } else {
+        map.set(key, { troopId: s.troopId, count: 1, recoverDay, soldierIds: [s.id] });
+      }
+    });
+    return Array.from(map.values()).sort((a, b) => a.recoverDay - b.recoverDay);
+  };
+
+  const getTroopSoldiers = (player: PlayerState, troopId: string) => {
+    const roster = Array.isArray(player.soldiers) ? player.soldiers : [];
+    return roster.filter(s => s.troopId === troopId);
+  };
+
+  const markSoldiersWounded = (soldiers: SoldierInstance[], soldierIds: string[], recoverDay: number, note: string): SoldierInstance[] => {
+    const idSet = new Set(soldierIds);
+    return soldiers.map(s => {
+      if (!idSet.has(s.id)) return s;
+      const history = [...(s.history ?? []), note];
+      return { ...s, status: 'WOUNDED' as const, recoverDay, history };
+    });
+  };
+
+  const removeSoldiersById = (soldiers: SoldierInstance[], soldierIds: string[]) => {
+    if (soldierIds.length === 0) return soldiers;
+    const idSet = new Set(soldierIds);
+    return soldiers.filter(s => !idSet.has(s.id));
+  };
+
   const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
 
   const getBanditCampAge = (camp?: Location) => {
@@ -3544,42 +3672,33 @@ export default function App() {
         if (built.includes('HOSPITAL_I')) return 1;
         return 0;
       })();
-      let woundedList = Array.isArray(nextPlayer.woundedTroops) ? nextPlayer.woundedTroops.map(x => ({ ...x })) : [];
-      if (hospitalLevel > 0 && woundedList.length > 0 && nextDay % 3 === 0) {
-        woundedList = woundedList.map(e => ({
-          ...e,
-          recoverDay: Math.max(nextDay, Math.floor((e.recoverDay ?? nextDay) - hospitalLevel))
-        }));
-        logsToAdd.push(`地下医院发挥作用：伤兵恢复进度加快 ${hospitalLevel} 天。`);
-      }
-      if (woundedList.length > 0) {
-        const recovered = woundedList.filter(e => (e.recoverDay ?? 0) <= nextDay && (e.count ?? 0) > 0);
-        const remaining = woundedList.filter(e => (e.recoverDay ?? 0) > nextDay && (e.count ?? 0) > 0);
-        if (recovered.length > 0) {
-          const troopMap = new Map(nextPlayer.troops.map(t => [t.id, { ...t }]));
-          recovered.forEach(e => {
-            const count = Math.max(0, Math.floor(e.count ?? 0));
-            if (count <= 0) return;
-            const existing = troopMap.get(e.troopId);
-            if (existing) troopMap.set(e.troopId, { ...existing, count: existing.count + count });
-            else {
-              const tmpl = getTroopTemplate(e.troopId);
-              if (tmpl) troopMap.set(e.troopId, { ...tmpl, count, xp: 0 });
-            }
+      let roster = Array.isArray(nextPlayer.soldiers) ? nextPlayer.soldiers.map(s => ({ ...s })) : [];
+      if (roster.length > 0) {
+        if (hospitalLevel > 0 && nextDay % 3 === 0) {
+          roster = roster.map(s => {
+            if (s.status !== 'WOUNDED') return s;
+            const recoverDay = Math.max(nextDay, Math.floor((s.recoverDay ?? nextDay) - hospitalLevel));
+            return { ...s, recoverDay };
           });
-          const recoveredByName = recovered.reduce<Record<string, number>>((acc, e) => {
-            const tmpl = getTroopTemplate(e.troopId);
-            const name = tmpl?.name ?? e.troopId;
-            acc[name] = (acc[name] ?? 0) + Math.max(0, Math.floor(e.count ?? 0));
+          logsToAdd.push(`地下医院发挥作用：伤兵恢复进度加快 ${hospitalLevel} 天。`);
+        }
+        const recovered = roster.filter(s => s.status === 'WOUNDED' && (s.recoverDay ?? 0) <= nextDay);
+        if (recovered.length > 0) {
+          const byName = recovered.reduce<Record<string, number>>((acc, s) => {
+            acc[s.name] = (acc[s.name] ?? 0) + 1;
             return acc;
           }, {});
-          Object.entries(recoveredByName).forEach(([name, count]) => {
+          Object.entries(byName).forEach(([name, count]) => {
             if (count > 0) logsToAdd.push(`伤兵恢复：${name} x${count} 重新归队。`);
           });
-          nextPlayer = { ...nextPlayer, troops: Array.from(troopMap.values()).filter(t => t.count > 0), woundedTroops: remaining };
-        } else {
-          nextPlayer = { ...nextPlayer, woundedTroops: remaining };
+          roster = roster.map(s => (s.status === 'WOUNDED' && (s.recoverDay ?? 0) <= nextDay) ? { ...s, status: 'ACTIVE', recoverDay: undefined } : s);
         }
+        nextPlayer = {
+          ...nextPlayer,
+          soldiers: roster,
+          troops: buildTroopsFromSoldiers(roster),
+          woundedTroops: buildWoundedEntriesFromSoldiers(roster, nextDay)
+        };
       }
       const getGarrisonCap = (loc: Location) => Math.floor((loc.garrisonBaseLimit ?? getDefaultGarrisonBaseLimit(loc)) * 1.2);
       const appendLocalLog = (loc: Location, text: string) => {
@@ -5437,7 +5556,9 @@ export default function App() {
 
         const armyTroops = nextTroops ?? [];
         const armyWage = armyTroops.reduce((sum, t) => sum + getUnitWage(t) * Math.max(0, Math.floor(t.count ?? 0)), 0);
-        const wounded = Array.isArray(woundedList) ? woundedList : [];
+        const wounded = Array.isArray(nextPlayer.woundedTroops)
+          ? nextPlayer.woundedTroops
+          : buildWoundedEntriesFromSoldiers(Array.isArray(nextPlayer.soldiers) ? nextPlayer.soldiers : [], nextDay);
         const woundedWage = wounded.reduce((sum, e) => {
           const count = Math.max(0, Math.floor(e.count ?? 0));
           if (count <= 0) return sum;
@@ -7725,10 +7846,19 @@ export default function App() {
         if (newStatus === 'INJURED' && prev.status !== 'INJURED') logsToAdd.push("你受了重伤，无法继续参与战斗！");
 
         // Apply Casualties with Medicine Check
-        const medicineSaveChance = prev.attributes.medicine * 0.05; // 5% per point
+        const medicineSaveChance = prev.attributes.medicine * 0.05;
         const woundedRecoveryDays = Math.max(3, 8 - Math.floor((prev.attributes.medicine ?? 0) / 4));
-        const newWoundedTroops: WoundedTroopEntry[] = [];
-        
+        const normalizedPlayer = normalizePlayerSoldiers(prev);
+        let roster = Array.isArray(normalizedPlayer.soldiers) ? normalizedPlayer.soldiers.map(s => ({ ...s })) : [];
+        const playerTroopIds = new Set(prev.troops.map(t => t.id));
+        roster = roster.map(s => {
+          if (s.status !== 'ACTIVE') return s;
+          if (!playerTroopIds.has(s.troopId)) return s;
+          const line = `Day ${prev.day} · ${activeEnemy.name} · 参战`;
+          if ((s.history ?? []).includes(line)) return s;
+          return { ...s, history: [...(s.history ?? []), line] };
+        });
+
         let remainingCasualties = { ...totalPlayerCasualties };
 
         // 1. Deduct from Garrison if DEFENSE_AID
@@ -7756,23 +7886,55 @@ export default function App() {
              }
         }
 
-        const survivingTroopsMeta = prev.troops.map(t => {
-          const casualties = Math.max(0, Math.floor(remainingCasualties[t.name] || 0));
-          let savedCount = 0;
-          for (let i = 0; i < casualties; i++) {
-            if (Math.random() < medicineSaveChance) savedCount++;
+        const deadByName: Record<string, number> = {};
+        const woundedByName: Record<string, number> = {};
+        Object.entries(remainingCasualties).forEach(([name, rawCount]) => {
+          const casualties = Math.max(0, Math.floor(rawCount || 0));
+          if (casualties <= 0) return;
+          const troop = prev.troops.find(t => t.name === name);
+          if (!troop) return;
+          const pool = roster.filter(s => s.troopId === troop.id && s.status === 'ACTIVE');
+          if (pool.length === 0) return;
+          const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, casualties);
+          const savedIds: string[] = [];
+          const deadIds: string[] = [];
+          shuffled.forEach(s => {
+            if (Math.random() < medicineSaveChance) savedIds.push(s.id);
+            else deadIds.push(s.id);
+          });
+          if (savedIds.length > 0) {
+            roster = markSoldiersWounded(roster, savedIds, prev.day + woundedRecoveryDays, `Day ${prev.day} · ${activeEnemy.name} · 负伤`);
+            woundedByName[name] = (woundedByName[name] ?? 0) + savedIds.length;
           }
-          savedCount = Math.min(savedCount, casualties);
-          if (savedCount > 0) {
-            newWoundedTroops.push({ troopId: t.id, count: savedCount, recoverDay: prev.day + woundedRecoveryDays });
-            logsToAdd.push(`医术救回了 ${savedCount} 名 ${t.name}（重伤，预计 ${woundedRecoveryDays} 天恢复）。`);
+          if (deadIds.length > 0) {
+            roster = removeSoldiersById(roster, deadIds);
+            deadByName[name] = (deadByName[name] ?? 0) + deadIds.length;
           }
-          const activeCount = Math.max(0, t.count - casualties);
-          if (activeCount <= 0) return null;
-          const isRoach = t.id.startsWith('roach_');
-          const isMaxed = !t.upgradeTargetId;
-          return { troop: t, remainingCount: activeCount, isRoach, isMaxed };
-        }).filter((item): item is { troop: Troop; remainingCount: number; isRoach: boolean; isMaxed: boolean } => item !== null);
+        });
+
+        Object.entries(woundedByName).forEach(([name, count]) => {
+          if (count > 0) logsToAdd.push(`医术救回了 ${count} 名 ${name}（重伤，预计 ${woundedRecoveryDays} 天恢复）。`);
+        });
+        Object.entries(deadByName).forEach(([name, count]) => {
+          if (count > 0) {
+            newFallenRecords.push({
+              id: `fallen_${Date.now()}_${Math.random()}`,
+              unitName: name,
+              count,
+              day: prev.day,
+              battleName: activeEnemy.name,
+              cause: '战斗阵亡'
+            });
+          }
+        });
+
+        const survivingTroops = buildTroopsFromSoldiers(roster);
+        const survivingTroopsMeta = survivingTroops.map(t => {
+          const tmpl = getTroopTemplate(t.id);
+          const isRoach = t.id.startsWith('roach_') || getTroopRace(t, IMPOSTER_TROOP_IDS) === 'ROACH';
+          const isMaxed = !(tmpl?.upgradeTargetId ?? t.upgradeTargetId);
+          return { troop: t, isRoach, isMaxed };
+        });
 
         const deadHeroRecords: FallenHeroRecord[] = [];
         const updatedHeroesBase = heroesRef.current.map(hero => {
@@ -7833,15 +7995,21 @@ export default function App() {
         const shareCount = eligibleTroops.length + eligibleHeroes.length + (playerEligible ? 1 : 0);
         const xpShare = shareCount > 0 ? Math.floor(localRewards.xp / shareCount) : 0;
 
-        const survivingTroops = survivingTroopsMeta.map(({ troop, remainingCount, isRoach, isMaxed }) => {
-          if (isRoach) {
-            const tmpl = getTroopTemplate(troop.id);
-            if (tmpl) return { ...tmpl, count: remainingCount, xp: 0, enchantments: troop.enchantments ?? [] };
-            return { ...troop, count: remainingCount, xp: 0 };
-          }
-          if (isMaxed || xpShare <= 0) return { ...troop, count: remainingCount };
-          return { ...troop, count: remainingCount, xp: (troop.xp ?? 0) + xpShare };
-        }).filter(t => t.count > 0);
+        if (xpShare > 0) {
+          roster = roster.map(s => {
+            if (s.status !== 'ACTIVE') return s;
+            const tmpl = getTroopTemplate(s.troopId);
+            const race = tmpl
+              ? getTroopRace({ id: tmpl.id, name: tmpl.name, doctrine: tmpl.doctrine, evangelist: tmpl.evangelist, race: tmpl.race })
+              : getTroopRace({ id: s.troopId, name: s.name } as any);
+            const isRoach = race === 'ROACH';
+            const isMaxed = !(tmpl?.upgradeTargetId ?? (tmpl?.upgradeTargetIds?.[0] ?? ''));
+            if (isRoach) return { ...s, xp: 0 };
+            if (isMaxed) return s;
+            return { ...s, xp: Math.min(s.maxXp, s.xp + xpShare) };
+          });
+        }
+        const nextTroopsFromRoster = buildTroopsFromSoldiers(roster);
 
         const updatedHeroes = updatedHeroesBase.map(hero => {
           const eligible = hero.recruited && hero.status !== 'DEAD' && battleHeroNames.has(hero.name);
@@ -7857,30 +8025,12 @@ export default function App() {
         logsToAdd.push(...playerXpResult.logs);
 
         setPlayer({
-          ...prev,
+          ...normalizedPlayer,
           gold: newGold,
           renown: newRenown,
-          troops: survivingTroops,
-          woundedTroops: (() => {
-            const existing = Array.isArray(prev.woundedTroops) ? prev.woundedTroops.map(x => ({ ...x })) : [];
-            const map = new Map<string, WoundedTroopEntry>();
-            const keyOf = (e: WoundedTroopEntry) => `${e.troopId}__${e.recoverDay}`;
-            existing.forEach(e => {
-              if (e.count <= 0) return;
-              map.set(keyOf(e), { ...e, count: Math.floor(e.count) });
-            });
-            newWoundedTroops.forEach(e => {
-              if (e.count <= 0) return;
-              const k = keyOf(e);
-              const cur = map.get(k);
-              if (cur) map.set(k, { ...cur, count: cur.count + Math.floor(e.count) });
-              else map.set(k, { troopId: e.troopId, count: Math.floor(e.count), recoverDay: Math.floor(e.recoverDay) });
-            });
-            return Array.from(map.values())
-              .filter(e => e.count > 0)
-              .sort((a, b) => a.recoverDay - b.recoverDay)
-              .slice(0, 80);
-          })(),
+          soldiers: roster,
+          troops: nextTroopsFromRoster,
+          woundedTroops: buildWoundedEntriesFromSoldiers(roster, prev.day),
           currentHp: newHp,
           status: newStatus as 'ACTIVE' | 'INJURED',
           fallenRecords: [...prev.fallenRecords, ...newFallenRecords],
@@ -7902,12 +8052,18 @@ export default function App() {
         const shareCount = eligibleTroops.length + eligibleHeroes.length + (playerEligible ? 1 : 0);
         const xpShare = shareCount > 0 ? Math.floor(localRewards.xp / shareCount) : 0;
         if (xpShare > 0) {
-          const nextTroops = prev.troops.map(t => {
-            if (t.count <= 0) return t;
-            const race = getTroopRace(t, IMPOSTER_TROOP_IDS);
-            if (race === 'ROACH') return { ...t, xp: 0 };
-            return { ...t, xp: (t.xp ?? 0) + xpShare };
+          const normalized = normalizePlayerSoldiers(prev);
+          let roster = Array.isArray(normalized.soldiers) ? normalized.soldiers.map(s => ({ ...s })) : [];
+          roster = roster.map(s => {
+            if (s.status !== 'ACTIVE') return s;
+            const tmpl = getTroopTemplate(s.troopId);
+            const race = tmpl
+              ? getTroopRace({ id: tmpl.id, name: tmpl.name, doctrine: tmpl.doctrine, evangelist: tmpl.evangelist, race: tmpl.race }, IMPOSTER_TROOP_IDS)
+              : getTroopRace({ id: s.troopId, name: s.name } as any, IMPOSTER_TROOP_IDS);
+            if (race === 'ROACH') return { ...s, xp: 0 };
+            return { ...s, xp: Math.min(s.maxXp, s.xp + xpShare) };
           });
+          const nextTroops = buildTroopsFromSoldiers(roster);
           const updatedHeroes = heroesRef.current.map(hero => {
             if (!hero.recruited) return hero;
             if (!canHeroBattle(hero) || hero.currentHp <= 0) return hero;
@@ -7920,6 +8076,8 @@ export default function App() {
           setPlayer(current => ({
             ...current,
             troops: nextTroops,
+            soldiers: roster,
+            woundedTroops: buildWoundedEntriesFromSoldiers(roster, prev.day),
             xp: playerXpResult.xp,
             level: playerXpResult.level,
             attributePoints: playerXpResult.attributePoints,
@@ -7967,20 +8125,20 @@ export default function App() {
     }
     
     setPlayer(prev => {
-        const existingTroop = prev.troops.find(t => t.id === template.id);
-        let newTroops = [...prev.troops];
-        
-        if (existingTroop) {
-          newTroops = newTroops.map(t => t.id === template.id ? { ...t, count: t.count + countToRecruit } : t);
-        } else {
-          newTroops.push({ ...template, count: countToRecruit, xp: 0 });
-        }
+      const existingTroop = prev.troops.find(t => t.id === template.id);
+      let newTroops = [...prev.troops];
+      
+      if (existingTroop) {
+        newTroops = newTroops.map(t => t.id === template.id ? { ...t, count: t.count + countToRecruit } : t);
+      } else {
+        newTroops.push({ ...template, count: countToRecruit, xp: 0 });
+      }
 
-        return {
-          ...prev,
-          gold: prev.gold - totalCost,
-          troops: newTroops
-        };
+      return normalizePlayerSoldiers({
+        ...prev,
+        gold: prev.gold - totalCost,
+        troops: newTroops
+      });
     });
 
     // Remove recruit from pool (simplified: remove offer if fully recruited, or decrement)
@@ -8006,9 +8164,37 @@ export default function App() {
     addLog(`招募了 ${countToRecruit} 名 ${template.name}。`);
   };
 
-  const handleUpgrade = (troopId: string, overrideTargetId?: string) => {
+  const consumeRecompilerSoldier = (payload: { soldierId: string; troopId: string; goldCost: number; crystalTier: number }) => {
+    setPlayer(prev => {
+      const normalized = normalizePlayerSoldiers(prev);
+      const roster = Array.isArray(normalized.soldiers) ? normalized.soldiers.map(s => ({ ...s })) : [];
+      const target = roster.find(s => s.id === payload.soldierId && s.status === 'ACTIVE');
+      if (!target || target.troopId !== payload.troopId) return prev;
+      const nextRoster = roster.filter(s => s.id !== payload.soldierId);
+      const nextTroops = buildTroopsFromSoldiers(nextRoster);
+      const nextMinerals = { ...(normalized.minerals as any) };
+      const tierKey = payload.crystalTier as any;
+      nextMinerals.HERO_CRYSTAL = { ...(nextMinerals.HERO_CRYSTAL ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }) };
+      nextMinerals.HERO_CRYSTAL[tierKey] = Math.max(0, (nextMinerals.HERO_CRYSTAL[tierKey] ?? 0) - 1);
+      return {
+        ...normalized,
+        gold: Math.max(0, normalized.gold - payload.goldCost),
+        soldiers: nextRoster,
+        troops: nextTroops,
+        minerals: nextMinerals,
+        woundedTroops: buildWoundedEntriesFromSoldiers(nextRoster, normalized.day)
+      };
+    });
+  };
+
+  const handleUpgrade = (troopId: string, overrideTargetId?: string, soldierId?: string) => {
     const prev = playerRef.current;
-    
+    const normalized = normalizePlayerSoldiers(prev);
+    const roster = Array.isArray(normalized.soldiers) ? normalized.soldiers : [];
+    const eligibleSoldiers = roster.filter(s => s.troopId === troopId && s.status === 'ACTIVE' && s.xp >= s.maxXp);
+    const chosenSoldier = soldierId ? roster.find(s => s.id === soldierId) : eligibleSoldiers[0];
+    if (!chosenSoldier || chosenSoldier.troopId !== troopId) return;
+
     const troopIndex = prev.troops.findIndex(t => t.id === troopId);
     if (troopIndex === -1) return;
     const troop = prev.troops[troopIndex];
@@ -8016,10 +8202,10 @@ export default function App() {
     const chosen = (overrideTargetId ?? options[0] ?? troop.upgradeTargetId ?? '').trim();
     if (!chosen) return;
     if (options.length > 0 && !options.includes(chosen)) return;
-    if (troop.xp < troop.maxXp || prev.gold < troop.upgradeCost) return;
+    if (chosenSoldier.xp < chosenSoldier.maxXp || prev.gold < troop.upgradeCost) return;
     
     const newTroops = [...prev.troops];
-    newTroops[troopIndex] = { ...troop, count: troop.count - 1, xp: troop.xp - troop.maxXp };
+    newTroops[troopIndex] = { ...troop, count: troop.count - 1, xp: Math.max(0, troop.xp - troop.maxXp) };
     const targetTemplate = getTroopTemplate(chosen);
     if (!targetTemplate) return;
     const existingTargetIndex = newTroops.findIndex(t => t.id === targetTemplate.id);
@@ -8030,8 +8216,27 @@ export default function App() {
       newTroops.push({ ...targetTemplate, count: 1, xp: 0 });
     }
 
-    addLog(`一名 ${troop.name} 晋升为 ${targetTemplate.name}！`);
-    setPlayer({ ...prev, gold: prev.gold - troop.upgradeCost, troops: newTroops.filter(t => t.count > 0) });
+    const nextRoster = roster.map(s => {
+      if (s.id !== chosenSoldier.id) return s;
+      return {
+        ...s,
+        troopId: targetTemplate.id,
+        name: targetTemplate.name,
+        tier: targetTemplate.tier,
+        xp: Math.max(0, s.xp - s.maxXp),
+        maxXp: targetTemplate.maxXp,
+        history: [...(s.history ?? []), `Day ${prev.day} · 晋升为 ${targetTemplate.name}`]
+      };
+    });
+    const nextTroops = buildTroopsFromSoldiers(nextRoster);
+    addLog(`一名 ${troop.name}（${chosenSoldier.id}）晋升为 ${targetTemplate.name}！`);
+    setPlayer({
+      ...prev,
+      gold: prev.gold - troop.upgradeCost,
+      soldiers: nextRoster,
+      troops: nextTroops,
+      woundedTroops: buildWoundedEntriesFromSoldiers(nextRoster, prev.day)
+    });
   };
 
   const handleDisband = (troopId: string, mode: 'ONE' | 'ALL') => {
@@ -8039,15 +8244,14 @@ export default function App() {
     const troop = prev.troops.find(t => t.id === troopId);
     if (!troop || troop.count <= 0) return;
     const remove = mode === 'ALL' ? troop.count : 1;
-    const nextCount = Math.max(0, troop.count - remove);
-    const ratio = troop.count > 0 ? nextCount / troop.count : 0;
-    const nextXpCap = (troop.maxXp ?? 0) * nextCount;
-    const nextXp = Math.max(0, Math.min(nextXpCap, Math.floor((troop.xp ?? 0) * ratio)));
-    const nextTroops = prev.troops
-      .map(t => (t.id === troopId ? ({ ...t, count: nextCount, xp: nextXp }) : t))
-      .filter(t => t.count > 0);
-    setPlayer({ ...prev, troops: nextTroops });
-    addLog(mode === 'ALL' ? `你遣散了全部 ${troop.name}。` : `你遣散了 1 名 ${troop.name}。`);
+    const normalized = normalizePlayerSoldiers(prev);
+    const roster = Array.isArray(normalized.soldiers) ? normalized.soldiers : [];
+    const pool = roster.filter(s => s.troopId === troopId && s.status === 'ACTIVE');
+    const removed = pool.slice(0, remove).map(s => s.id);
+    const nextRoster = removeSoldiersById(roster, removed);
+    const nextTroops = buildTroopsFromSoldiers(nextRoster);
+    setPlayer({ ...normalized, soldiers: nextRoster, troops: nextTroops, woundedTroops: buildWoundedEntriesFromSoldiers(nextRoster, prev.day) });
+    addLog(mode === 'ALL' ? `你遣散了全部 ${troop.name}。` : `你遣散了 1 名 ${troop.name}（${removed[0] ?? '未知'}）。`);
   };
 
   const startSiegeBattle = (location: Location) => {
@@ -9431,6 +9635,10 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    setPlayer(prev => normalizePlayerSoldiers(prev));
+  }, [player.troops, player.soldiers?.length]);
+
+  useEffect(() => {
     if ((player.story?.introSeen ?? false) === true) return;
     if (player.day > 1) return;
     if (view === 'MAIN_MENU' || view === 'ENDING') return;
@@ -9525,7 +9733,7 @@ export default function App() {
           ? (nextPlayer as any).locationRelations
           : {}
       };
-      setPlayer(normalizedPlayer);
+      setPlayer(normalizePlayerSoldiers(normalizedPlayer));
       const normalizedHeroes = Array.isArray(nextHeroes) && nextHeroes.length > 0
         ? nextHeroes.map(normalizeHero)
         : heroesRef.current.map(normalizeHero);
@@ -10727,6 +10935,7 @@ export default function App() {
       setPartyCategoryFilter={setPartyCategoryFilter}
       getTroopTemplate={getTroopTemplate}
       getUpgradeTargetOptions={getUpgradeTargetOptions}
+      getTroopSoldiers={(troopId) => getTroopSoldiers(playerRef.current, troopId)}
       handleUpgrade={handleUpgrade}
       handleDisband={handleDisband}
       getHeroRoleLabel={getHeroRoleLabel}
@@ -10910,7 +11119,7 @@ export default function App() {
 
   const restartGame = () => {
     const freshWorld = buildInitialWorld();
-    setPlayer(INITIAL_PLAYER_STATE);
+    setPlayer(normalizePlayerSoldiers(INITIAL_PLAYER_STATE));
     setHeroes(buildRandomizedHeroes());
     setLocations(freshWorld.locations.map(l => l.type === 'CITY' ? { ...l, workBoard: { lastRefreshDay: INITIAL_PLAYER_STATE.day, contracts: buildWorkContractsForCity(l, INITIAL_PLAYER_STATE.day) } } : l));
     setLords(freshWorld.lords);
@@ -11591,6 +11800,7 @@ export default function App() {
               setHideoutInspectLayerIndex(safe);
               setView('HIDEOUT_INSPECT');
             }}
+            onConsumeRecompilerSoldier={consumeRecompilerSoldier}
           />
         )}
         {view === 'HIDEOUT_INSPECT' && currentLocation && currentLocation.type === 'HIDEOUT' && (

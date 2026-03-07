@@ -4965,6 +4965,8 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
   gold: 500,
   renown: 0,
   troops: [createTroop('peasant', 10)],
+  soldiers: [],
+  nextSoldierId: 1,
   parrots: [],
   fallenRecords: [], // Initialize empty graveyard
   fallenHeroes: [],

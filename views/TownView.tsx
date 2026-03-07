@@ -153,6 +153,7 @@ type TownViewProps = {
   playerReligionName: string | null;
   onPreachInCity: (locationId: string) => void;
   onInspectHideout: (layerIndex: number) => void;
+  onConsumeRecompilerSoldier: (payload: { soldierId: string; troopId: string; goldCost: number; crystalTier: number }) => void;
 };
 
 export const TownView = ({
@@ -250,7 +251,8 @@ export const TownView = ({
   recentLogs,
   playerReligionName,
   onPreachInCity,
-  onInspectHideout
+  onInspectHideout,
+  onConsumeRecompilerSoldier
 }: TownViewProps) => {
   if (!currentLocation) return null;
 
@@ -407,6 +409,7 @@ export const TownView = ({
   const [isLordChatLoading, setIsLordChatLoading] = React.useState(false);
   const [altarChatInput, setAltarChatInput] = React.useState('');
   const [recompilerTroopId, setRecompilerTroopId] = React.useState<string | null>(null);
+  const [recompilerSoldierId, setRecompilerSoldierId] = React.useState<string | null>(null);
   const [recompilerCrystalTier, setRecompilerCrystalTier] = React.useState<number>(1);
   const [recompilerDraft, setRecompilerDraft] = React.useState<HeroPromotionDraft | null>(null);
   const [recompilerNameDraft, setRecompilerNameDraft] = React.useState('');
@@ -3678,17 +3681,19 @@ export const TownView = ({
 
             {(() => {
               const tiers = [
-                { tier: 1, name: '混沌碎片', model: '1B-3B（小模型）', boost: 0.2, levelReq: 5, goldCost: 600 },
-                { tier: 2, name: '逻辑原石', model: '7B（主流开源）', boost: 0.5, levelReq: 10, goldCost: 1200 },
-                { tier: 3, name: '灵知晶体', model: '14B-32B（进阶）', boost: 1.0, levelReq: 15, goldCost: 2600 },
-                { tier: 4, name: '虚空核心', model: '70B+（顶级开源）', boost: 2.0, levelReq: 20, goldCost: 5200 },
-                { tier: 5, name: '奇点神格', model: 'GPT-4 / Claude 3（最强商业）', boost: 4.0, levelReq: 25, goldCost: 9800 }
+                { tier: 1, name: '混沌碎片', model: '1B-3B（小模型）', boost: 0.2, troopTierReq: 2, goldCost: 600 },
+                { tier: 2, name: '逻辑原石', model: '7B（主流开源）', boost: 0.5, troopTierReq: 3, goldCost: 1200 },
+                { tier: 3, name: '灵知晶体', model: '14B-32B（进阶）', boost: 1.0, troopTierReq: 4, goldCost: 2600 },
+                { tier: 4, name: '虚空核心', model: '70B+（顶级开源）', boost: 2.0, troopTierReq: 5, goldCost: 5200 },
+                { tier: 5, name: '奇点神格', model: 'GPT-4 / Claude 3（最强商业）', boost: 4.0, troopTierReq: 5, goldCost: 9800 }
               ] as const;
               const inv = (player.minerals as any)?.HERO_CRYSTAL ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
               const selectedTier = tiers.find(t => t.tier === recompilerCrystalTier) ?? tiers[0];
               const canAffordGold = player.gold >= selectedTier.goldCost;
               const canAffordCrystal = (inv[selectedTier.tier] ?? 0) >= 1;
-              const meetsLevel = player.level >= selectedTier.levelReq;
+              const selectedSoldier = (player.soldiers ?? []).find(s => s.id === recompilerSoldierId && s.status === 'ACTIVE') ?? null;
+              const soldierTier = selectedSoldier?.tier ?? 0;
+              const meetsLevel = soldierTier >= selectedTier.troopTierReq;
               const isReady = canAffordGold && canAffordCrystal && meetsLevel;
 
               return (
@@ -3718,11 +3723,25 @@ export const TownView = ({
                         );
                       })}
                     </div>
-                    <div className="text-sm text-stone-400 mt-3 space-y-1">
+                    <div className="text-sm text-stone-400 mt-3 space-y-2">
                       <div>当前选择：T{selectedTier.tier} · {selectedTier.name}（模型：{selectedTier.model}）</div>
-                      <div>需求：玩家等级 ≥ {selectedTier.levelReq}，金钱 {selectedTier.goldCost}，英雄水晶T{selectedTier.tier} ×1</div>
+                      <div>需求：士兵等级 ≥ T{selectedTier.troopTierReq}，金钱 {selectedTier.goldCost}，英雄水晶T{selectedTier.tier} ×1</div>
+                      {selectedSoldier ? (
+                        <div className="space-y-1">
+                          <div className="text-xs text-stone-500">已选士兵：{selectedSoldier.id} · {selectedSoldier.name} · T{selectedSoldier.tier}</div>
+                          <div className="h-2 bg-stone-950/70 border border-stone-800 rounded overflow-hidden">
+                            <div
+                              className="h-full bg-emerald-500/70"
+                              style={{ width: `${Math.min(100, Math.floor((selectedSoldier.xp / Math.max(1, selectedSoldier.maxXp)) * 100))}%` }}
+                            />
+                          </div>
+                          <div className="text-xs text-stone-500">经验进度：{selectedSoldier.xp}/{selectedSoldier.maxXp}</div>
+                        </div>
+                      ) : (
+                        <div className="text-xs text-stone-500">未选择士兵。</div>
+                      )}
                       <div className={isReady ? 'text-emerald-300' : 'text-amber-300'}>
-                        {isReady ? '条件满足，可执行重塑。' : '条件未满足：请检查等级、金钱、或水晶库存。'}
+                        {isReady ? '条件满足，可执行重塑。' : '条件未满足：请检查士兵等级、金钱、或水晶库存。'}
                       </div>
                     </div>
                   </div>
@@ -3738,11 +3757,13 @@ export const TownView = ({
                           const race = getTroopRace({ id: troopStack.id, name: troopStack.name, doctrine: troopStack.doctrine, evangelist: troopStack.evangelist, race: troopStack.race as any });
                           const raceLabel = TROOP_RACE_LABELS[race] ?? race;
                           const selected = recompilerTroopId === troopStack.id;
+                          const troopSoldiers = (player.soldiers ?? []).filter(s => s.troopId === troopStack.id && s.status === 'ACTIVE');
                           return (
                             <button
                               key={`promotable_${troopStack.id}`}
                               onClick={() => {
                                 setRecompilerTroopId(troopStack.id);
+                                setRecompilerSoldierId(troopSoldiers[0]?.id ?? null);
                                 setRecompilerDraft(null);
                                 setRecompilerNameDraft('');
                                 setRecompilerError(null);
@@ -3762,6 +3783,42 @@ export const TownView = ({
                       </div>
                     )}
                   </div>
+
+                  {recompilerTroopId && (
+                    <div className="bg-stone-900/40 border border-stone-800 rounded p-4">
+                      <div className="text-stone-200 font-bold mb-3">选择士兵个体</div>
+                      {(() => {
+                        const list = (player.soldiers ?? []).filter(s => s.troopId === recompilerTroopId && s.status === 'ACTIVE');
+                        if (list.length === 0) return <div className="text-stone-500 text-sm">当前兵种没有可用个体。</div>;
+                        return (
+                          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+                            {list.slice(0, 24).map(soldier => {
+                              const selected = soldier.id === recompilerSoldierId;
+                              const progress = Math.min(100, Math.floor((soldier.xp / Math.max(1, soldier.maxXp)) * 100));
+                              return (
+                                <button
+                                  key={soldier.id}
+                                  onClick={() => {
+                                    setRecompilerSoldierId(soldier.id);
+                                    setRecompilerDraft(null);
+                                    setRecompilerNameDraft('');
+                                    setRecompilerError(null);
+                                  }}
+                                  className={`p-2 rounded border text-left ${selected ? 'bg-emerald-950/30 border-emerald-900/70 text-emerald-200' : 'bg-stone-950/30 border-stone-800 hover:bg-stone-950/50'}`}
+                                >
+                                  <div className="text-sm font-semibold">{soldier.id}</div>
+                                  <div className="text-[11px] text-stone-500">T{soldier.tier} · XP {soldier.xp}/{soldier.maxXp}</div>
+                                  <div className="h-1.5 bg-stone-950/70 border border-stone-800 rounded overflow-hidden mt-1">
+                                    <div className="h-full bg-emerald-500/70" style={{ width: `${progress}%` }} />
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+                    </div>
+                  )}
 
                   {recompilerTroopId && (() => {
                     const troopStack = player.troops.find(t => t.id === recompilerTroopId) ?? null;
@@ -3788,26 +3845,24 @@ export const TownView = ({
                       agility: clampValue(Math.round(baseHeroAttributes.agility * (1 + selectedTier.boost)), 8, 180)
                     };
                     const race = getTroopRace({ id: troopStack.id, name: troopStack.name, doctrine: troopStack.doctrine, evangelist: troopStack.evangelist, race: troopStack.race as any });
-                    const historyItems = (player.fallenRecords ?? [])
-                      .filter(r => r.unitName.includes(troopStack.name) && !r.unitName.includes('（英雄）'))
-                      .slice(-10)
-                      .map(r => `- Day ${r.day} · ${r.battleName} · ${r.cause}`);
-                    const soldierHistory = historyItems.length > 0 ? historyItems.join('\n') : '（暂无同名战役记录）';
+                    const chosenSoldier = (player.soldiers ?? []).find(s => s.id === recompilerSoldierId && s.status === 'ACTIVE') ?? null;
+                    const historyItems = chosenSoldier?.history ?? [];
+                    const soldierHistory = historyItems.length > 0 ? historyItems.map(line => `- ${line}`).join('\n') : '（暂无个体战役记录）';
 
                     return (
                       <div className="bg-stone-900/40 border border-stone-800 rounded p-4 space-y-4">
                         <div className="flex items-start justify-between gap-4">
                           <div className="min-w-0">
-                            <div className="text-stone-200 font-bold">重塑目标：{troopStack.name}</div>
+                            <div className="text-stone-200 font-bold">重塑目标：{troopStack.name}{chosenSoldier ? `（${chosenSoldier.id}）` : ''}</div>
                             <div className="text-sm text-stone-500 mt-1">预计英雄属性：攻{boosted.attack} / HP{boosted.hp} / 敏{boosted.agility}</div>
                           </div>
                           <div className="flex items-center gap-2">
                             <Button
                               variant="secondary"
-                              disabled={isRecompilerLoading}
+                              disabled={isRecompilerLoading || !chosenSoldier}
                               onClick={async () => {
-                                if (!isReady) {
-                                  setRecompilerError('条件未满足：请检查等级、金钱、或英雄水晶库存。');
+                                if (!isReady || !chosenSoldier) {
+                                  setRecompilerError('条件未满足：请检查士兵等级、金钱、或英雄水晶库存。');
                                   return;
                                 }
                                 setIsRecompilerLoading(true);
@@ -3847,6 +3902,7 @@ export const TownView = ({
                               variant="secondary"
                               onClick={() => {
                                 setRecompilerTroopId(null);
+                                setRecompilerSoldierId(null);
                                 setRecompilerDraft(null);
                                 setRecompilerNameDraft('');
                                 setRecompilerError(null);
@@ -3896,29 +3952,17 @@ export const TownView = ({
                             <div className="flex items-center justify-end">
                               <Button
                                 variant={isReady ? 'gold' : 'secondary'}
-                                disabled={!isReady || isRecompilerLoading}
+                                disabled={!isReady || isRecompilerLoading || !chosenSoldier}
                                 onClick={() => {
-                                  if (!isReady) return;
+                                  if (!isReady || !chosenSoldier) return;
                                   const name = recompilerNameDraft.trim() || recompilerDraft.name.trim() || troopStack.name;
                                   const heroId = `promoted_${race.toLowerCase()}_${Date.now()}`;
-
-                                  const ratio = troopStack.count > 0 ? (troopStack.count - 1) / troopStack.count : 0;
-                                  const nextXp = Math.max(0, Math.floor((troopStack.xp ?? 0) * ratio));
-                                  const nextTroops = playerRef.current.troops
-                                    .map(t => t.id === troopStack.id ? ({ ...t, count: t.count - 1, xp: nextXp }) : t)
-                                    .filter(t => t.count > 0);
-
-                                  const nextMinerals = { ...(playerRef.current.minerals as any) };
-                                  const tierKey = selectedTier.tier as any;
-                                  nextMinerals.HERO_CRYSTAL = { ...(nextMinerals.HERO_CRYSTAL ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }) };
-                                  nextMinerals.HERO_CRYSTAL[tierKey] = Math.max(0, (nextMinerals.HERO_CRYSTAL[tierKey] ?? 0) - 1);
-
-                                  setPlayer(prev => ({
-                                    ...prev,
-                                    gold: prev.gold - selectedTier.goldCost,
-                                    troops: nextTroops,
-                                    minerals: nextMinerals
-                                  }));
+                                  onConsumeRecompilerSoldier({
+                                    soldierId: chosenSoldier.id,
+                                    troopId: troopStack.id,
+                                    goldCost: selectedTier.goldCost,
+                                    crystalTier: selectedTier.tier
+                                  });
 
                                   setHeroes(prev => ([
                                     ...prev,
@@ -3956,6 +4000,7 @@ export const TownView = ({
                                   setRecompilerDraft(null);
                                   setRecompilerNameDraft('');
                                   setRecompilerTroopId(null);
+                                  setRecompilerSoldierId(null);
                                 }}
                               >
                                 确认晋升（{selectedTier.goldCost} + 水晶T{selectedTier.tier}）

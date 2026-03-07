@@ -77,6 +77,19 @@ export interface Troop {
   evangelist?: boolean;
 }
 
+export type SoldierInstance = {
+  id: string;
+  troopId: string;
+  name: string;
+  tier: TroopTier;
+  xp: number;
+  maxXp: number;
+  createdDay: number;
+  history: string[];
+  status: 'ACTIVE' | 'WOUNDED';
+  recoverDay?: number;
+};
+
 export type AltarDoctrine = {
   religionName: string;
   domain: string;
@@ -221,12 +234,15 @@ export type WoundedTroopEntry = {
   troopId: string;
   count: number;
   recoverDay: number;
+  soldierIds?: string[];
 };
 
 export interface PlayerState {
   gold: number;
   renown: number;
   troops: Troop[];
+  soldiers?: SoldierInstance[];
+  nextSoldierId?: number;
   woundedTroops?: WoundedTroopEntry[];
   parrots: Parrot[];
   fallenRecords: FallenRecord[]; // Record of dead soldiers
@@ -437,24 +453,6 @@ export interface SiegeEngineQueueItem {
   type: SiegeEngineType;
   daysLeft: number;
   totalDays: number;
-}
-
-export interface NewspaperData {
-  title: string;
-  issueNumber: string;
-  date: string;
-  leadStory: {
-    headline: string;
-    subhead: string;
-    content: string;
-    imagePrompt?: string;
-  };
-  sideStories: {
-    headline: string;
-    content: string;
-  }[];
-  briefs: string[];
-  rumors: string[];
 }
 
 export type GameView = 'MAIN_MENU' | 'INTRO' | 'MAP' | 'TOWN' | 'HIDEOUT_INSPECT' | 'BATTLE' | 'BATTLE_RESULT' | 'ENDING' | 'GAME_OVER' | 'PARTY' | 'CHARACTER' | 'BILLS' | 'TRAINING' | 'ASYLUM' | 'MARKET' | 'BANDIT_ENCOUNTER' | 'CAVE' | 'HERO_CHAT' | 'WORLD_BOARD' | 'TROOP_ARCHIVE' | 'RELATIONS';

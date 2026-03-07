@@ -1,6 +1,6 @@
 import React from 'react';
 import { Bird, MessageCircle, Plus, Heart, Zap, Star } from 'lucide-react';
-import { Hero, PlayerState } from '../types';
+import { Hero, PlayerState, SoldierInstance } from '../types';
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
 import { getTroopRace, TROOP_RACE_LABELS } from '../constants';
@@ -14,7 +14,8 @@ type PartyViewProps = {
   setPartyCategoryFilter: (value: PartyCategoryFilter) => void;
   getTroopTemplate: (troopId: string) => any;
   getUpgradeTargetOptions: (troopId: string) => string[];
-  handleUpgrade: (troopId: string, targetId?: string) => void;
+  getTroopSoldiers: (troopId: string) => SoldierInstance[];
+  handleUpgrade: (troopId: string, targetId?: string, soldierId?: string) => void;
   handleDisband: (troopId: string, mode: 'ONE' | 'ALL') => void;
   getHeroRoleLabel: (role: Hero['role']) => string;
   spendHeroAttributePoint: (heroId: string, key: keyof Hero['attributes']) => void;
@@ -29,6 +30,7 @@ export const PartyView = ({
   setPartyCategoryFilter,
   getTroopTemplate,
   getUpgradeTargetOptions,
+  getTroopSoldiers,
   handleUpgrade,
   handleDisband,
   getHeroRoleLabel,
@@ -37,7 +39,8 @@ export const PartyView = ({
   onBackToMap
 }: PartyViewProps) => {
   const recruitedHeroes = heroes.filter(hero => hero.recruited && !hero.locationId);
-  const [upgradePicker, setUpgradePicker] = React.useState<{ sourceId: string; options: string[] } | null>(null);
+  const [upgradePicker, setUpgradePicker] = React.useState<{ sourceId: string; options: string[]; soldiers: SoldierInstance[] } | null>(null);
+  const [upgradeSoldierId, setUpgradeSoldierId] = React.useState<string | null>(null);
   const partyCategoryLabel: Record<PartyCategoryFilter, string> = {
     ALL: '全部',
     NORMAL: '常规',
@@ -122,6 +125,7 @@ export const PartyView = ({
         {displayedTroops.map(troop => {
           const canAffordUpgrade = player.gold >= troop.upgradeCost;
           const options = getUpgradeTargetOptions(troop.id);
+          const eligibleSoldiers = getTroopSoldiers(troop.id).filter(s => s.status === 'ACTIVE' && s.xp >= s.maxXp);
           const isBranching = options.length > 1;
           const upgradeLabel = canAffordUpgrade
             ? (isBranching ? `选择晋升 (${troop.upgradeCost} 第纳尔)` : `晋升部队 (${troop.upgradeCost} 第纳尔)`)
@@ -135,13 +139,14 @@ export const PartyView = ({
               onSecondaryAction={() => handleDisband(troop.id, 'ONE')}
               actionLabel="遣散全部"
               onAction={() => handleDisband(troop.id, 'ALL')}
-              canUpgrade={options.length > 0}
+              canUpgrade={options.length > 0 && eligibleSoldiers.length > 0}
               onUpgrade={() => {
-                if (options.length <= 1) {
-                  handleUpgrade(troop.id, options[0]);
+                if (options.length <= 1 && eligibleSoldiers.length <= 1) {
+                  handleUpgrade(troop.id, options[0], eligibleSoldiers[0]?.id);
                   return;
                 }
-                setUpgradePicker({ sourceId: troop.id, options });
+                setUpgradePicker({ sourceId: troop.id, options, soldiers: eligibleSoldiers });
+                setUpgradeSoldierId(eligibleSoldiers[0]?.id ?? null);
               }}
               upgradeDisabled={!canAffordUpgrade}
               upgradeLabel={upgradeLabel}
@@ -153,7 +158,13 @@ export const PartyView = ({
       {upgradePicker && (() => {
         const sourceStack = player.troops.find(t => t.id === upgradePicker.sourceId) ?? null;
         const sourceTmpl = sourceStack ? getTroopTemplate(sourceStack.id) : null;
-        const close = () => setUpgradePicker(null);
+        const selectedSoldier = upgradeSoldierId
+          ? upgradePicker.soldiers.find(s => s.id === upgradeSoldierId) ?? null
+          : upgradePicker.soldiers[0] ?? null;
+        const close = () => {
+          setUpgradePicker(null);
+          setUpgradeSoldierId(null);
+        };
         return (
           <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
             <div className="w-full max-w-3xl bg-stone-900 border border-stone-700 rounded shadow-2xl p-5 space-y-4">
@@ -167,6 +178,29 @@ export const PartyView = ({
                 <button onClick={close} className="text-stone-400 hover:text-white">关闭</button>
               </div>
 
+              <div>
+                <div className="text-xs text-stone-500 mb-2">选择晋升个体</div>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                  {upgradePicker.soldiers.slice(0, 12).map(soldier => {
+                    const selected = soldier.id === (selectedSoldier?.id ?? '');
+                    const progress = Math.min(100, Math.floor((soldier.xp / Math.max(1, soldier.maxXp)) * 100));
+                    return (
+                      <button
+                        key={soldier.id}
+                        onClick={() => setUpgradeSoldierId(soldier.id)}
+                        className={`text-left border rounded px-2 py-1 ${selected ? 'border-emerald-700 bg-emerald-950/40 text-emerald-200' : 'border-stone-800 bg-stone-950/30 text-stone-300 hover:bg-stone-950/60'}`}
+                      >
+                        <div className="text-xs font-semibold">{soldier.id}</div>
+                        <div className="text-[10px] text-stone-500">T{soldier.tier} · {soldier.xp}/{soldier.maxXp}</div>
+                        <div className="h-1 bg-stone-950/70 border border-stone-800 rounded mt-1">
+                          <div className="h-full bg-emerald-500/70" style={{ width: `${progress}%` }} />
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 {upgradePicker.options.map(targetId => {
                   const t = getTroopTemplate(targetId);
@@ -176,7 +210,7 @@ export const PartyView = ({
                     <button
                       key={targetId}
                       onClick={() => {
-                        handleUpgrade(upgradePicker.sourceId, targetId);
+                        handleUpgrade(upgradePicker.sourceId, targetId, selectedSoldier?.id);
                         close();
                       }}
                       className="text-left bg-stone-950/50 hover:bg-stone-950/70 border border-stone-800 hover:border-emerald-700 rounded p-3 transition-colors"
