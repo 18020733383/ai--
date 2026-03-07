@@ -16,7 +16,7 @@ import { WorldBoardView } from './views/WorldBoardView';
 import { TroopArchiveView } from './views/TroopArchiveView';
 import { PartyView } from './views/PartyView';
 import { TownView } from './views/TownView';
-import { HideoutInteriorView } from './views/HideoutInteriorView';
+import { HideoutInspectView } from './views/HideoutInspectView';
 import { AsylumView } from './views/AsylumView';
 import { MarketView } from './views/MarketView';
 import { MysteriousCaveView } from './views/MysteriousCaveView';
@@ -847,6 +847,7 @@ export default function App() {
 
   // Town View State
   const [townTab, setTownTab] = useState<'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER' | 'HABITAT' | 'HIDEOUT'>('RECRUIT');
+  const [hideoutInspectLayerIndex, setHideoutInspectLayerIndex] = useState(0);
   const [workDays, setWorkDays] = useState(1);
   const [miningDays, setMiningDays] = useState(2);
   const [roachLureDays, setRoachLureDays] = useState(2);
@@ -1002,7 +1003,6 @@ export default function App() {
   const playerRef = useRef(player);
   const heroesRef = useRef(heroes);
   const lordsRef = useRef(lords);
-  const locationsRef = useRef(locations);
   const battleTimelineRef = useRef(battleTimeline);
   const worldDiplomacyRef = useRef(worldDiplomacy);
   const partyDiaryRef = useRef(partyDiary);
@@ -1321,10 +1321,6 @@ export default function App() {
   useEffect(() => {
     lordsRef.current = lords;
   }, [lords]);
-
-  useEffect(() => {
-    locationsRef.current = locations;
-  }, [locations]);
 
   useEffect(() => {
     battleTimelineRef.current = battleTimeline;
@@ -9300,7 +9296,7 @@ export default function App() {
   const normalizeView = (raw: unknown, hasLocation: boolean): GameView => {
     const value = typeof raw === 'string' ? raw : 'MAP';
     const safe = value as GameView;
-    const allowed: GameView[] = ['MAIN_MENU', 'INTRO', 'MAP', 'TOWN', 'PARTY', 'CHARACTER', 'BILLS', 'TRAINING', 'ASYLUM', 'MARKET', 'BANDIT_ENCOUNTER', 'CAVE', 'BATTLE', 'BATTLE_RESULT', 'ENDING', 'GAME_OVER', 'HERO_CHAT', 'WORLD_BOARD', 'TROOP_ARCHIVE', 'RELATIONS', 'HIDEOUT_INTERIOR'];
+    const allowed: GameView[] = ['MAIN_MENU', 'INTRO', 'MAP', 'TOWN', 'HIDEOUT_INSPECT', 'PARTY', 'CHARACTER', 'BILLS', 'TRAINING', 'ASYLUM', 'MARKET', 'BANDIT_ENCOUNTER', 'CAVE', 'BATTLE', 'BATTLE_RESULT', 'ENDING', 'GAME_OVER', 'HERO_CHAT', 'WORLD_BOARD', 'TROOP_ARCHIVE', 'RELATIONS'];
     if (!allowed.includes(safe)) return 'MAP';
     if (safe === 'ENDING' || safe === 'GAME_OVER' || safe === 'BATTLE' || safe === 'BATTLE_RESULT') return 'MAP';
     if (safe === 'TOWN' && !hasLocation) return 'MAP';
@@ -10692,33 +10688,6 @@ export default function App() {
     />
   );
 
-  const renderHideoutInterior = () => {
-    const loc = currentLocation;
-    if (!loc || loc.type !== 'HIDEOUT' || loc.owner !== 'PLAYER') return null;
-    const hideout = loc.hideout;
-    const layerCount = hideout?.layers?.length ?? 0;
-    const safeLayerIndex = Math.max(0, Math.min(Math.max(0, layerCount - 1), Math.floor(hideout?.selectedLayer ?? 0)));
-    return (
-      <HideoutInteriorView
-        location={loc}
-        player={player}
-        heroes={heroes}
-        layerIndex={safeLayerIndex}
-        onChangeLayer={(nextLayerIndex) => {
-          const current = locationsRef.current.find(l => l.id === loc.id) ?? loc;
-          const h = current.hideout;
-          const layers = h?.layers ?? [];
-          const safe = Math.max(0, Math.min(Math.max(0, layers.length - 1), Math.floor(nextLayerIndex)));
-          updateLocationState({ ...current, hideout: { ...(h ?? { layers: [], selectedLayer: 0 }), selectedLayer: safe } });
-        }}
-        onBack={() => {
-          setView('TOWN');
-          setTownTab('HIDEOUT');
-        }}
-      />
-    );
-  };
-
   const renderHeroChat = () => {
     const activeHeroChat = activeHeroChatId
       ? heroes.find(hero => hero.id === activeHeroChatId && hero.recruited) ?? null
@@ -11298,7 +11267,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-sans selection:bg-amber-900 selection:text-white overflow-hidden flex flex-col">
-      {view !== 'MAIN_MENU' && view !== 'INTRO' && view !== 'ENDING' && view !== 'GAME_OVER' && view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INTERIOR' && renderHeader()}
+      {view !== 'MAIN_MENU' && view !== 'INTRO' && view !== 'ENDING' && view !== 'GAME_OVER' && view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INSPECT' && renderHeader()}
       
       <main className={view === 'MAP' || view === 'HERO_CHAT' || view === 'MAIN_MENU' ? "flex-1 w-full flex" : "flex-1 container mx-auto pb-8 pt-4"}>
         {view === 'MAIN_MENU' && (
@@ -11563,10 +11532,36 @@ export default function App() {
             recentLogs={logs.slice(0, 12)}
             playerReligionName={getPlayerReligion()?.religionName ?? null}
             onPreachInCity={preachInCity}
-            onInspectHideout={() => setView('HIDEOUT_INTERIOR')}
+            onInspectHideout={(layerIndex) => {
+              const hideout = currentLocation?.hideout;
+              const maxLayer = Math.max(0, (hideout?.layers?.length ?? 1) - 1);
+              const safe = Math.max(0, Math.min(maxLayer, Math.floor(layerIndex || 0)));
+              setHideoutInspectLayerIndex(safe);
+              setView('HIDEOUT_INSPECT');
+            }}
           />
         )}
-        {view === 'HIDEOUT_INTERIOR' && renderHideoutInterior()}
+        {view === 'HIDEOUT_INSPECT' && currentLocation && currentLocation.type === 'HIDEOUT' && (
+          <HideoutInspectView
+            location={currentLocation}
+            heroes={heroes}
+            initialLayerIndex={hideoutInspectLayerIndex}
+            onLayerChange={(index) => {
+              const hideout = currentLocation.hideout;
+              if (!hideout) return;
+              const maxLayer = Math.max(0, (hideout.layers?.length ?? 1) - 1);
+              const safe = Math.max(0, Math.min(maxLayer, Math.floor(index || 0)));
+              setHideoutInspectLayerIndex(safe);
+              const nextHideout = { ...hideout, selectedLayer: safe };
+              updateLocationState({ ...currentLocation, hideout: nextHideout });
+            }}
+            onBackToTown={() => {
+              setTownTab('HIDEOUT');
+              setView('TOWN');
+            }}
+            onBackToMap={() => setView('MAP')}
+          />
+        )}
         {view === 'BANDIT_ENCOUNTER' && renderBanditEncounter()}
         {view === 'ASYLUM' && renderAsylum()}
         {view === 'MARKET' && renderMarket()}
@@ -11590,7 +11585,7 @@ export default function App() {
       {(isBattling || battleError) && renderBattleSimulation()}
 
       {/* Log Console */}
-      {view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INTERIOR' && !isBattling && (
+      {view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INSPECT' && !isBattling && (
         <div className={`fixed bottom-0 left-0 w-full md:w-96 md:left-4 md:bottom-4 bg-black/80 backdrop-blur-sm border-t md:border border-stone-800 transition-all duration-300 z-40 flex flex-col ${isLogExpanded ? 'h-96' : 'h-32'}`}>
            <div className="flex justify-between items-center p-2 bg-stone-900/50 border-b border-stone-800">
               <h4 className="text-xs uppercase text-stone-600 font-bold">日志 ({logs.length})</h4>

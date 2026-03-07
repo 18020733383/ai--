@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Beer, Brain, Coins, EyeOff, Ghost, Hammer, History, Home, MapPin, MessageCircle, Mountain, Plus, Scroll, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, Zap } from 'lucide-react';
+import { AlertTriangle, Beer, Brain, Coins, Ghost, Hammer, History, Home, MapPin, MessageCircle, Mountain, Plus, Scroll, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, Zap } from 'lucide-react';
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
 import { chatWithAltar, chatWithCampLeader, chatWithLord, proposeHeroPromotion, type HeroPromotionDraft } from '../services/geminiService';
@@ -152,7 +152,7 @@ type TownViewProps = {
   recentLogs: string[];
   playerReligionName: string | null;
   onPreachInCity: (locationId: string) => void;
-  onInspectHideout: () => void;
+  onInspectHideout: (layerIndex: number) => void;
 };
 
 export const TownView = ({
@@ -2389,6 +2389,13 @@ export const TownView = ({
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => onInspectHideout(hideoutSelectedLayerIndex)}
+                  disabled={!!currentLocation.activeSiege}
+                >
+                  视察据点
+                </Button>
                 {(hideoutState?.layers ?? []).map((layer, idx) => (
                   <button
                     key={layer.id}
@@ -2480,16 +2487,6 @@ export const TownView = ({
                       ? `已设置：${heroes.find(h => h.id === hideoutSelectedLayer.guardianHeroId)?.name ?? hideoutSelectedLayer.guardianHeroId}`
                       : '未设置'}
                   </div>
-                </button>
-                <button
-                  onClick={() => onInspectHideout()}
-                  className="text-left bg-stone-900/60 border border-stone-800 rounded p-5 hover:border-stone-600 transition-colors"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="text-stone-200 font-bold">视察</div>
-                    <EyeOff size={16} className="text-emerald-300" />
-                  </div>
-                  <div className="text-stone-400 text-sm mt-2">进入据点内视图，巡查驻军与建筑布局</div>
                 </button>
                 <button
                   onClick={() => setHideoutPage('FACILITIES')}
