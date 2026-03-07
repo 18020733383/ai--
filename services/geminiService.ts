@@ -1011,16 +1011,6 @@ export type WorldNewspaperSection = {
   body: string;
 };
 
-export type WorldNewspaperVisuals = {
-  lineTrend: number[];
-  columnStats: Array<{ label: string; value: number }>;
-  barStats: Array<{ label: string; value: number }>;
-  relationNodes: string[];
-  relationEdges: Array<{ from: string; to: string; value: number }>;
-  mermaidFlow: string;
-  keywords: string[];
-};
-
 export type WorldNewspaperIssue = {
   masthead: string;
   subtitle: string;
@@ -1036,7 +1026,17 @@ export type WorldNewspaperIssue = {
   sections: WorldNewspaperSection[];
   briefs: string[];
   ticker: string[];
-  visuals: WorldNewspaperVisuals;
+  keywords: string[];
+  charts: {
+    line: Array<{ label: string; value: number }>;
+    bar: Array<{ label: string; value: number }>;
+    progress: Array<{ label: string; value: number }>;
+  };
+  relationGraph: {
+    nodes: Array<{ id: string; label: string; group?: string }>;
+    links: Array<{ source: string; target: string; weight: number; label?: string }>;
+  };
+  mermaid: string;
 };
 
 export const generateWorldNewspaper = async (
@@ -1051,6 +1051,9 @@ export const generateWorldNewspaper = async (
     relationAlerts: string[];
     invasionAlerts: string[];
     worldForces: string[];
+    battleTimeline?: Array<{ label: string; value: number }>;
+    topForcePowers?: Array<{ label: string; value: number }>;
+    relationPairs?: Array<{ a: string; b: string; value: number }>;
   },
   openAI?: OpenAIConfig
 ): Promise<WorldNewspaperIssue> => {
@@ -1061,15 +1064,19 @@ export const generateWorldNewspaper = async (
   const relationBlock = payload.relationAlerts.filter(Boolean).slice(0, 16).map(x => `- ${x}`).join('\n') || '（无）';
   const invasionBlock = payload.invasionAlerts.filter(Boolean).slice(0, 10).map(x => `- ${x}`).join('\n') || '（无）';
   const forceBlock = payload.worldForces.filter(Boolean).slice(0, 20).map(x => `- ${x}`).join('\n') || '（无）';
+  const lineDataBlock = (payload.battleTimeline ?? []).slice(0, 16).map(x => `- ${x.label}:${x.value}`).join('\n') || '（无）';
+  const barDataBlock = (payload.topForcePowers ?? []).slice(0, 16).map(x => `- ${x.label}:${x.value}`).join('\n') || '（无）';
+  const relationDataBlock = (payload.relationPairs ?? []).slice(0, 24).map(x => `- ${x.a} -> ${x.b}: ${x.value}`).join('\n') || '（无）';
   const prompt = `
 你是“异世界报社总编”。你将根据世界战况和外交动态，产出一版中文报纸数据（JSON）。
 要求：
 1) 语气像严肃但有戏剧性的战地新闻。
 2) 信息尽量覆盖：最近战斗、关系恶化、入侵风险、重点兵力动向。
 3) 不要胡编世界外设定，不确定时使用“据传”“尚待核实”等表达。
-4) 所有字段必须有值；sections 给 5~8 条；briefs 给 4~8 条；ticker 给 4~8 条；keywords 给 8~16 条。
+4) 所有字段必须有值；sections 给 5~8 条；briefs 给 4~8 条；ticker 给 4~8 条；keywords 给 6~12 条。
 5) 每段中文尽量简洁，leadBody 160~320 字，sections.body 60~160 字。
-6) 你可以使用“数据可视化”思维，但必须按 JSON 字段返回，不要输出 markdown 代码块。
+6) 图表由本地渲染，你只需要返回数据，不要返回 HTML/Markdown 代码块。
+7) mermaid 字段只返回纯文本图定义（例如 graph LR ...），不加反引号。
 
 返回 JSON 字段：
 - masthead, subtitle, dateLine, issueNo, editorNote
@@ -1078,15 +1085,10 @@ export const generateWorldNewspaper = async (
 - sections: [{ tag, title, body }]
 - briefs: string[]
 - ticker: string[]
-- visuals: {
-    lineTrend: number[] (6~16个非负整数),
-    columnStats: [{ label, value }] (4~8条，value为非负整数),
-    barStats: [{ label, value }] (4~8条，value为非负整数),
-    relationNodes: string[] (3~8条短名),
-    relationEdges: [{ from, to, value }] (3~12条，value范围 -100~100),
-    mermaidFlow: string (一段 flowchart LR 语法文本),
-    keywords: string[] (8~16条关键词，不要带#)
-  }
+- keywords: string[]
+- charts: { line:[{label,value}], bar:[{label,value}], progress:[{label,value}] }
+- relationGraph: { nodes:[{id,label,group}], links:[{source,target,weight,label}] }
+- mermaid: string
 
 【世界日期】第 ${payload.day} 天
 【当前地点】${payload.locationName}
@@ -1112,6 +1114,15 @@ ${invasionBlock}
 
 【兵力快照】
 ${forceBlock}
+
+【图表基础数据：战斗趋势】
+${lineDataBlock}
+
+【图表基础数据：部队战力排行】
+${barDataBlock}
+
+【图表基础数据：关系边】
+${relationDataBlock}
   `.trim();
 
   const normalizeText = (v: any, fallback: string) => {
@@ -1136,34 +1147,53 @@ ${forceBlock}
       .map((x: any) => String(x ?? '').trim())
       .filter(Boolean)
       .slice(0, 8);
-    const normalizeStats = (arr: any, max = 8) => (Array.isArray(arr) ? arr : [])
-      .map((x: any, idx: number) => ({
-        label: normalizeText(x?.label, `项${idx + 1}`),
-        value: Math.max(0, Math.round(Number(x?.value ?? 0)))
-      }))
-      .filter((x: any) => x.label)
-      .slice(0, max);
-    const lineTrend = (Array.isArray(raw?.visuals?.lineTrend) ? raw.visuals.lineTrend : [])
-      .map((x: any) => Math.max(0, Math.round(Number(x ?? 0))))
-      .filter((x: number) => Number.isFinite(x))
-      .slice(0, 16);
-    const relationNodes = (Array.isArray(raw?.visuals?.relationNodes) ? raw.visuals.relationNodes : [])
+    const keywords = (Array.isArray(raw?.keywords) ? raw.keywords : [])
       .map((x: any) => String(x ?? '').trim())
       .filter(Boolean)
-      .slice(0, 8);
-    const relationEdges = (Array.isArray(raw?.visuals?.relationEdges) ? raw.visuals.relationEdges : [])
-      .map((x: any) => ({
-        from: String(x?.from ?? '').trim(),
-        to: String(x?.to ?? '').trim(),
-        value: Math.max(-100, Math.min(100, Math.round(Number(x?.value ?? 0))))
-      }))
-      .filter((x: any) => x.from && x.to)
       .slice(0, 12);
-    const mermaidFlow = normalizeText(raw?.visuals?.mermaidFlow, 'flowchart LR\nA[战线升温]-->B[关系紧张]\nB-->C[局部冲突]');
-    const keywords = (Array.isArray(raw?.visuals?.keywords) ? raw.visuals.keywords : [])
-      .map((x: any) => String(x ?? '').trim())
-      .filter(Boolean)
-      .slice(0, 16);
+    const parseChartRows = (rows: any, fallback: Array<{ label: string; value: number }>) => {
+      const list = Array.isArray(rows) ? rows : [];
+      const normalized = list
+        .map((x: any, i: number) => ({
+          label: normalizeText(x?.label, `项${i + 1}`).slice(0, 24),
+          value: Math.max(0, Number(x?.value ?? 0))
+        }))
+        .filter((x: any) => Number.isFinite(x.value))
+        .slice(0, 16);
+      return normalized.length > 0 ? normalized : fallback;
+    };
+    const fallbackLine = (payload.battleTimeline ?? []).slice(0, 10).map(x => ({ label: normalizeText(x.label, '日'), value: Math.max(0, Number(x.value || 0)) }));
+    const fallbackBar = (payload.topForcePowers ?? []).slice(0, 10).map(x => ({ label: normalizeText(x.label, '部队'), value: Math.max(0, Number(x.value || 0)) }));
+    const fallbackProgress = (payload.relationPairs ?? []).slice(0, 8).map(x => ({ label: `${normalizeText(x.a, '甲')}-${normalizeText(x.b, '乙')}`.slice(0, 24), value: Math.max(0, Math.min(100, Math.abs(Number(x.value || 0)))) }));
+    const relationNodesRaw = Array.isArray(raw?.relationGraph?.nodes) ? raw.relationGraph.nodes : [];
+    const relationLinksRaw = Array.isArray(raw?.relationGraph?.links) ? raw.relationGraph.links : [];
+    const relationNodes = relationNodesRaw
+      .map((n: any) => ({
+        id: normalizeText(n?.id, ''),
+        label: normalizeText(n?.label, ''),
+        group: normalizeText(n?.group, '')
+      }))
+      .filter((n: any) => n.id && n.label)
+      .slice(0, 20);
+    const relationLinks = relationLinksRaw
+      .map((l: any) => ({
+        source: normalizeText(l?.source, ''),
+        target: normalizeText(l?.target, ''),
+        weight: Math.max(-100, Math.min(100, Number(l?.weight ?? 0))),
+        label: normalizeText(l?.label, '')
+      }))
+      .filter((l: any) => l.source && l.target)
+      .slice(0, 28);
+    const fallbackRelationNodes = (() => {
+      const set = new Map<string, { id: string; label: string; group?: string }>();
+      (payload.relationPairs ?? []).slice(0, 16).forEach(p => {
+        if (!set.has(p.a)) set.set(p.a, { id: p.a, label: p.a, group: 'FACTION' });
+        if (!set.has(p.b)) set.set(p.b, { id: p.b, label: p.b, group: 'FACTION' });
+      });
+      return [...set.values()].slice(0, 16);
+    })();
+    const fallbackRelationLinks = (payload.relationPairs ?? []).slice(0, 24).map(p => ({ source: p.a, target: p.b, weight: Math.max(-100, Math.min(100, Number(p.value ?? 0))), label: `${p.value}` }));
+    const mermaidText = normalizeText(raw?.mermaid, '');
     return {
       masthead: normalizeText(raw?.masthead, '卡拉迪亚纪闻'),
       subtitle: normalizeText(raw?.subtitle, '战火、盟约与阴影'),
@@ -1179,23 +1209,17 @@ ${forceBlock}
       sections: sections.length > 0 ? sections : [{ tag: '快讯', title: '暂无更多栏目', body: '今日信息量较少，报社将持续追踪。' }],
       briefs: briefs.length > 0 ? briefs : ['暂无简讯。'],
       ticker: ticker.length > 0 ? ticker : ['暂无滚动快讯。'],
-      visuals: {
-        lineTrend: lineTrend.length > 0 ? lineTrend : [2, 3, 5, 4, 6, 7],
-        columnStats: normalizeStats(raw?.visuals?.columnStats, 8).length > 0 ? normalizeStats(raw?.visuals?.columnStats, 8) : [
-          { label: '战斗', value: 7 }, { label: '围攻', value: 3 }, { label: '袭扰', value: 5 }, { label: '停战', value: 1 }
-        ],
-        barStats: normalizeStats(raw?.visuals?.barStats, 8).length > 0 ? normalizeStats(raw?.visuals?.barStats, 8) : [
-          { label: '北境', value: 68 }, { label: '河谷', value: 47 }, { label: '边陲', value: 82 }, { label: '沿海', value: 39 }
-        ],
-        relationNodes: relationNodes.length > 0 ? relationNodes : ['王国', '同盟', '商会', '边军'],
-        relationEdges: relationEdges.length > 0 ? relationEdges : [
-          { from: '王国', to: '同盟', value: 35 },
-          { from: '王国', to: '商会', value: -20 },
-          { from: '边军', to: '王国', value: 15 }
-        ],
-        mermaidFlow,
-        keywords: keywords.length > 0 ? keywords : ['前线', '围攻', '停战', '贸易线', '边境', '兵力调动', '外交', '叛乱']
-      }
+      keywords: keywords.length > 0 ? keywords : ['战线', '外交', '兵力', '盟约', '入侵', '边境'],
+      charts: {
+        line: parseChartRows(raw?.charts?.line, fallbackLine.length > 0 ? fallbackLine : [{ label: '第1天', value: 0 }]),
+        bar: parseChartRows(raw?.charts?.bar, fallbackBar.length > 0 ? fallbackBar : [{ label: '主力', value: 0 }]),
+        progress: parseChartRows(raw?.charts?.progress, fallbackProgress.length > 0 ? fallbackProgress : [{ label: '关系热度', value: 50 }])
+      },
+      relationGraph: {
+        nodes: relationNodes.length > 0 ? relationNodes : fallbackRelationNodes,
+        links: relationLinks.length > 0 ? relationLinks : fallbackRelationLinks
+      },
+      mermaid: mermaidText || 'graph LR\nA[势力A]--紧张-->B[势力B]'
     };
   };
 
