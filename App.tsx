@@ -7725,6 +7725,7 @@ export default function App() {
         
         // Casualties & Medicine
         const totalPlayerCasualties: Record<string, number> = {};
+        const totalPlayerCasualtyDetails: Record<string, { count: number; causes: string[] }> = {};
         const newFallenRecords: FallenRecord[] = [];
         const logsToAdd: string[] = [];
 
@@ -7732,21 +7733,40 @@ export default function App() {
 
         const totalPlayerInjuries: Record<string, { hpLoss: number; causes: string[] }> = {};
 
+        const enemyNamePool = (activeEnemy.troops ?? [])
+          .filter(t => (t.count ?? 0) > 0)
+          .flatMap(t => Array.from({ length: Math.max(1, Math.min(5, Math.floor(t.count / 3))) }).map(() => t.name));
+        const pickEnemyName = () => enemyNamePool.length > 0
+          ? enemyNamePool[Math.floor(Math.random() * enemyNamePool.length)]
+          : activeEnemy.name;
+        const resolveEnemyNameFromCause = (cause?: string) => {
+          if (!cause) return '';
+          const raw = String(cause);
+          const match = (activeEnemy.troops ?? []).find(t => raw.includes(t.name));
+          return match?.name ?? '';
+        };
+        const formatDeathCause = (cause?: string) => {
+          const base = (cause ?? '').trim();
+          const matched = resolveEnemyNameFromCause(base);
+          if (matched) return base.includes('击') || base.includes('斩') || base.includes('杀') || base.includes('射') ? base : `被${matched}击杀`;
+          if (base) return base;
+          return `被${pickEnemyName()}击杀`;
+        };
+        const formatWoundCause = (cause?: string) => {
+          const base = (cause ?? '').trim();
+          const matched = resolveEnemyNameFromCause(base);
+          if (matched) return base.includes('击') || base.includes('斩') || base.includes('杀') || base.includes('射') ? base : `被${matched}重创`;
+          if (base) return base;
+          return `被${pickEnemyName()}重创`;
+        };
+
         finalResult.rounds.forEach(round => {
           const roundCasualtiesA = round.casualtiesA ?? (round as any).playerCasualties ?? [];
           roundCasualtiesA.forEach(c => {
             totalPlayerCasualties[c.name] = (totalPlayerCasualties[c.name] || 0) + c.count;
-            if (c.count > 0) {
-                if (battleHeroNames.has(c.name) || c.name === prev.name) return;
-                newFallenRecords.push({
-                    id: `fallen_${Date.now()}_${Math.random()}`,
-                    unitName: c.name,
-                    count: c.count,
-                    day: prev.day,
-                    battleName: activeEnemy.name,
-                    cause: c.cause
-                });
-            }
+            if (!totalPlayerCasualtyDetails[c.name]) totalPlayerCasualtyDetails[c.name] = { count: 0, causes: [] };
+            totalPlayerCasualtyDetails[c.name].count += c.count;
+            if (c.cause) totalPlayerCasualtyDetails[c.name].causes.push(c.cause);
           });
           const injuries = round.keyUnitDamageA ?? (round as any).heroInjuries ?? (round as any).playerInjuries ?? [];
           injuries.forEach((injury: any) => {
@@ -7898,12 +7918,29 @@ export default function App() {
           const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, casualties);
           const savedIds: string[] = [];
           const deadIds: string[] = [];
+          const causeList = totalPlayerCasualtyDetails[name]?.causes ?? [];
+          let causeIndex = 0;
+          const nextCause = () => {
+            if (causeList.length === 0) return '';
+            const cause = causeList[causeIndex % causeList.length];
+            causeIndex += 1;
+            return cause;
+          };
           shuffled.forEach(s => {
             if (Math.random() < medicineSaveChance) savedIds.push(s.id);
             else deadIds.push(s.id);
           });
           if (savedIds.length > 0) {
-            roster = markSoldiersWounded(roster, savedIds, prev.day + woundedRecoveryDays, `Day ${prev.day} · ${activeEnemy.name} · 负伤`);
+            const groups = savedIds.reduce<Record<string, string[]>>((acc, id) => {
+              const cause = nextCause();
+              const key = cause || '受伤';
+              (acc[key] ??= []).push(id);
+              return acc;
+            }, {});
+            Object.entries(groups).forEach(([cause, ids]) => {
+              const note = `Day ${prev.day} · ${activeEnemy.name} · 负伤（${formatWoundCause(cause)}）`;
+              roster = markSoldiersWounded(roster, ids, prev.day + woundedRecoveryDays, note);
+            });
             woundedByName[name] = (woundedByName[name] ?? 0) + savedIds.length;
           }
           if (deadIds.length > 0) {
@@ -7917,13 +7954,14 @@ export default function App() {
         });
         Object.entries(deadByName).forEach(([name, count]) => {
           if (count > 0) {
+            const sampleCause = totalPlayerCasualtyDetails[name]?.causes?.[0];
             newFallenRecords.push({
               id: `fallen_${Date.now()}_${Math.random()}`,
               unitName: name,
               count,
               day: prev.day,
               battleName: activeEnemy.name,
-              cause: '战斗阵亡'
+              cause: formatDeathCause(sampleCause)
             });
           }
         });
