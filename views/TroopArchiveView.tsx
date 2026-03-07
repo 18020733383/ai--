@@ -1,8 +1,8 @@
 import React from 'react';
-import * as d3 from 'd3';
-import { Scroll, Shield, Sword, Zap } from 'lucide-react';
+import { Scroll } from 'lucide-react';
 import { Troop, TroopTier } from '../types';
 import { Button } from '../components/Button';
+import { TroopTreeCanvas } from '../components/TroopTreeCanvas';
 
 type TroopArchiveFactionFilter = 'ALL' | 'HUMAN' | 'ROACH' | 'IMPOSTER' | 'ASYLUM' | 'UNDEAD' | 'HOTPOT' | 'GOBLIN' | 'CUSTOM';
 type TroopArchiveCategoryFilter = 'ALL' | 'NORMAL' | 'HEAVY';
@@ -171,56 +171,6 @@ export const TroopArchiveView = ({
     if (troopArchiveCategoryFilter !== 'ALL' && category !== troopArchiveCategoryFilter) return false;
     return true;
   });
-  const treeMatchIds = query ? new Set(treeCandidates.filter(matchQuery).map(t => t.id)) : null;
-  const treeMap = treeCandidates.reduce((acc, t) => {
-    acc.set(t.id, t);
-    return acc;
-  }, new Map<string, Omit<Troop, 'count' | 'xp'>>());
-  const treeChildrenMap = treeCandidates.reduce((acc, t) => {
-    const targets = [t.upgradeTargetId, ...(t.upgradeTargetIds ?? [])]
-      .map(x => (x ?? '').trim())
-      .filter(Boolean)
-      .filter(targetId => treeMap.has(targetId));
-    acc.set(t.id, Array.from(new Set(targets)));
-    return acc;
-  }, new Map<string, string[]>());
-  const treeTargets = Array.from(treeChildrenMap.values()).reduce((acc, ids) => {
-    ids.forEach(id => acc.add(id));
-    return acc;
-  }, new Set<string>());
-  const treeRoots = treeCandidates
-    .filter(t => !treeTargets.has(t.id))
-    .sort((a, b) => (a.tier - b.tier) || a.name.localeCompare(b.name, 'zh-CN'));
-  const safeRoots = treeRoots.length > 0
-    ? treeRoots
-    : [...treeCandidates].sort((a, b) => (a.tier - b.tier) || a.name.localeCompare(b.name, 'zh-CN')).slice(0, 12);
-  type TreeNodeData = Omit<Troop, 'count' | 'xp'> & { children: TreeNodeData[] };
-  const buildTreeNode = (id: string, ancestry: Set<string>): TreeNodeData | null => {
-    if (ancestry.has(id)) return null;
-    const troop = treeMap.get(id);
-    if (!troop) return null;
-    const nextAncestry = new Set(ancestry);
-    nextAncestry.add(id);
-    const children = (treeChildrenMap.get(id) ?? [])
-      .map(childId => buildTreeNode(childId, nextAncestry))
-      .filter((node): node is TreeNodeData => !!node);
-    return { ...troop, children };
-  };
-  const treeForests = safeRoots
-    .map(root => buildTreeNode(root.id, new Set<string>()))
-    .filter((node): node is TreeNodeData => !!node)
-    .filter(root => {
-      const stack = [root];
-      let matchTier = troopArchiveTierFilter === 'ALL';
-      let matchQueryInTree = !treeMatchIds;
-      while (stack.length > 0) {
-        const node = stack.pop()!;
-        if (!matchTier && node.tier === troopArchiveTierFilter) matchTier = true;
-        if (!matchQueryInTree && treeMatchIds?.has(node.id)) matchQueryInTree = true;
-        stack.push(...node.children);
-      }
-      return matchTier && matchQueryInTree;
-    });
 
   const attrOrder = [
     { key: 'attack', label: '攻' },
@@ -357,65 +307,6 @@ export const TroopArchiveView = ({
           );
         })}
       </svg>
-    );
-  };
-
-  const TroopTreePanel = ({ root }: { root: TreeNodeData }) => {
-    const layoutRoot = d3.hierarchy<TreeNodeData>(root, node => node.children ?? []);
-    const layout = d3.tree<TreeNodeData>().nodeSize([148, 280]);
-    const result = layout(layoutRoot);
-    const nodes = result.descendants();
-    const links = result.links();
-    const minX = Math.min(...nodes.map(n => n.x), 0);
-    const maxX = Math.max(...nodes.map(n => n.x), 0);
-    const maxY = Math.max(...nodes.map(n => n.y), 0);
-    const width = Math.max(860, maxY + 340);
-    const height = Math.max(220, maxX - minX + 220);
-    const padLeft = 110;
-    const padTop = 80 - minX;
-    const nodeW = 220;
-    const nodeH = 102;
-    return (
-      <div className="bg-stone-900/70 border border-stone-700 rounded p-3 overflow-x-auto">
-        <div className="text-xs text-stone-500 mb-2">根节点：{root.name}</div>
-        <div className="relative min-w-max" style={{ width, height }}>
-          <svg className="absolute inset-0 w-full h-full" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMinYMin meet">
-            {links.map((link, idx) => {
-              const sx = padLeft + link.source.y + nodeW;
-              const sy = padTop + link.source.x + nodeH / 2;
-              const tx = padLeft + link.target.y;
-              const ty = padTop + link.target.x + nodeH / 2;
-              const mx = (sx + tx) / 2;
-              const d = `M ${sx} ${sy} C ${mx} ${sy}, ${mx} ${ty}, ${tx} ${ty}`;
-              return <path key={`link_${idx}`} d={d} fill="none" stroke="rgba(120, 113, 108, 0.7)" strokeWidth={2} />;
-            })}
-          </svg>
-          {nodes.map(node => {
-            const n = node.data;
-            const isMatch = treeMatchIds ? treeMatchIds.has(n.id) : false;
-            const Icon = (n.category ?? 'NORMAL') === 'HEAVY' ? Shield : (n.attributes.range > n.attributes.attack ? Zap : Sword);
-            return (
-              <div
-                key={n.id}
-                className={`absolute rounded border p-2 bg-stone-950/85 ${isMatch ? 'border-amber-600' : 'border-stone-800'}`}
-                style={{ left: padLeft + node.y, top: padTop + node.x - nodeH / 2, width: nodeW, height: nodeH }}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <div className="text-sm text-stone-200 font-semibold truncate">{n.name}</div>
-                  <div className="flex items-center gap-1 text-xs text-stone-500">
-                    <Icon size={12} />
-                    <span>T{n.tier}</span>
-                  </div>
-                </div>
-                <div className="text-[11px] text-stone-500 truncate">{n.id}</div>
-                <div className="text-[11px] text-stone-300 mt-1">
-                  {attrOrder.map(a => `${a.label}${n.attributes[a.key]}`).join(' ')}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
     );
   };
 
@@ -681,16 +572,11 @@ export const TroopArchiveView = ({
           ))}
         </div>
         ) : (
-        <div className="space-y-3">
-          {treeForests.map(root => (
-            <TroopTreePanel key={`tree_${root.id}`} root={root} />
-          ))}
-          {treeForests.length === 0 && (
-            <div className="text-stone-500 text-sm text-center py-12 border border-dashed border-stone-800 rounded">
-              没找到符合条件的升级树
-            </div>
-          )}
-        </div>
+        <TroopTreeCanvas
+          troops={treeCandidates}
+          query={troopArchiveQuery}
+          tierFilter={troopArchiveTierFilter}
+        />
         )}
       </div>
     </div>

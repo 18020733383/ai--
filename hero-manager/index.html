@@ -156,19 +156,19 @@
                 <input id="troopSearch" placeholder="按名称或 id 搜索…" />
               </div>
               <div>
+                <label>筛选</label>
+                <select id="troopImageFilter">
+                  <option value="ALL" selected>全部</option>
+                  <option value="HAS_IMAGE">有图</option>
+                  <option value="MISSING_IMAGE">还没生图</option>
+                </select>
+              </div>
+              <div>
                 <label>每页</label>
                 <select id="troopPageSize">
                   <option value="20">20</option>
                   <option value="50" selected>50</option>
                   <option value="100">100</option>
-                </select>
-              </div>
-              <div>
-                <label>图片筛选</label>
-                <select id="troopImageFilter">
-                  <option value="ALL" selected>全部</option>
-                  <option value="HAS">有图</option>
-                  <option value="MISSING">未生图</option>
                 </select>
               </div>
             </div>
@@ -344,8 +344,8 @@
       const genLog = document.getElementById('genLog');
 
       const troopSearch = document.getElementById('troopSearch');
-      const troopPageSize = document.getElementById('troopPageSize');
       const troopImageFilter = document.getElementById('troopImageFilter');
+      const troopPageSize = document.getElementById('troopPageSize');
       const troopList = document.getElementById('troopList');
       const troopTotalCount = document.getElementById('troopTotalCount');
       const troopMissingCount = document.getElementById('troopMissingCount');
@@ -407,7 +407,7 @@
           imgConcurrency: Number(imgConcurrency.value || 2),
           skipExisting: skipExisting.value || 'YES',
           troopPageSize: Number(troopPageSize.value || 50),
-          troopImageFilter: troopImageFilter.value || 'ALL',
+          troopImageFilter: troopImageFilter.value || 'ALL'
         };
         localStorage.setItem('troopGenSettings', JSON.stringify(s));
       };
@@ -563,16 +563,13 @@
 
       const getFilteredTroops = () => {
         const q = String(troopSearch.value || '').trim().toLowerCase();
-        const mode = String(troopImageFilter.value || 'ALL');
+        const filterMode = String(troopImageFilter.value || 'ALL');
         return allTroopsCache.filter(t => {
-          const matchesQuery = !q
-            ? true
-            : (String(t.id || '').toLowerCase().includes(q) || String(t.name || '').toLowerCase().includes(q));
-          if (!matchesQuery) return false;
           const has = existingSetCache.has(t.id);
-          if (mode === 'HAS') return has;
-          if (mode === 'MISSING') return !has;
-          return true;
+          if (filterMode === 'HAS_IMAGE' && !has) return false;
+          if (filterMode === 'MISSING_IMAGE' && has) return false;
+          if (!q) return true;
+          return String(t.id || '').toLowerCase().includes(q) || String(t.name || '').toLowerCase().includes(q);
         });
       };
 
@@ -922,18 +919,12 @@
       tabTroop.addEventListener('click', () => setActiveTab('TROOP'));
       startGenBtn.addEventListener('click', startBatchGenerate);
       stopGenBtn.addEventListener('click', stopBatchGenerate);
-      [txtBaseUrl, txtModel, txtKey, imgBaseUrl, imgModel, imgKey, imgEndpointMode, batchSize, sendIntervalMs, retryIntervalMs, maxRetries, imgConcurrency, skipExisting, troopPageSize].forEach(el => {
+      [txtBaseUrl, txtModel, txtKey, imgBaseUrl, imgModel, imgKey, imgEndpointMode, batchSize, sendIntervalMs, retryIntervalMs, maxRetries, imgConcurrency, skipExisting, troopPageSize, troopImageFilter].forEach(el => {
         el.addEventListener('change', saveGenSettings);
       });
 
       troopSearch.addEventListener('input', () => { selectionPage = 1; renderTroopList(); });
-      troopPageSize.addEventListener('change', () => { selectionPage = 1; renderTroopList(); });
-      pagePrevBtn.addEventListener('click', () => { selectionPage = Math.max(1, selectionPage - 1); renderTroopList(); });
-      pageNextBtn.addEventListener('click', () => { selectionPage += 1; renderTroopList(); });
-      troopImageFilter.addEventListener('change', () => {
-        selectionPage = 1;
-        renderTroopList();
-      });
+      troopImageFilter.addEventListener('change', () => { selectionPage = 1; renderTroopList(); });
       troopPageSize.addEventListener('change', () => { selectionPage = 1; renderTroopList(); });
       pagePrevBtn.addEventListener('click', () => { selectionPage = Math.max(1, selectionPage - 1); renderTroopList(); });
       pageNextBtn.addEventListener('click', () => { selectionPage += 1; renderTroopList(); });
