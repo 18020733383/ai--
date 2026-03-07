@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, HeroRole, Location, Lord, NegotiationResult, PartyDiaryEntry, PlayerState, TerrainType, Troop, TroopAttributes, TroopRace, WorldNewspaperIssue } from '../types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, HeroRole, Location, Lord, NegotiationResult, NewspaperData, PartyDiaryEntry, PlayerState, TerrainType, Troop, TroopAttributes, TroopRace } from '../types';
 import { normalizeOpenAIBattle, parseCasualties, parseInjuries, parseOutcome } from './battleParsing';
 import { WORLD_BOOK } from '../constants';
 
@@ -1243,125 +1243,6 @@ export const listOpenAIModels = async (provider: AIProvider, baseUrl: string, ap
   const json = await res.json().catch(() => null) as any;
   const ids: string[] = Array.isArray(json?.data) ? json.data.map((m: any) => m?.id).filter((x: any) => typeof x === 'string') : [];
   return ids.sort((a, b) => a.localeCompare(b));
-};
-
-const extractBlock = (text: string, tag: string) => {
-  const re = new RegExp(`\\[\\[${tag}\\]\\]([\\s\\S]*?)\\[\\[\\/${tag}\\]\\]`, 'i');
-  const m = text.match(re);
-  return m ? String(m[1] ?? '').trim() : '';
-};
-
-const parseNewspaper = (raw: string): WorldNewspaperIssue => {
-  const text = String(raw ?? '').trim();
-  const columns = [1, 2, 3, 4].map((idx) => ({
-    title: extractBlock(text, `COLUMN_${idx}_TITLE`) || `栏目 ${idx}`,
-    body: extractBlock(text, `COLUMN_${idx}_BODY`) || '（暂无）'
-  }));
-  const alertsRaw = extractBlock(text, 'ALERTS');
-  const alerts = alertsRaw
-    ? alertsRaw.split('\n').map(x => x.trim().replace(/^[-•]\s*/, '')).filter(Boolean).slice(0, 8)
-    : [];
-  return {
-    title: extractBlock(text, 'TITLE') || '卡拉迪亚晨报',
-    subtitle: extractBlock(text, 'SUBTITLE') || '来自战火与传闻的第一手编年',
-    dateline: extractBlock(text, 'DATELINE') || '未知日期',
-    leadTitle: extractBlock(text, 'LEAD_TITLE') || '头版快讯',
-    leadBody: extractBlock(text, 'LEAD_BODY') || '（无）',
-    columns,
-    quote: extractBlock(text, 'QUOTE') || '“消息总比真相先到。”',
-    alerts,
-    footer: extractBlock(text, 'FOOTER') || '卡拉迪亚编年史 · 世界公告栏编辑部',
-    raw: text
-  };
-};
-
-export const generateWorldNewspaper = async (
-  day: number,
-  worldMarkdown: string,
-  recentLogs: string[],
-  openAI?: OpenAIConfig
-): Promise<WorldNewspaperIssue> => {
-  const logsBlock = (recentLogs ?? []).slice(0, 120).map((x, i) => `${i + 1}. ${x}`).join('\n') || '（无）';
-  const prompt = `
-你是“异世界报纸总编”。请根据世界资料生成一份中文报纸，使用固定分隔符返回，禁止输出任何额外说明。
-
-输出格式必须严格包含这些区块（顺序一致）：
-[[TITLE]]...[[/TITLE]]
-[[SUBTITLE]]...[[/SUBTITLE]]
-[[DATELINE]]...[[/DATELINE]]
-[[LEAD_TITLE]]...[[/LEAD_TITLE]]
-[[LEAD_BODY]]...[[/LEAD_BODY]]
-[[COLUMN_1_TITLE]]...[[/COLUMN_1_TITLE]]
-[[COLUMN_1_BODY]]...[[/COLUMN_1_BODY]]
-[[COLUMN_2_TITLE]]...[[/COLUMN_2_TITLE]]
-[[COLUMN_2_BODY]]...[[/COLUMN_2_BODY]]
-[[COLUMN_3_TITLE]]...[[/COLUMN_3_TITLE]]
-[[COLUMN_3_BODY]]...[[/COLUMN_3_BODY]]
-[[COLUMN_4_TITLE]]...[[/COLUMN_4_TITLE]]
-[[COLUMN_4_BODY]]...[[/COLUMN_4_BODY]]
-[[QUOTE]]...[[/QUOTE]]
-[[ALERTS]]
-- ...
-- ...
-[[/ALERTS]]
-[[FOOTER]]...[[/FOOTER]]
-
-写作要求：
-1) 尽量覆盖最近发生的大事：战争、围城、入侵、关系变化、势力消长、人物动向。
-2) 语气是“异世界报纸”，可有夸张标题，但正文不能凭空编造与输入矛盾的信息。
-3) 每个 COLUMN_BODY 至少 90 字，LEAD_BODY 至少 140 字。
-4) ALERTS 3~6 条，每条一句短讯。
-5) 只输出上述分隔块，不要 markdown 代码块。
-
-【当前游戏天数】
-第 ${day} 天
-
-【世界资料（Markdown）】
-${String(worldMarkdown ?? '').trim() || '（无）'}
-
-【最近日志（新到旧）】
-${logsBlock}
-  `.trim();
-
-  const openAIConfig = requireOpenAIConfig(openAI);
-  if (openAIConfig) {
-    const url = `${normalizeProviderBaseUrl(openAIConfig.provider, openAIConfig.baseUrl)}/chat/completions`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${openAIConfig.apiKey}`,
-      },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
-        model: openAIConfig.model,
-        messages: [
-          { role: 'system', content: prompt },
-          { role: 'user', content: '只输出分隔块内容。' }
-        ],
-        temperature: 0.92
-      }))
-    });
-    if (!res.ok) {
-      const text = await res.text().catch(() => '');
-      throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
-    }
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('OpenAI 返回为空');
-    return parseNewspaper(String(text));
-  }
-
-  const model = "gemini-3-flash-preview";
-  const response = await getGeminiClient(openAI?.provider === 'GEMINI' ? openAI.apiKey : undefined).models.generateContent({
-    model,
-    contents: prompt,
-    config: {
-      temperature: 0.92,
-    },
-  });
-  const text = response.text;
-  if (!text) throw new Error("No response from AI");
-  return parseNewspaper(String(text));
 };
 
 export type UndeadChatLine = { role: 'PLAYER' | 'UNDEAD'; text: string };
@@ -2620,6 +2501,108 @@ ${historyText || "（暂无）"}
                 ? { attack: 75, defense: 85, agility: 50, hp: 80, range: 5, morale: 75 }
                 : { attack: 30, defense: 20, agility: 25, hp: 30, range: 5, morale: 25 }
       }
+    };
+  }
+};
+
+const newspaperSchema: Schema = {
+  type: Type.OBJECT,
+  properties: {
+    title: { type: Type.STRING, description: "Newspaper name, e.g., 'Calradia Chronicle'" },
+    issueNumber: { type: Type.STRING, description: "e.g., 'Issue 42'" },
+    date: { type: Type.STRING, description: "Game date" },
+    leadStory: {
+      type: Type.OBJECT,
+      properties: {
+        headline: { type: Type.STRING },
+        subhead: { type: Type.STRING },
+        content: { type: Type.STRING, description: "Main article text, multiple paragraphs." },
+        imagePrompt: { type: Type.STRING, description: "Description for an illustration (optional)" }
+      },
+      required: ["headline", "subhead", "content"]
+    },
+    sideStories: {
+      type: Type.ARRAY,
+      items: {
+        type: Type.OBJECT,
+        properties: {
+          headline: { type: Type.STRING },
+          content: { type: Type.STRING }
+        },
+        required: ["headline", "content"]
+      }
+    },
+    briefs: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING, description: "Short news items." }
+    },
+    rumors: {
+      type: Type.ARRAY,
+      items: { type: Type.STRING, description: "Gossip or unconfirmed reports." }
+    }
+  },
+  required: ["title", "issueNumber", "date", "leadStory", "sideStories", "briefs", "rumors"]
+};
+
+export const generateNewspaper = async (
+  logs: string[],
+  activeBattles: any[],
+  worldBattleReports: any[],
+  currentDate: string,
+  apiKey?: string
+): Promise<NewspaperData> => {
+  const client = getGeminiClient(apiKey);
+  const prompt = `
+    You are the editor of a medieval fantasy newspaper in the world of Calradia.
+    Based on the following recent events, generate a newspaper issue.
+    
+    Current Date: ${currentDate}
+
+    Recent Logs:
+    ${logs.slice(0, 30).join('\n')}
+
+    Active Battles:
+    ${activeBattles.map((b: any) => `- ${b.attackerName} vs ${b.defenderName} at ${b.locationName}`).join('\n')}
+
+    Recent Battle Reports:
+    ${worldBattleReports.slice(0, 5).map((r: any) => `- Day ${r.day}: ${r.battleLocation} (${r.outcome === 'A' ? 'Victory' : 'Defeat'})`).join('\n')}
+
+    Instructions:
+    - Create a catchy title for the newspaper.
+    - Select the most important event for the lead story.
+    - Create side stories for other significant events.
+    - Write briefs for minor events.
+    - Invent some rumors based on the context.
+    - Use a formal but engaging journalistic tone suitable for a fantasy setting.
+    - Output strictly in JSON format matching the schema.
+  `;
+
+  try {
+    const response = await client.models.generateContent({
+      model: 'gemini-2.0-flash',
+      contents: prompt,
+      config: {
+        responseMimeType: 'application/json',
+        responseSchema: newspaperSchema
+      }
+    });
+    const text = response.text;
+    if (!text) throw new Error("Empty response");
+    return JSON.parse(text) as NewspaperData;
+  } catch (error) {
+    console.error("Newspaper generation failed:", error);
+    return {
+      title: "The Calradia Times",
+      issueNumber: "Issue ???",
+      date: currentDate,
+      leadStory: {
+        headline: "Printing Press Jammed!",
+        subhead: "Editors struggle with ink shortage",
+        content: "Due to a magical interference, the news could not be retrieved today."
+      },
+      sideStories: [],
+      briefs: ["Weather is nice today."],
+      rumors: ["The developer might be fixing bugs."]
     };
   }
 };

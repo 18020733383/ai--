@@ -1,10 +1,13 @@
 import React from 'react';
-import { Hammer, History, Scroll, Shield } from 'lucide-react';
-import { BattleResult, FactionSpecialization, Location, SiegeEngineType, WorldBattleReport, WorldNewspaperIssue } from '../types';
+import { Hammer, History, Scroll, Shield, FileText, Loader2 } from 'lucide-react';
+import { BattleResult, FactionSpecialization, Location, NewspaperData, SiegeEngineType, WorldBattleReport } from '../types';
 import { Button } from '../components/Button';
+import { generateNewspaper } from '../services/geminiService';
+import { NewspaperOverlay } from '../components/NewspaperOverlay';
 
 type WorldBoardViewProps = {
   currentLocation: Location | null;
+  currentDay: number;
   logs: string[];
   worldBattleReports: WorldBattleReport[];
   activeBattles: Array<{
@@ -66,9 +69,6 @@ type WorldBoardViewProps = {
     power: number;
     troops: Array<{ name: string; count: number; tier?: number }>;
   }>;
-  worldNewspaperIssue: WorldNewspaperIssue | null;
-  isWorldNewspaperLoading: boolean;
-  onGenerateWorldNewspaper: () => void;
   onOpenTroopArchive: () => void;
   onBackToMap: () => void;
   onExportMarkdown: () => void;
@@ -76,6 +76,7 @@ type WorldBoardViewProps = {
 
 export const WorldBoardView = ({
   currentLocation,
+  currentDay,
   logs,
   worldBattleReports,
   activeBattles,
@@ -85,13 +86,30 @@ export const WorldBoardView = ({
   defenseArchive,
   factionSnapshots,
   worldForces,
-  worldNewspaperIssue,
-  isWorldNewspaperLoading,
-  onGenerateWorldNewspaper,
   onOpenTroopArchive,
   onBackToMap,
   onExportMarkdown
 }: WorldBoardViewProps) => {
+  const [newspaperData, setNewspaperData] = React.useState<NewspaperData | null>(null);
+  const [isGenerating, setIsGenerating] = React.useState(false);
+
+  const handleGenerateNewspaper = async () => {
+    setIsGenerating(true);
+    try {
+      const data = await generateNewspaper(
+        logs,
+        activeBattles,
+        worldBattleReports,
+        `第 ${currentDay} 天`
+      );
+      setNewspaperData(data);
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
   if (!currentLocation) return null;
   const outcomeLabel = (outcome: BattleResult['outcome']) => outcome === 'A' ? '胜利' : '战败';
   const formatTroopLoss = (list: Array<{ name: string; count: number; cause?: string }>) => {
@@ -130,84 +148,6 @@ export const WorldBoardView = ({
       return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
     }).join(' ');
   };
-  const escapeHtml = (text: string) => String(text ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-  const nl2br = (text: string) => escapeHtml(text).replace(/\n/g, '<br/>');
-  const buildIssueHtml = (issue: WorldNewspaperIssue) => {
-    const cols = issue.columns.slice(0, 4);
-    const alerts = issue.alerts.slice(0, 8);
-    return `<!doctype html>
-<html lang="zh-CN">
-<head>
-<meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>${escapeHtml(issue.title)}</title>
-<style>
-body{margin:0;background:#d4c8ac;font-family:STSong,"Songti SC","Noto Serif SC",serif;color:#181818;}
-.paper{width:min(1200px,95vw);margin:24px auto;padding:24px 28px;background:#f6f1e6;border:1px solid #c8b99c;box-shadow:0 8px 30px rgba(0,0,0,.2);}
-.topline{display:flex;justify-content:space-between;gap:16px;border-bottom:2px solid #2d2a24;padding-bottom:8px;margin-bottom:8px;}
-.title{font-size:48px;font-weight:700;letter-spacing:2px;line-height:1.05;}
-.sub{font-size:14px;opacity:.8;margin-top:4px;}
-.date{font-size:13px;opacity:.8;text-align:right;}
-.lead{display:grid;grid-template-columns:2fr 1fr;gap:12px;border-bottom:1px solid #7a6d57;padding-bottom:10px;margin-bottom:10px;}
-.lead h1{margin:0 0 6px 0;font-size:44px;line-height:1.1;}
-.lead p{margin:0;font-size:18px;line-height:1.65;}
-.quote{border:1px solid #7a6d57;padding:8px;font-size:14px;background:#f4ecdd;}
-.columns{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;}
-.col{border-right:1px solid #7a6d57;padding-right:10px;}
-.col:last-child{border-right:none;}
-.col h3{margin:0 0 6px 0;font-size:22px;}
-.col p{margin:0;font-size:16px;line-height:1.65;}
-.alerts{margin-top:12px;border-top:1px solid #7a6d57;padding-top:10px;}
-.alerts h4{margin:0 0 6px 0;font-size:16px;}
-.alerts ul{margin:0;padding-left:16px;}
-.alerts li{margin:4px 0;font-size:14px;}
-.footer{margin-top:12px;border-top:2px solid #2d2a24;padding-top:8px;font-size:12px;opacity:.85;}
-</style>
-</head>
-<body>
-<div class="paper">
-  <div class="topline">
-    <div>
-      <div class="title">${escapeHtml(issue.title)}</div>
-      <div class="sub">${escapeHtml(issue.subtitle)}</div>
-    </div>
-    <div class="date">${escapeHtml(issue.dateline)}</div>
-  </div>
-  <div class="lead">
-    <div>
-      <h1>${escapeHtml(issue.leadTitle)}</h1>
-      <p>${nl2br(issue.leadBody)}</p>
-    </div>
-    <div class="quote"><strong>引言</strong><br/>${nl2br(issue.quote)}</div>
-  </div>
-  <div class="columns">
-    ${cols.map(c => `<div class="col"><h3>${escapeHtml(c.title)}</h3><p>${nl2br(c.body)}</p></div>`).join('')}
-  </div>
-  <div class="alerts">
-    <h4>短讯</h4>
-    <ul>${alerts.map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul>
-  </div>
-  <div class="footer">${escapeHtml(issue.footer)}</div>
-</div>
-</body>
-</html>`;
-  };
-  const downloadIssueHtml = (issue: WorldNewspaperIssue) => {
-    const blob = new Blob([buildIssueHtml(issue)], { type: 'text/html;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement('a');
-    anchor.href = url;
-    anchor.download = `${issue.title || 'world-newspaper'}.html`;
-    document.body.appendChild(anchor);
-    anchor.click();
-    anchor.remove();
-    URL.revokeObjectURL(url);
-  };
 
   const forceKinds = Array.from(new Set(worldForces.map(item => item.kind))).sort((a, b) => a.localeCompare(b));
   const filteredForces = worldForces
@@ -240,61 +180,17 @@ body{margin:0;background:#d4c8ac;font-family:STSong,"Songti SC","Noto Serif SC",
             >
               <Scroll size={16} /> 兵种档案
             </Button>
-            <Button onClick={onGenerateWorldNewspaper} disabled={isWorldNewspaperLoading}>
-              {isWorldNewspaperLoading ? '报纸生成中…' : '一键生成异世界报纸'}
+            <Button
+              onClick={handleGenerateNewspaper}
+              disabled={isGenerating}
+              className="flex items-center gap-2"
+            >
+              {isGenerating ? <Loader2 className="animate-spin" size={16} /> : <FileText size={16} />}
+              生成异世界报纸
             </Button>
             <Button variant="secondary" onClick={onBackToMap}>返回地图</Button>
             <Button onClick={onExportMarkdown}>导出 Markdown</Button>
           </div>
-        </div>
-
-        <div className="bg-stone-900/70 border border-stone-700 rounded p-4 mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-stone-200 font-semibold">异世界报纸</div>
-            {worldNewspaperIssue && (
-              <Button variant="secondary" onClick={() => downloadIssueHtml(worldNewspaperIssue)}>
-                下载 HTML
-              </Button>
-            )}
-          </div>
-          {!worldNewspaperIssue ? (
-            <div className="text-sm text-stone-500">点击上方“一键生成异世界报纸”，AI 会根据世界公告栏信息产出分栏版面。</div>
-          ) : (
-            <div className="bg-[#f6f1e6] text-[#1f1a14] border border-[#c9bca0] rounded p-4 space-y-4">
-              <div className="border-b border-[#756650] pb-2">
-                <div className="text-4xl font-black tracking-wide">{worldNewspaperIssue.title}</div>
-                <div className="text-sm opacity-80">{worldNewspaperIssue.subtitle}</div>
-                <div className="text-xs opacity-70 mt-1">{worldNewspaperIssue.dateline}</div>
-              </div>
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-3 border-b border-[#756650] pb-3">
-                <div className="lg:col-span-2">
-                  <div className="text-3xl font-bold leading-tight">{worldNewspaperIssue.leadTitle}</div>
-                  <div className="text-base whitespace-pre-wrap leading-relaxed mt-2">{worldNewspaperIssue.leadBody}</div>
-                </div>
-                <div className="border border-[#7b6a50] bg-[#efe6d3] p-2">
-                  <div className="text-xs font-bold mb-1">引言</div>
-                  <div className="text-sm whitespace-pre-wrap leading-relaxed">{worldNewspaperIssue.quote}</div>
-                </div>
-              </div>
-              <div className="grid grid-cols-1 xl:grid-cols-4 gap-3">
-                {worldNewspaperIssue.columns.slice(0, 4).map((col, idx) => (
-                  <div key={`np_col_${idx}`} className="border-r border-[#7b6a50] last:border-r-0 pr-2">
-                    <div className="text-xl font-semibold">{col.title}</div>
-                    <div className="text-[15px] whitespace-pre-wrap leading-relaxed mt-1">{col.body}</div>
-                  </div>
-                ))}
-              </div>
-              {worldNewspaperIssue.alerts.length > 0 && (
-                <div className="border-t border-[#756650] pt-2">
-                  <div className="text-sm font-semibold">短讯</div>
-                  <ul className="list-disc pl-5 text-sm mt-1 space-y-1">
-                    {worldNewspaperIssue.alerts.map((a, idx) => <li key={`np_alert_${idx}`}>{a}</li>)}
-                  </ul>
-                </div>
-              )}
-              <div className="border-t-2 border-[#2d2a24] pt-2 text-xs opacity-80">{worldNewspaperIssue.footer}</div>
-            </div>
-          )}
         </div>
 
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
@@ -624,6 +520,7 @@ body{margin:0;background:#d4c8ac;font-family:STSong,"Songti SC","Noto Serif SC",
           </div>
         </div>
       </div>
+      {newspaperData && <NewspaperOverlay data={newspaperData} onClose={() => setNewspaperData(null)} />}
     </div>
   );
 };

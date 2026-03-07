@@ -439,6 +439,24 @@ export interface SiegeEngineQueueItem {
   totalDays: number;
 }
 
+export interface NewspaperData {
+  title: string;
+  issueNumber: string;
+  date: string;
+  leadStory: {
+    headline: string;
+    subhead: string;
+    content: string;
+    imagePrompt?: string;
+  };
+  sideStories: {
+    headline: string;
+    content: string;
+  }[];
+  briefs: string[];
+  rumors: string[];
+}
+
 export type GameView = 'MAIN_MENU' | 'INTRO' | 'MAP' | 'TOWN' | 'HIDEOUT_INSPECT' | 'BATTLE' | 'BATTLE_RESULT' | 'ENDING' | 'GAME_OVER' | 'PARTY' | 'CHARACTER' | 'BILLS' | 'TRAINING' | 'ASYLUM' | 'MARKET' | 'BANDIT_ENCOUNTER' | 'CAVE' | 'HERO_CHAT' | 'WORLD_BOARD' | 'TROOP_ARCHIVE' | 'RELATIONS';
 
 export interface RecruitOffer {
@@ -608,17 +626,4 @@ export type WorldBattleReport = {
   enemySide: string;
   keyUnitDamageSummary: string;
   rounds: BattleRound[];
-};
-
-export type WorldNewspaperIssue = {
-  title: string;
-  subtitle: string;
-  dateline: string;
-  leadTitle: string;
-  leadBody: string;
-  columns: Array<{ title: string; body: string }>;
-  quote: string;
-  alerts: string[];
-  footer: string;
-  raw: string;
 };
