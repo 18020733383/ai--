@@ -15,7 +15,8 @@ export const CHANGELOG: ChangelogEntry[] = [
       '批量生图支持并发数量：同批次内并发，整批成功才继续',
       '兵种图片迁移到 public/image/troops，便于 Cloudflare 部署访问',
       '启动时自动注销旧 Service Worker，避免 Workbox 缓存导致白屏/Failed to fetch',
-      '新增隐匿据点视察模式：可移动、巡逻/站岗、建筑映射、E对话、楼梯切层与英雄跟随'
+      '新增隐匿据点视察模式：可移动、巡逻/站岗、建筑映射、E对话、楼梯切层与英雄跟随',
+      '视察模式增强：楼层模板、施工脚手架、士兵随机巡游+碰撞、点击寻路与入口E键离开'
     ]
   },
   {
