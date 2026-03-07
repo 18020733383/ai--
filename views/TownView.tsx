@@ -1338,6 +1338,18 @@ export const TownView = ({
   const hideoutAllDefenseUsed = (hideoutState?.layers ?? []).reduce((sum, l) => sum + (Array.isArray(l.defenseSlots) ? l.defenseSlots.filter(s => !!(s as any)?.type).length : 0), 0);
   const hideoutExposure = Math.max(0, Math.min(100, hideoutState?.exposure ?? 0));
   const hideoutCamouflageCooldownUntilDay = hideoutState?.camouflageCooldownUntilDay ?? 0;
+  const camouflageBuiltSlot = (hideoutState?.layers?.[0]?.defenseSlots ?? []).find(s => (
+    ['CAMOUFLAGE_STRUCTURE', 'CAMOUFLAGE_STRUCTURE_II', 'CAMOUFLAGE_STRUCTURE_III'].includes(s.type as any) &&
+    !(s.daysLeft && s.daysLeft > 0)
+  ));
+  const camouflageLevel = camouflageBuiltSlot?.type === 'CAMOUFLAGE_STRUCTURE_III'
+    ? 3
+    : camouflageBuiltSlot?.type === 'CAMOUFLAGE_STRUCTURE_II'
+      ? 2
+      : camouflageBuiltSlot?.type === 'CAMOUFLAGE_STRUCTURE'
+        ? 1
+        : 0;
+  const camouflageCost = camouflageLevel === 3 ? 380 : camouflageLevel === 2 ? 320 : 260;
 
   const [hideoutRefineMineralId, setHideoutRefineMineralId] = React.useState<MineralId>('NULL_CRYSTAL');
   const [hideoutRefineFromPurity, setHideoutRefineFromPurity] = React.useState<MineralPurity>(1);
@@ -1401,6 +1413,8 @@ export const TownView = ({
     if (type === 'AA_RADAR_I') return ['提升防空强度与远程命中（可叠加）'];
     if (type === 'AA_RADAR_II') return ['需要 AA_RADAR_I', '提升防空强度与远程命中（可叠加）'];
     if (type === 'CAMOUFLAGE_STRUCTURE') return ['仅地面层可建', '可花钱降低暴露（冷却）', '被动减缓暴露上升'];
+    if (type === 'CAMOUFLAGE_STRUCTURE_II') return ['仅地面层可建', '降低暴露效果提升', '冷却缩短'];
+    if (type === 'CAMOUFLAGE_STRUCTURE_III') return ['仅地面层可建', '大幅降低暴露', '冷却进一步缩短'];
     if (type === 'MAZE_I') return ['仅地面层可建（唯一）', '讨伐军进入据点后需等待 1 天才会开战'];
     if (type === 'MAZE_II') return ['仅地面层可建（唯一）', '讨伐军进入据点后需等待 2 天才会开战'];
     if (type === 'MAZE_III') return ['仅地面层可建（唯一）', '讨伐军进入据点后需等待 3 天才会开战'];
@@ -1409,12 +1423,17 @@ export const TownView = ({
 
   const getBuildingYieldLines = (type: BuildingType, depth: number) => {
     if (type === 'HOUSING') return [`税收：每 3 天 +${18 + depth * 4} 第纳尔（每座）`];
+    if (type === 'HOUSING_II') return [`税收：每 3 天 +${26 + depth * 5} 第纳尔（每座）`];
+    if (type === 'HOUSING_III') return [`税收：每 3 天 +${36 + depth * 6} 第纳尔（每座）`];
     if (type === 'TRAINING_CAMP') return [`训练：每 3 天触发一次（强度随数量提升）`];
     if (type === 'RECRUITER') return [`征募：每 4 天 +${4 + Math.min(6, depth * 2)} 名守军（每座，上限内）`];
     if (type === 'SHRINE') return [`信徒：每 4 天 +${3 + Math.min(4, depth)} 名（每座，上限内，需宗教）`];
     if (type === 'HOSPITAL_I') return ['治疗：停留期间每 3 天额外推进伤兵恢复 1 天'];
     if (type === 'HOSPITAL_II') return ['治疗：停留期间每 3 天额外推进伤兵恢复 2 天'];
     if (type === 'HOSPITAL_III') return ['治疗：停留期间每 3 天额外推进伤兵恢复 3 天'];
+    if (type === 'CAMOUFLAGE_STRUCTURE') return ['伪装：启动后降低暴露 18，冷却 6 天'];
+    if (type === 'CAMOUFLAGE_STRUCTURE_II') return ['伪装：启动后降低暴露 28，冷却 5 天'];
+    if (type === 'CAMOUFLAGE_STRUCTURE_III') return ['伪装：启动后降低暴露 40，冷却 4 天'];
     if (type === 'MAZE_I') return ['延缓：敌军抵达后需等待 1 天才会开战'];
     if (type === 'MAZE_II') return ['延缓：敌军抵达后需等待 2 天才会开战'];
     if (type === 'MAZE_III') return ['延缓：敌军抵达后需等待 3 天才会开战'];
@@ -1432,6 +1451,10 @@ export const TownView = ({
     if (type === 'MAZE_II') return 'MAZE_III';
     if (type === 'HOSPITAL_I') return 'HOSPITAL_II';
     if (type === 'HOSPITAL_II') return 'HOSPITAL_III';
+    if (type === 'HOUSING') return 'HOUSING_II';
+    if (type === 'HOUSING_II') return 'HOUSING_III';
+    if (type === 'CAMOUFLAGE_STRUCTURE') return 'CAMOUFLAGE_STRUCTURE_II';
+    if (type === 'CAMOUFLAGE_STRUCTURE_II') return 'CAMOUFLAGE_STRUCTURE_III';
     return null;
   };
 
@@ -1760,7 +1783,7 @@ export const TownView = ({
       }
     }
     if (building.type === 'CAMOUFLAGE_STRUCTURE') {
-      const hasCamouflage = (layer.defenseSlots ?? []).some(s => s.type === 'CAMOUFLAGE_STRUCTURE');
+      const hasCamouflage = (layer.defenseSlots ?? []).some(s => ['CAMOUFLAGE_STRUCTURE', 'CAMOUFLAGE_STRUCTURE_II', 'CAMOUFLAGE_STRUCTURE_III'].includes(s.type as any));
       if (hasCamouflage) {
         addLog("该层已存在伪装结构。");
         return;
@@ -1791,30 +1814,37 @@ export const TownView = ({
     const hideout = currentLocation.hideout;
     if (!hideout || !Array.isArray(hideout.layers) || hideout.layers.length === 0) return;
     const layer0 = hideout.layers[0];
-    const hasCamouflage = (layer0.defenseSlots ?? []).some(s => s.type === 'CAMOUFLAGE_STRUCTURE' && !(s.daysLeft && s.daysLeft > 0));
-    if (!hasCamouflage) {
+    const camouflageTypes = ['CAMOUFLAGE_STRUCTURE_III', 'CAMOUFLAGE_STRUCTURE_II', 'CAMOUFLAGE_STRUCTURE'] as const;
+    const builtCamouflage = (layer0.defenseSlots ?? []).find(s => camouflageTypes.includes(s.type as any) && !(s.daysLeft && s.daysLeft > 0));
+    if (!builtCamouflage) {
       addLog("需要在地面层建造伪装结构。");
       return;
     }
+    const camoLevel = builtCamouflage.type === 'CAMOUFLAGE_STRUCTURE_III'
+      ? 3
+      : builtCamouflage.type === 'CAMOUFLAGE_STRUCTURE_II'
+        ? 2
+        : 1;
     const cooldownUntil = hideout.camouflageCooldownUntilDay ?? 0;
     if (player.day < cooldownUntil) {
       addLog(`伪装结构冷却中（第 ${cooldownUntil} 天可用）。`);
       return;
     }
-    const cost = 260;
+    const cost = camoLevel === 3 ? 380 : camoLevel === 2 ? 320 : 260;
     if (player.gold < cost) {
       addLog("资金不足，无法启动伪装。");
       return;
     }
     const exposure = Math.max(0, Math.min(100, hideout.exposure ?? 0));
-    const reduced = Math.max(0, exposure - 18);
+    const reduceAmount = camoLevel === 3 ? 40 : camoLevel === 2 ? 28 : 18;
+    const reduced = Math.max(0, exposure - reduceAmount);
     setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - cost) }));
     updateLocationState({
       ...currentLocation,
       hideout: {
         ...hideout,
         exposure: reduced,
-        camouflageCooldownUntilDay: player.day + 6
+        camouflageCooldownUntilDay: player.day + (camoLevel === 3 ? 4 : camoLevel === 2 ? 5 : 6)
       }
     });
     addLog(`伪装结构启动：暴露程度降低 ${Math.round(exposure - reduced)}。`);
@@ -1843,6 +1873,12 @@ export const TownView = ({
     if (type === 'MAZE_I' || type === 'MAZE_II') {
       if (layer.depth !== 0 || category !== 'DEFENSE') {
         addLog("迷宫只能存在于地面层的防御槽。");
+        return;
+      }
+    }
+    if (type === 'CAMOUFLAGE_STRUCTURE' || type === 'CAMOUFLAGE_STRUCTURE_II') {
+      if (layer.depth !== 0 || category !== 'DEFENSE') {
+        addLog("伪装结构只能存在于地面层的防御槽。");
         return;
       }
     }
@@ -2389,7 +2425,7 @@ export const TownView = ({
                     <div className="mt-2 flex items-center justify-end gap-2">
                       <Button
                         variant="secondary"
-                        disabled={player.day < hideoutCamouflageCooldownUntilDay || player.gold < 260 || !((hideoutState?.layers?.[0]?.defenseSlots ?? []).some(s => s.type === 'CAMOUFLAGE_STRUCTURE' && !(s.daysLeft && s.daysLeft > 0)))}
+                        disabled={camouflageLevel <= 0 || player.day < hideoutCamouflageCooldownUntilDay || player.gold < camouflageCost}
                         onClick={handleHideoutReduceExposure}
                       >
                         {player.day < hideoutCamouflageCooldownUntilDay ? `冷却至第${hideoutCamouflageCooldownUntilDay}天` : '降低暴露'}
@@ -2854,7 +2890,9 @@ export const TownView = ({
                           if (type === 'AA_TOWER_III' && !defenseBuilt.includes('AA_TOWER_II')) return { ok: false, reason: '需要 AA_TOWER_II' };
                           if (type === 'AA_NET_II' && !defenseBuilt.includes('AA_NET_I')) return { ok: false, reason: '需要 AA_NET_I' };
                           if (type === 'AA_RADAR_II' && !defenseBuilt.includes('AA_RADAR_I')) return { ok: false, reason: '需要 AA_RADAR_I' };
-                          if (type === 'CAMOUFLAGE_STRUCTURE' && hideoutDefenseSlots.some(s => s.type === 'CAMOUFLAGE_STRUCTURE')) return { ok: false, reason: '已存在伪装结构' };
+                          if (type === 'CAMOUFLAGE_STRUCTURE' && hideoutDefenseSlots.some(s => ['CAMOUFLAGE_STRUCTURE', 'CAMOUFLAGE_STRUCTURE_II', 'CAMOUFLAGE_STRUCTURE_III'].includes(s.type as any))) {
+                            return { ok: false, reason: '已存在伪装结构' };
+                          }
                           return { ok: true as const, reason: '' };
                         };
                         return options.map(opt => {
@@ -4521,7 +4559,16 @@ export const TownView = ({
             <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4">
               <div className="text-stone-200 font-bold">可建造建筑</div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {buildingOptions.filter(b => b.type !== 'HOUSING' && b.type !== 'SHRINE' && b.type !== 'ORE_REFINERY' && b.type !== 'CAMOUFLAGE_STRUCTURE').map(building => {
+                {buildingOptions.filter(b => (
+                  b.type !== 'HOUSING' &&
+                  b.type !== 'HOUSING_II' &&
+                  b.type !== 'HOUSING_III' &&
+                  b.type !== 'SHRINE' &&
+                  b.type !== 'ORE_REFINERY' &&
+                  b.type !== 'CAMOUFLAGE_STRUCTURE' &&
+                  b.type !== 'CAMOUFLAGE_STRUCTURE_II' &&
+                  b.type !== 'CAMOUFLAGE_STRUCTURE_III'
+                )).map(building => {
                   const prereq = building.type === 'AA_TOWER_II'
                     ? 'AA_TOWER_I'
                     : building.type === 'AA_TOWER_III'

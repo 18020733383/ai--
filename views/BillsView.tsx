@@ -89,8 +89,11 @@ export const BillsView = ({ player, locations, getTroopTemplate, onBack }: Bills
       layers.forEach(layer => {
         const facilityBuilt = getBuiltTypes(layer.facilitySlots as any);
         const housingCount = facilityBuilt.reduce((acc, t) => acc + (t === 'HOUSING' ? 1 : 0), 0);
-        if (housingCount <= 0) return;
-        const perHit = housingCount * (18 + (layer.depth ?? 0) * 4);
+        const housing2Count = facilityBuilt.reduce((acc, t) => acc + (t === 'HOUSING_II' ? 1 : 0), 0);
+        const housing3Count = facilityBuilt.reduce((acc, t) => acc + (t === 'HOUSING_III' ? 1 : 0), 0);
+        const housingScore = housingCount + housing2Count * 1.6 + housing3Count * 2.4;
+        if (housingScore <= 0) return;
+        const perHit = Math.floor(housingScore * (18 + (layer.depth ?? 0) * 4));
         let lastIncomeDay = Math.max(0, Math.floor((layer as any).lastIncomeDay ?? 0));
         let hits = 0;
         for (let step = 1; step <= horizonDays; step++) {

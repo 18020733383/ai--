@@ -3325,6 +3325,8 @@ export default function App() {
   const buildingOptions: { type: BuildingType; name: string; cost: number; days: number; description: string }[] = [
     { type: 'FACTORY', name: '工厂', cost: 600, days: 3, description: '每隔数天带来稳定收益。' },
     { type: 'HOUSING', name: '民居', cost: 260, days: 2, description: '提供税收来源，也会提高据点的存在感。' },
+    { type: 'HOUSING_II', name: '民居·II', cost: 520, days: 3, description: '扩建居所与附属设施，提高税收与稳定预期。' },
+    { type: 'HOUSING_III', name: '民居·III', cost: 980, days: 4, description: '成熟社区与配套体系，显著提升税收与民心。' },
     { type: 'TRAINING_CAMP', name: '训练营', cost: 500, days: 3, description: '驻军获得经验并自动晋升。' },
     { type: 'BARRACKS', name: '兵营', cost: 800, days: 4, description: '驻军容量提升 50%。' },
     { type: 'DEFENSE', name: '防御建筑', cost: 700, days: 4, description: '增强据点防御强度。' },
@@ -3336,6 +3338,8 @@ export default function App() {
     { type: 'HOSPITAL_II', name: '地下医院·II', cost: 920, days: 4, description: '更完善的隔离区与药剂储备，显著缩短伤兵恢复。' },
     { type: 'HOSPITAL_III', name: '地下医院·III', cost: 1450, days: 5, description: '完整的地下医馆体系，把死亡率压到最低水平。' },
     { type: 'CAMOUFLAGE_STRUCTURE', name: '伪装结构', cost: 680, days: 4, description: '降低隐匿点暴露程度（冷却），仅限地面层。' },
+    { type: 'CAMOUFLAGE_STRUCTURE_II', name: '伪装结构·II', cost: 1080, days: 5, description: '强化伪装与暗道网络，降低暴露幅度并缩短冷却。' },
+    { type: 'CAMOUFLAGE_STRUCTURE_III', name: '伪装结构·III', cost: 1580, days: 6, description: '完整的伪装体系与误导网络，大幅降低暴露并减少冷却。' },
     { type: 'AA_TOWER_I', name: '防空箭塔·I', cost: 420, days: 2, description: '对空火力覆盖，提升守方防空强度。' },
     { type: 'AA_TOWER_II', name: '防空箭塔·II', cost: 760, days: 3, description: '更密集的对空火力与瞄准体系。' },
     { type: 'AA_TOWER_III', name: '防空箭塔·III', cost: 1200, days: 4, description: '成体系的防空火网，压制空袭与制空渗透。' },
@@ -3683,29 +3687,77 @@ export default function App() {
       {
         const rollInt = (min: number, max: number) => Math.floor(min + Math.random() * (max - min + 1));
         const clampPct = (v: number) => Math.max(0, Math.min(100, Math.floor(v)));
+        const govEvents = [
+          {
+            id: 'tax_dispute',
+            title: '税吏争执',
+            lines: ['税吏与工坊主在税率上争执不休，工人开始停工。', '如果处理不当，生产会受到影响。']
+          },
+          {
+            id: 'smuggling',
+            title: '走私风波',
+            lines: ['巡逻发现走私货物流入市集，几方势力互相指责。', '放任会破坏秩序，但强硬会影响和谐。']
+          },
+          {
+            id: 'food_shortage',
+            title: '粮仓告急',
+            lines: ['储备粮损耗超出预期，居民开始抱怨配给。', '若不安抚，稳定性将下滑。']
+          },
+          {
+            id: 'craftsmen_guild',
+            title: '工匠纠纷',
+            lines: ['工匠行会要求更多资源与保护，否则将减少产出。', '这是提高生产力还是拖累繁荣的选择。']
+          },
+          {
+            id: 'watch_patrol',
+            title: '巡逻懈怠',
+            lines: ['巡逻队怠工导致盗窃事件增多，治安下滑。', '需要迅速整顿纪律。']
+          },
+          {
+            id: 'market_opportunity',
+            title: '流动市集',
+            lines: ['一批流动商队愿意暂驻据点，带来繁荣机会。', '也会增加据点暴露风险。']
+          },
+          {
+            id: 'water_supply',
+            title: '水源污染',
+            lines: ['地下水源出现异常气味，居民情绪不安。', '若不处理，和谐度将降低。']
+          },
+          {
+            id: 'militia_pressure',
+            title: '民兵诉求',
+            lines: ['民兵要求提升待遇与装备，否则将减少巡防力度。', '权衡成本与稳定性至关重要。']
+          }
+        ];
         newLocations = newLocations.map(loc => {
           if (loc.type !== 'HIDEOUT' || loc.owner !== 'PLAYER' || !loc.hideout) return loc;
           const gov = loc.hideout.governance ?? { stability: 60, productivity: 55, prosperity: 50, harmony: 55 };
-          const nextEventDay = typeof gov.nextEventDay === 'number' && gov.nextEventDay > nextDay
-            ? gov.nextEventDay
-            : nextDay + rollInt(4, 7);
+          let nextEventDay = typeof gov.nextEventDay === 'number' ? gov.nextEventDay : nextDay + rollInt(2, 4);
+          const lastEventDay = typeof gov.lastEventDay === 'number' ? gov.lastEventDay : nextDay - rollInt(2, 5);
+          const daysSince = Math.max(0, nextDay - lastEventDay);
+          const baseChance = Math.min(0.7, 0.2 + daysSince * 0.12);
           if (nextDay < nextEventDay) {
-            return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, stability: clampPct(gov.stability), productivity: clampPct(gov.productivity), prosperity: clampPct(gov.prosperity), harmony: clampPct(gov.harmony), nextEventDay } } };
+            return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, stability: clampPct(gov.stability), productivity: clampPct(gov.productivity), prosperity: clampPct(gov.prosperity), harmony: clampPct(gov.harmony), nextEventDay, lastEventDay } } };
           }
+          if (Math.random() >= baseChance) {
+            nextEventDay = nextDay + rollInt(2, 4);
+            return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, stability: clampPct(gov.stability), productivity: clampPct(gov.productivity), prosperity: clampPct(gov.prosperity), harmony: clampPct(gov.harmony), nextEventDay, lastEventDay } } };
+          }
+          const evt = govEvents[Math.floor(Math.random() * govEvents.length)];
           decisionsToAdd.push({
             id: `hideout_gov_${loc.id}_${nextDay}_${Math.floor(Math.random() * 10000)}`,
             kind: 'HIDEOUT_GOV',
             locationId: loc.id,
             day: nextDay,
-            title: `隐匿据点内政：${loc.name}`,
+            title: `内政事件：${evt.title}（${loc.name}）`,
             description: [
-              '地下的秩序需要代价。',
+              ...evt.lines,
               `稳定性 ${clampPct(gov.stability)}｜生产力 ${clampPct(gov.productivity)}｜繁荣度 ${clampPct(gov.prosperity)}｜和谐度 ${clampPct(gov.harmony)}`,
               clampPct(gov.stability) <= 20 ? '警告：稳定性过低，叛乱风险上升。' : ''
             ].filter(Boolean).join('\n'),
-            payload: { gov }
+            payload: { gov, eventId: evt.id }
           });
-          return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, nextEventDay: nextDay + rollInt(4, 7) } } };
+          return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, nextEventDay: nextDay + rollInt(3, 6), lastEventDay } } };
         });
       }
       const stayLoc = location ? (newLocations.find(l => l.id === location.id) ?? location) : null;
@@ -4161,6 +4213,8 @@ export default function App() {
               const facilityBuilt = builtTypes(facilitySlots);
               const countFacility = (t: BuildingType) => facilityBuilt.reduce((acc, x) => acc + (x === t ? 1 : 0), 0);
               const housingCount = countFacility('HOUSING');
+              const housing2Count = countFacility('HOUSING_II');
+              const housing3Count = countFacility('HOUSING_III');
               const campCount = countFacility('TRAINING_CAMP');
               const recruiterCount = countFacility('RECRUITER');
               const shrineCount = countFacility('SHRINE');
@@ -4168,10 +4222,11 @@ export default function App() {
               const baseCap = nextLayer.garrisonBaseLimit ?? 900;
               const cap = hasBarracks ? Math.floor(baseCap * 1.5) : baseCap;
 
-              if (housingCount > 0) {
+              const housingScore = housingCount + housing2Count * 1.6 + housing3Count * 2.4;
+              if (housingScore > 0) {
                 const lastIncomeDay = nextLayer.lastIncomeDay ?? 0;
                 if (nextDay - lastIncomeDay >= 3) {
-                  const income = housingCount * (18 + nextLayer.depth * 4);
+                  const income = Math.floor(housingScore * (18 + nextLayer.depth * 4));
                   newGold += income;
                   nextLayer.lastIncomeDay = nextDay;
                   logsToAdd.push(`【税收】${updated.name}·${nextLayer.name} 征收了 ${income} 第纳尔。`);
@@ -4267,12 +4322,16 @@ export default function App() {
             const camouflageBuilt = (() => {
               const layer0 = nextLayers[0];
               if (!layer0) return 0;
-              return builtTypes(normalizeSlots(layer0.defenseSlots as any)).filter(t => t === 'CAMOUFLAGE_STRUCTURE').length;
+              const built = builtTypes(normalizeSlots(layer0.defenseSlots as any));
+              const camo1 = built.filter(t => t === 'CAMOUFLAGE_STRUCTURE').length;
+              const camo2 = built.filter(t => t === 'CAMOUFLAGE_STRUCTURE_II').length;
+              const camo3 = built.filter(t => t === 'CAMOUFLAGE_STRUCTURE_III').length;
+              return camo1 + camo2 * 1.6 + camo3 * 2.4;
             })();
             const baseExposure = Math.max(0, Math.min(100, updated.hideout.exposure ?? 0));
             const depthFactor = Math.max(0, nextLayers.length - 1) * 0.18;
             const builtFactor = totalBuilt * 0.09;
-            const passive = 0.35 + depthFactor + builtFactor - Math.min(0.6, camouflageBuilt * 0.22);
+            const passive = 0.35 + depthFactor + builtFactor - Math.min(0.7, camouflageBuilt * 0.22);
             const nextExposure = Math.max(0, Math.min(100, baseExposure + passive));
             updated.hideout = { ...updated.hideout, layers: nextLayers, exposure: nextExposure };
             if (!updated.isUnderSiege && !updated.activeSiege) {
@@ -6313,7 +6372,9 @@ export default function App() {
     const aaNet2 = countOf('AA_NET_II');
     const aaRadar1 = countOf('AA_RADAR_I');
     const aaRadar2 = countOf('AA_RADAR_II');
-    const camouflage = countOf('CAMOUFLAGE_STRUCTURE');
+    const camouflage1 = countOf('CAMOUFLAGE_STRUCTURE');
+    const camouflage2 = countOf('CAMOUFLAGE_STRUCTURE_II');
+    const camouflage3 = countOf('CAMOUFLAGE_STRUCTURE_III');
     const maze1 = countOf('MAZE_I');
     const maze2 = countOf('MAZE_II');
     const maze3 = countOf('MAZE_III');
@@ -6346,7 +6407,9 @@ export default function App() {
     details.antiAirPowerBonus += 0.14 * aaRadar2;
     extraMechanismHp += 200 * aaRadar2;
     extraRangedHit += 0.05 * aaRadar2;
-    pushMechanism("伪装结构", "用伪装与隔离降低暴露程度。", camouflage);
+    pushMechanism("伪装结构", "用伪装与隔离降低暴露程度。", camouflage1);
+    pushMechanism("伪装结构·II", "暗道与误导节点成网，进一步降低暴露。", camouflage2);
+    pushMechanism("伪装结构·III", "完整伪装体系与隔离链路，大幅降低暴露。", camouflage3);
     pushMechanism("迷宫·I", "迷阵与岔路将敌军拖慢。", maze1);
     pushMechanism("迷宫·II", "更复杂的回廊网络，将敌军拖慢更久。", maze2);
     pushMechanism("迷宫·III", "成体系的迷宫网络，把时间榨干。", maze3);
@@ -9861,7 +9924,7 @@ export default function App() {
         if (baseLoc.type !== 'HIDEOUT') return baseLoc;
         const hideout = baseLoc.hideout;
         const layersRaw = Array.isArray(hideout?.layers) ? hideout!.layers : [];
-        const defenseSet = new Set<BuildingType>(['DEFENSE', 'AA_TOWER_I', 'AA_TOWER_II', 'AA_TOWER_III', 'AA_NET_I', 'AA_NET_II', 'AA_RADAR_I', 'AA_RADAR_II', 'CAMOUFLAGE_STRUCTURE', 'MAZE_I', 'MAZE_II', 'MAZE_III']);
+        const defenseSet = new Set<BuildingType>(['DEFENSE', 'AA_TOWER_I', 'AA_TOWER_II', 'AA_TOWER_III', 'AA_NET_I', 'AA_NET_II', 'AA_RADAR_I', 'AA_RADAR_II', 'CAMOUFLAGE_STRUCTURE', 'CAMOUFLAGE_STRUCTURE_II', 'CAMOUFLAGE_STRUCTURE_III', 'MAZE_I', 'MAZE_II', 'MAZE_III']);
         const normalizeSlots = (slots: any[] | undefined, fallbackBuildings: BuildingType[] | undefined, pickDefense: boolean) => {
           const safe = Array.isArray(slots) ? slots : [];
           const base = Array.from({ length: 10 }, (_, i) => {
@@ -11529,8 +11592,6 @@ export default function App() {
     const rightTroops = (battleSnapshot?.enemyTroops ?? activeEnemy?.troops ?? []).filter(t => (t.count ?? 0) > 0);
     const leftMax = Math.max(1, ...leftTroops.map(t => t.count ?? 0));
     const rightMax = Math.max(1, ...rightTroops.map(t => t.count ?? 0));
-    const leftSlice = leftTroops.slice(0, 6);
-    const rightSlice = rightTroops.slice(0, 6);
     return (
       <div className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center text-center p-4">
         {battleError ? (
@@ -11556,14 +11617,35 @@ export default function App() {
           </div>
         ) : (
           <>
-            <div className="w-full max-w-4xl bg-stone-950/40 border border-stone-800 rounded p-4 mb-6">
+            <div className="w-full max-w-5xl bg-stone-950/40 border border-stone-800 rounded p-4 mb-6 relative overflow-hidden">
+              <style>{`
+                @keyframes battleArrow {
+                  0% { transform: translateX(0); opacity: 0; }
+                  15% { opacity: 1; }
+                  100% { transform: translateX(220px); opacity: 0; }
+                }
+                @keyframes battleArrowReverse {
+                  0% { transform: translateX(0); opacity: 0; }
+                  15% { opacity: 1; }
+                  100% { transform: translateX(-220px); opacity: 0; }
+                }
+                @keyframes battleSpark {
+                  0% { transform: scale(0.6); opacity: 0; }
+                  30% { opacity: 1; }
+                  100% { transform: scale(1.2); opacity: 0; }
+                }
+                @keyframes battleCharge {
+                  0%, 100% { transform: translateX(0); }
+                  50% { transform: translateX(8px); }
+                }
+              `}</style>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-[320px] overflow-auto pr-2">
                   <div className="text-xs text-red-300">红方</div>
-                  {leftSlice.length === 0 ? (
+                  {leftTroops.length === 0 ? (
                     <div className="text-xs text-stone-500">无可见部队</div>
                   ) : (
-                    leftSlice.map(t => (
+                    leftTroops.map(t => (
                       <div key={`left_${t.id}`} className="text-left">
                         <div className="text-xs text-stone-200 truncate">{t.name ?? t.id} · {t.count}</div>
                         <div className="h-1 bg-red-900/40 rounded">
@@ -11573,16 +11655,47 @@ export default function App() {
                     ))
                   )}
                 </div>
-                <div className="flex flex-col items-center justify-center gap-2">
+                <div className="relative flex flex-col items-center justify-center gap-2">
                   <div className="text-4xl animate-bounce">⚔</div>
                   <div className="text-xs text-stone-500">交战演算中</div>
+                  <div className="relative w-full h-28 mt-2">
+                    <div className="absolute left-2 top-2 text-xs text-red-300 animate-[battleCharge_1.2s_ease-in-out_infinite]">冲锋</div>
+                    <div className="absolute right-2 bottom-2 text-xs text-blue-300 animate-[battleCharge_1.2s_ease-in-out_infinite]">迎战</div>
+                    {[0, 1, 2, 3, 4, 5].map(i => (
+                      <span
+                        key={`arrow_l_${i}`}
+                        className="absolute left-2 text-red-300 text-sm"
+                        style={{ top: `${12 + i * 14}px`, animation: `battleArrow ${0.8 + i * 0.1}s linear ${i * 0.15}s infinite` }}
+                      >
+                        ➶
+                      </span>
+                    ))}
+                    {[0, 1, 2, 3, 4, 5].map(i => (
+                      <span
+                        key={`arrow_r_${i}`}
+                        className="absolute right-2 text-blue-300 text-sm"
+                        style={{ top: `${18 + i * 14}px`, animation: `battleArrowReverse ${0.8 + i * 0.1}s linear ${i * 0.12}s infinite` }}
+                      >
+                        ➷
+                      </span>
+                    ))}
+                    {[0, 1, 2, 3].map(i => (
+                      <span
+                        key={`spark_${i}`}
+                        className="absolute left-1/2 text-amber-300 text-lg"
+                        style={{ top: `${20 + i * 18}px`, animation: `battleSpark ${0.6 + i * 0.2}s ease-in-out ${i * 0.1}s infinite` }}
+                      >
+                        ✦
+                      </span>
+                    ))}
+                  </div>
                 </div>
-                <div className="space-y-2">
+                <div className="space-y-2 max-h-[320px] overflow-auto pl-2">
                   <div className="text-xs text-blue-300">蓝方</div>
-                  {rightSlice.length === 0 ? (
+                  {rightTroops.length === 0 ? (
                     <div className="text-xs text-stone-500">无可见部队</div>
                   ) : (
-                    rightSlice.map(t => (
+                    rightTroops.map(t => (
                       <div key={`right_${t.id}`} className="text-right">
                         <div className="text-xs text-stone-200 truncate">{t.name ?? t.id} · {t.count}</div>
                         <div className="h-1 bg-blue-900/40 rounded">

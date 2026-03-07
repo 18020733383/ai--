@@ -421,6 +421,8 @@ export type BattleBrief = {
 export type BuildingType =
   | 'FACTORY'
   | 'HOUSING'
+  | 'HOUSING_II'
+  | 'HOUSING_III'
   | 'TRAINING_CAMP'
   | 'BARRACKS'
   | 'DEFENSE'
@@ -432,6 +434,8 @@ export type BuildingType =
   | 'HOSPITAL_II'
   | 'HOSPITAL_III'
   | 'CAMOUFLAGE_STRUCTURE'
+  | 'CAMOUFLAGE_STRUCTURE_II'
+  | 'CAMOUFLAGE_STRUCTURE_III'
   | 'MAZE_I'
   | 'MAZE_II'
   | 'MAZE_III'
