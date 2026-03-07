@@ -1,6 +1,6 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
-import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, HeroRole, Location, Lord, NegotiationResult, PartyDiaryEntry, PlayerState, TerrainType, Troop, TroopAttributes, TroopRace } from '../types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, HeroRole, Location, Lord, NegotiationResult, PartyDiaryEntry, PlayerState, TerrainType, Troop, TroopAttributes, TroopRace, WorldNewspaperIssue } from '../types';
 import { normalizeOpenAIBattle, parseCasualties, parseInjuries, parseOutcome } from './battleParsing';
 import { WORLD_BOOK } from '../constants';
 
@@ -1243,6 +1243,125 @@ export const listOpenAIModels = async (provider: AIProvider, baseUrl: string, ap
   const json = await res.json().catch(() => null) as any;
   const ids: string[] = Array.isArray(json?.data) ? json.data.map((m: any) => m?.id).filter((x: any) => typeof x === 'string') : [];
   return ids.sort((a, b) => a.localeCompare(b));
+};
+
+const extractBlock = (text: string, tag: string) => {
+  const re = new RegExp(`\\[\\[${tag}\\]\\]([\\s\\S]*?)\\[\\[\\/${tag}\\]\\]`, 'i');
+  const m = text.match(re);
+  return m ? String(m[1] ?? '').trim() : '';
+};
+
+const parseNewspaper = (raw: string): WorldNewspaperIssue => {
+  const text = String(raw ?? '').trim();
+  const columns = [1, 2, 3, 4].map((idx) => ({
+    title: extractBlock(text, `COLUMN_${idx}_TITLE`) || `栏目 ${idx}`,
+    body: extractBlock(text, `COLUMN_${idx}_BODY`) || '（暂无）'
+  }));
+  const alertsRaw = extractBlock(text, 'ALERTS');
+  const alerts = alertsRaw
+    ? alertsRaw.split('\n').map(x => x.trim().replace(/^[-•]\s*/, '')).filter(Boolean).slice(0, 8)
+    : [];
+  return {
+    title: extractBlock(text, 'TITLE') || '卡拉迪亚晨报',
+    subtitle: extractBlock(text, 'SUBTITLE') || '来自战火与传闻的第一手编年',
+    dateline: extractBlock(text, 'DATELINE') || '未知日期',
+    leadTitle: extractBlock(text, 'LEAD_TITLE') || '头版快讯',
+    leadBody: extractBlock(text, 'LEAD_BODY') || '（无）',
+    columns,
+    quote: extractBlock(text, 'QUOTE') || '“消息总比真相先到。”',
+    alerts,
+    footer: extractBlock(text, 'FOOTER') || '卡拉迪亚编年史 · 世界公告栏编辑部',
+    raw: text
+  };
+};
+
+export const generateWorldNewspaper = async (
+  day: number,
+  worldMarkdown: string,
+  recentLogs: string[],
+  openAI?: OpenAIConfig
+): Promise<WorldNewspaperIssue> => {
+  const logsBlock = (recentLogs ?? []).slice(0, 120).map((x, i) => `${i + 1}. ${x}`).join('\n') || '（无）';
+  const prompt = `
+你是“异世界报纸总编”。请根据世界资料生成一份中文报纸，使用固定分隔符返回，禁止输出任何额外说明。
+
+输出格式必须严格包含这些区块（顺序一致）：
+[[TITLE]]...[[/TITLE]]
+[[SUBTITLE]]...[[/SUBTITLE]]
+[[DATELINE]]...[[/DATELINE]]
+[[LEAD_TITLE]]...[[/LEAD_TITLE]]
+[[LEAD_BODY]]...[[/LEAD_BODY]]
+[[COLUMN_1_TITLE]]...[[/COLUMN_1_TITLE]]
+[[COLUMN_1_BODY]]...[[/COLUMN_1_BODY]]
+[[COLUMN_2_TITLE]]...[[/COLUMN_2_TITLE]]
+[[COLUMN_2_BODY]]...[[/COLUMN_2_BODY]]
+[[COLUMN_3_TITLE]]...[[/COLUMN_3_TITLE]]
+[[COLUMN_3_BODY]]...[[/COLUMN_3_BODY]]
+[[COLUMN_4_TITLE]]...[[/COLUMN_4_TITLE]]
+[[COLUMN_4_BODY]]...[[/COLUMN_4_BODY]]
+[[QUOTE]]...[[/QUOTE]]
+[[ALERTS]]
+- ...
+- ...
+[[/ALERTS]]
+[[FOOTER]]...[[/FOOTER]]
+
+写作要求：
+1) 尽量覆盖最近发生的大事：战争、围城、入侵、关系变化、势力消长、人物动向。
+2) 语气是“异世界报纸”，可有夸张标题，但正文不能凭空编造与输入矛盾的信息。
+3) 每个 COLUMN_BODY 至少 90 字，LEAD_BODY 至少 140 字。
+4) ALERTS 3~6 条，每条一句短讯。
+5) 只输出上述分隔块，不要 markdown 代码块。
+
+【当前游戏天数】
+第 ${day} 天
+
+【世界资料（Markdown）】
+${String(worldMarkdown ?? '').trim() || '（无）'}
+
+【最近日志（新到旧）】
+${logsBlock}
+  `.trim();
+
+  const openAIConfig = requireOpenAIConfig(openAI);
+  if (openAIConfig) {
+    const url = `${normalizeProviderBaseUrl(openAIConfig.provider, openAIConfig.baseUrl)}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openAIConfig.apiKey}`,
+      },
+      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+        model: openAIConfig.model,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: '只输出分隔块内容。' }
+        ],
+        temperature: 0.92
+      }))
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
+    }
+    const json = await res.json().catch(() => null) as any;
+    const text = json?.choices?.[0]?.message?.content;
+    if (!text) throw new Error('OpenAI 返回为空');
+    return parseNewspaper(String(text));
+  }
+
+  const model = "gemini-3-flash-preview";
+  const response = await getGeminiClient(openAI?.provider === 'GEMINI' ? openAI.apiKey : undefined).models.generateContent({
+    model,
+    contents: prompt,
+    config: {
+      temperature: 0.92,
+    },
+  });
+  const text = response.text;
+  if (!text) throw new Error("No response from AI");
+  return parseNewspaper(String(text));
 };
 
 export type UndeadChatLine = { role: 'PLAYER' | 'UNDEAD'; text: string };

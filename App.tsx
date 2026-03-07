@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract, WorldNewspaperIssue } from './types';
 import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './constants';
-import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
+import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { Button } from './components/Button';
 import { BigMapView } from './components/BigMapView';
 import { BattleView } from './components/BattleView';
@@ -994,6 +994,8 @@ export default function App() {
 
   // Logs
   const [logs, setLogs] = useState<string[]>(["欢迎来到《卡拉迪亚编年史》。拖动地图探索，滚轮缩放，点击据点移动。"]);
+  const [worldNewspaperIssue, setWorldNewspaperIssue] = useState<WorldNewspaperIssue | null>(null);
+  const [isWorldNewspaperLoading, setIsWorldNewspaperLoading] = useState(false);
   const [isLogExpanded, setIsLogExpanded] = useState(false);
   const mapRef = useRef<HTMLDivElement>(null);
   const hasArrivedRef = useRef(false);
@@ -9293,6 +9295,31 @@ export default function App() {
     }
   };
 
+  const handleGenerateWorldNewspaper = async () => {
+    if (isWorldNewspaperLoading) return;
+    const aiConfig = buildAIConfig();
+    if (!aiConfig) {
+      addLog('未配置 AI，无法生成异世界报纸。');
+      return;
+    }
+    setIsWorldNewspaperLoading(true);
+    try {
+      const markdown = buildWorldBoardMarkdown();
+      const issue = await generateWorldNewspaper(
+        player.day,
+        markdown,
+        logs.slice(0, 120),
+        aiConfig
+      );
+      setWorldNewspaperIssue(issue);
+      addLog('异世界报纸已生成。');
+    } catch (e: any) {
+      addLog(e?.message || '异世界报纸生成失败。');
+    } finally {
+      setIsWorldNewspaperLoading(false);
+    }
+  };
+
   const normalizeView = (raw: unknown, hasLocation: boolean): GameView => {
     const value = typeof raw === 'string' ? raw : 'MAP';
     const safe = value as GameView;
@@ -10291,6 +10318,9 @@ export default function App() {
         siegeEngineArchive={siegeEngineArchive}
         defenseArchive={defenseArchive}
         worldForces={worldForces}
+        worldNewspaperIssue={worldNewspaperIssue}
+        isWorldNewspaperLoading={isWorldNewspaperLoading}
+        onGenerateWorldNewspaper={handleGenerateWorldNewspaper}
         onOpenTroopArchive={() => setView('TROOP_ARCHIVE')}
         onBackToMap={() => setView('MAP')}
         onExportMarkdown={exportWorldBoardMarkdown}

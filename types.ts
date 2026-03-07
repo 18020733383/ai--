@@ -609,3 +609,16 @@ export type WorldBattleReport = {
   keyUnitDamageSummary: string;
   rounds: BattleRound[];
 };
+
+export type WorldNewspaperIssue = {
+  title: string;
+  subtitle: string;
+  dateline: string;
+  leadTitle: string;
+  leadBody: string;
+  columns: Array<{ title: string; body: string }>;
+  quote: string;
+  alerts: string[];
+  footer: string;
+  raw: string;
+};

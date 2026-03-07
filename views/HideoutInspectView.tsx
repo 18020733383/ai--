@@ -210,7 +210,9 @@ export const HideoutInspectView: React.FC<HideoutInspectViewProps> = ({
     const workerCount = Math.max(1, Math.min(6, Math.max(1, Math.floor(buildingNodes.length / 3))));
     const make = (id: string, role: Role, name: string, wp: number, r: number, speed: number): NpcAgent => {
       const p = template.waypoints[wp % template.waypoints.length] ?? { x: 140, y: 140 };
-      return { id, role, name, x: p.x, y: p.y, r, speed, waitMs: 0, targetIndex: (wp + 1) % template.waypoints.length };
+      const startWait = 900 + Math.floor(Math.random() * 2200);
+      const jump = 1 + Math.floor(Math.random() * Math.max(2, template.waypoints.length - 1));
+      return { id, role, name, x: p.x, y: p.y, r, speed, waitMs: startWait, targetIndex: (wp + jump) % template.waypoints.length };
     };
     const npcs: NpcAgent[] = [];
     for (let i = 0; i < guardCount; i++) npcs.push(make(`guard_${i}`, 'GUARD', `岗哨 ${i + 1}`, i, 9, 1.8));
@@ -312,7 +314,7 @@ export const HideoutInspectView: React.FC<HideoutInspectViewProps> = ({
       }
 
       const heroNodes = followedHeroes.map((h, i) => {
-        const idx = Math.max(0, s.trail.length - 1 - (i + 1) * 12);
+        const idx = Math.max(0, s.trail.length - 1 - (i + 1) * 26);
         const p = s.trail[idx] ?? s.player;
         return { id: h.id, x: p.x - 10 + i * 4, y: p.y + 16 + i * 4, name: `${h.title}${h.name}` };
       });
@@ -412,9 +414,17 @@ export const HideoutInspectView: React.FC<HideoutInspectViewProps> = ({
           const vx = target.x - x;
           const vy = target.y - y;
           const dist = Math.hypot(vx, vy);
-          if (dist < 6) {
-            waitMs = 500 + Math.floor(Math.random() * 1800);
-            targetIndex = Math.floor(Math.random() * template.waypoints.length);
+          if (dist < 8) {
+            const waitMin = agent.role === 'GUARD' ? 2600 : agent.role === 'WORKER' ? 2200 : 1800;
+            const waitMax = agent.role === 'GUARD' ? 8200 : agent.role === 'WORKER' ? 7200 : 6400;
+            waitMs = waitMin + Math.floor(Math.random() * Math.max(1, waitMax - waitMin));
+            if (agent.role === 'GUARD' || agent.role === 'GUARDIAN') {
+              const delta = Math.floor(Math.random() * 3) - 1;
+              targetIndex = clamp(targetIndex + delta, 0, Math.max(0, template.waypoints.length - 1));
+            } else {
+              const step = 2 + Math.floor(Math.random() * Math.max(2, Math.floor(template.waypoints.length / 2)));
+              targetIndex = (targetIndex + step) % template.waypoints.length;
+            }
           } else {
             const step = Math.min(agent.speed * (dt / 16) * 2.8, dist);
             x += (vx / dist) * step;
