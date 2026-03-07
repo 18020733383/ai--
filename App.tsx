@@ -10317,15 +10317,6 @@ export default function App() {
         .sort((a, b) => b.power - a.power)
         .slice(0, 20)
         .map(f => `${f.kind} ${f.name} @ ${f.locationName} 兵力${f.troopCount} 战力${Math.round(f.power)}`);
-      const relationPairs = [] as Array<{ a: string; b: string; value: number }>;
-      for (let i = 0; i < FACTIONS.length; i += 1) {
-        for (let j = i + 1; j < FACTIONS.length; j += 1) {
-          const a = FACTIONS[i];
-          const b = FACTIONS[j];
-          const value = clampRelation(Number((worldDiplomacy.factionRelations as any)?.[a.id]?.[b.id] ?? 0));
-          if (value !== 0) relationPairs.push({ a: a.shortName, b: b.shortName, value });
-        }
-      }
       return generateWorldNewspaper({
         day: player.day,
         locationName: currentLocation?.name ?? '野外',
@@ -10336,10 +10327,7 @@ export default function App() {
         diplomacyEvents: diplomacyLines,
         relationAlerts,
         invasionAlerts,
-        worldForces: forceLines,
-        battleTimeline: battleTimeline.slice(-14).map(x => ({ label: `D${x.day}`, value: x.count })),
-        topForcePowers: [...worldForces].sort((a, b) => b.power - a.power).slice(0, 10).map(f => ({ label: f.name.slice(0, 16), value: Math.round(f.power) })),
-        relationPairs: relationPairs.sort((a, b) => Math.abs(b.value) - Math.abs(a.value)).slice(0, 18)
+        worldForces: forceLines
       }, aiConfig);
     };
     return (

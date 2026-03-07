@@ -149,94 +149,7 @@ export const WorldBoardView = ({
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-  const normalizeChartRows = (rows?: Array<{ label: string; value: number }>, fallbackLabel = '项') => {
-    const safe = Array.isArray(rows) ? rows : [];
-    const normalized = safe
-      .map((x, i) => ({
-        label: String(x?.label ?? `${fallbackLabel}${i + 1}`),
-        value: Math.max(0, Number(x?.value ?? 0))
-      }))
-      .filter(x => Number.isFinite(x.value))
-      .slice(0, 16);
-    return normalized.length > 0 ? normalized : [{ label: `${fallbackLabel}1`, value: 0 }];
-  };
-
-  const buildLinePathByRows = (rows: Array<{ label: string; value: number }>, width: number, height: number, padding: number) => {
-    if (rows.length === 0) return '';
-    const max = Math.max(1, ...rows.map(x => x.value));
-    const stepX = rows.length > 1 ? (width - padding * 2) / (rows.length - 1) : 0;
-    return rows.map((point, index) => {
-      const x = padding + stepX * index;
-      const y = height - padding - (point.value / max) * (height - padding * 2);
-      return `${index === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
-    }).join(' ');
-  };
-
-  const renderRelationGraphSvg = (issue: WorldNewspaperIssue, width: number, height: number) => {
-    const nodesRaw = issue?.relationGraph?.nodes ?? [];
-    const linksRaw = issue?.relationGraph?.links ?? [];
-    const nodes = nodesRaw.slice(0, 14);
-    if (nodes.length === 0) {
-      return (
-        <div className="text-xs text-stone-500">暂无关系图数据。</div>
-      );
-    }
-    const cx = width / 2;
-    const cy = height / 2;
-    const radius = Math.min(width, height) * 0.36;
-    const positions = new Map<string, { x: number; y: number; label: string; group?: string }>();
-    nodes.forEach((node, index) => {
-      const ang = (Math.PI * 2 * index) / nodes.length - Math.PI / 2;
-      positions.set(node.id, {
-        x: cx + Math.cos(ang) * radius,
-        y: cy + Math.sin(ang) * radius,
-        label: node.label,
-        group: node.group
-      });
-    });
-    const links = linksRaw
-      .filter(l => positions.has(l.source) && positions.has(l.target))
-      .slice(0, 24);
-    return (
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-        <rect x={0} y={0} width={width} height={height} fill="rgba(255,255,255,0.58)" stroke="rgba(41,37,36,0.35)" />
-        {links.map((link, idx) => {
-          const a = positions.get(link.source)!;
-          const b = positions.get(link.target)!;
-          const positive = Number(link.weight) >= 0;
-          return (
-            <g key={`rl_${idx}`}>
-              <line
-                x1={a.x}
-                y1={a.y}
-                x2={b.x}
-                y2={b.y}
-                stroke={positive ? 'rgba(21,128,61,0.75)' : 'rgba(185,28,28,0.78)'}
-                strokeWidth={1 + Math.min(3, Math.abs(Number(link.weight || 0)) / 35)}
-              />
-            </g>
-          );
-        })}
-        {[...positions.entries()].map(([id, p], idx) => (
-          <g key={`rn_${id}_${idx}`}>
-            <circle cx={p.x} cy={p.y} r={10} fill={p.group === 'FACTION' ? '#b91c1c' : '#1d4ed8'} stroke="#f8fafc" />
-            <text x={p.x} y={p.y - 14} textAnchor="middle" fontSize="10" fill="#1f2937">{p.label}</text>
-          </g>
-        ))}
-      </svg>
-    );
-  };
-
   const buildPaperHtml = (issue: WorldNewspaperIssue) => {
-    const lineRows = normalizeChartRows(issue.charts?.line, '日');
-    const barRows = normalizeChartRows(issue.charts?.bar, '部队');
-    const progressRows = normalizeChartRows(issue.charts?.progress, '关系');
-    const keywords = (issue.keywords && issue.keywords.length > 0 ? issue.keywords : issue.ticker).slice(0, 12);
-    const lineW = 520;
-    const lineH = 180;
-    const linePath = buildLinePathByRows(lineRows, lineW, lineH, 22);
-    const lineMax = Math.max(1, ...lineRows.map(r => r.value));
-    const barMax = Math.max(1, ...barRows.map(r => r.value));
     const columns = issue.sections
       .slice(0, 6)
       .map(section => `
@@ -248,49 +161,7 @@ export const WorldBoardView = ({
       `)
       .join('\n');
     const briefs = issue.briefs.map(line => `<li>${escapeHtml(line)}</li>`).join('\n');
-    const keywordBadges = keywords.map(line => `<span>#${escapeHtml(line)}</span>`).join('\n');
-    const lineDots = lineRows.map((point, index) => {
-      const stepX = lineRows.length > 1 ? (lineW - 44) / (lineRows.length - 1) : 0;
-      const x = 22 + stepX * index;
-      const y = lineH - 22 - (point.value / lineMax) * (lineH - 44);
-      return `<circle cx="${x.toFixed(1)}" cy="${y.toFixed(1)}" r="2.8" fill="#7f1d1d" />`;
-    }).join('');
-    const bars = barRows.slice(0, 8).map((row, idx) => {
-      const bw = 56;
-      const gap = 10;
-      const x = 20 + idx * (bw + gap);
-      const h = ((row.value / barMax) * 110);
-      const y = 142 - h;
-      return `<g><rect x="${x}" y="${y.toFixed(1)}" width="${bw}" height="${h.toFixed(1)}" fill="#b45309"/><text x="${x + bw/2}" y="156" text-anchor="middle" font-size="9">${escapeHtml(row.label.slice(0,6))}</text></g>`;
-    }).join('');
-    const progressItems = progressRows.slice(0, 8).map(row => {
-      const v = Math.max(0, Math.min(100, row.value));
-      return `<div class="pr-item"><div class="pr-label">${escapeHtml(row.label)}</div><div class="pr-track"><div class="pr-fill" style="width:${v}%"></div></div><div class="pr-val">${Math.round(v)}</div></div>`;
-    }).join('\n');
-    const relationNodes = (issue.relationGraph?.nodes ?? []).slice(0, 14);
-    const relationLinks = (issue.relationGraph?.links ?? []).slice(0, 24);
-    const graphW = 520;
-    const graphH = 270;
-    const gx = graphW / 2;
-    const gy = graphH / 2;
-    const gr = Math.min(graphW, graphH) * 0.36;
-    const pos = relationNodes.map((n, i) => {
-      const ang = (Math.PI * 2 * i) / Math.max(1, relationNodes.length) - Math.PI / 2;
-      return { id: n.id, label: n.label, x: gx + Math.cos(ang) * gr, y: gy + Math.sin(ang) * gr, group: n.group };
-    });
-    const posMap = new Map(pos.map(p => [p.id, p]));
-    const relLines = relationLinks.filter(l => posMap.has(l.source) && posMap.has(l.target)).map(l => {
-      const a = posMap.get(l.source)!;
-      const b = posMap.get(l.target)!;
-      const w = Number(l.weight || 0);
-      const stroke = w >= 0 ? 'rgba(21,128,61,0.78)' : 'rgba(185,28,28,0.78)';
-      const sw = 1 + Math.min(3, Math.abs(w) / 35);
-      return `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(1)}" stroke="${stroke}" stroke-width="${sw.toFixed(1)}"/>`;
-    }).join('');
-    const relNodes = pos.map(p => {
-      const fill = p.group === 'FACTION' ? '#991b1b' : '#1d4ed8';
-      return `<g><circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="9" fill="${fill}" stroke="#f8fafc"/><text x="${p.x.toFixed(1)}" y="${(p.y - 14).toFixed(1)}" text-anchor="middle" font-size="10">${escapeHtml(p.label.slice(0,10))}</text></g>`;
-    }).join('');
+    const ticker = issue.ticker.map(line => `<span>${escapeHtml(line)}</span>`).join('\n');
     return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -298,97 +169,71 @@ export const WorldBoardView = ({
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(issue.masthead)}</title>
   <style>
-    body{margin:0;background:#ddd5c5;font-family: "Noto Serif SC","Songti SC",serif;color:#111}
-    .paper{max-width:1240px;margin:16px auto;background:#f4ead6;border:1px solid #9d947f;box-shadow:0 8px 24px rgba(0,0,0,.22)}
-    .head{padding:20px 26px;border-bottom:3px double #111;background:linear-gradient(180deg,#f8f1e3,#f1e5cd)}
-    .mast{font-size:52px;font-weight:800;letter-spacing:2px}
-    .sub{margin-top:4px;font-size:13px;color:#3f3f46}
-    .meta{display:flex;justify-content:space-between;font-size:12px;margin-top:10px;color:#444}
-    .body{display:grid;grid-template-columns:1.35fr 1fr 0.88fr;gap:16px;padding:16px 20px}
-    .lead h1{font-size:44px;line-height:1.08;margin:8px 0}
-    .lead .deck{font-size:16px;color:#222;border-left:4px solid #111;padding-left:10px}
-    .lead p{font-size:16px;line-height:1.7;text-align:justify}
-    .tag{display:inline-block;font-size:11px;padding:2px 8px;border:1px solid #111;letter-spacing:1px}
-    .cols{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-    .col-item{border-top:1px solid #1f2937;padding-top:8px}
-    .col-item h3{font-size:24px;line-height:1.2;margin:6px 0}
-    .col-item p{font-size:14px;line-height:1.65}
-    .side .quote{border:1px solid #111;padding:10px;background:#f3ead7;font-size:18px;line-height:1.5}
-    .side .note{margin-top:10px;font-size:13px;line-height:1.6;color:#333}
-    .briefs{margin-top:16px;border-top:2px solid #111;padding-top:8px}
-    .briefs h4{font-size:18px;margin:4px 0 8px}
-    .briefs li{margin:6px 0;line-height:1.5;font-size:14px}
-    .insight{margin:0 20px 8px;border:1px solid #8f8573;background:#f9f3e5;padding:12px;display:grid;grid-template-columns:1.1fr .9fr;gap:12px}
-    .chart-title{font-size:12px;letter-spacing:1px;color:#444}
-    .mini-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-    .pr-item{display:grid;grid-template-columns:1fr 3fr auto;gap:8px;align-items:center;font-size:12px}
-    .pr-track{height:8px;background:#e5dbc4;border:1px solid #b6a98f}
-    .pr-fill{height:100%;background:linear-gradient(90deg,#b45309,#d97706)}
-    .keywords{border-top:2px solid #111;padding:9px 16px;display:flex;flex-wrap:wrap;gap:8px;background:#efe3c8}
-    .keywords span{font-size:12px;padding:2px 8px;border:1px solid #8f8573;background:#f8f3e8}
-    .mermaid{margin:8px 20px 16px;border:1px dashed #8f8573;background:#f8f2e2;padding:8px}
-    .mermaid pre{margin:0;white-space:pre-wrap;font-size:11px;line-height:1.4}
+    @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+SC:wght@400;700;900&display=swap');
+    body{margin:0;background:#e8e4d8;font-family: "Noto Serif SC","Songti SC",serif;color:#1c1917}
+    .paper{max-width:1200px;margin:24px auto;background:#f0e6d2;border:4px double #292524;box-shadow:0 10px 30px rgba(0,0,0,.25);padding:4px}
+    .inner{border:1px solid #44403c;padding:24px}
+    .head{text-align:center;border-bottom:3px double #1c1917;padding-bottom:16px;margin-bottom:20px}
+    .mast{font-size:64px;font-weight:900;letter-spacing:4px;line-height:1;text-shadow:2px 2px 0 rgba(0,0,0,0.1);margin-bottom:8px}
+    .sub{font-size:15px;font-style:italic;color:#44403c;margin-bottom:12px;letter-spacing:1px}
+    .meta{display:flex;justify-content:space-between;border-top:1px solid #1c1917;border-bottom:1px solid #1c1917;padding:6px 0;font-size:13px;font-weight:700;text-transform:uppercase}
+    .body{display:grid;grid-template-columns:1.6fr 1fr 0.8fr;gap:24px}
+    .lead h1{font-size:42px;line-height:1.1;font-weight:900;margin:12px 0}
+    .lead .deck{font-size:18px;color:#292524;font-style:italic;border-left:4px solid #b91c1c;padding-left:12px;margin-bottom:16px;line-height:1.5}
+    .lead p{font-size:16px;line-height:1.8;text-align:justify}
+    .tag{display:inline-block;background:#1c1917;color:#f0e6d2;font-size:11px;padding:2px 6px;font-weight:700;letter-spacing:1px}
+    .tag.red{background:#b91c1c}
+    .cols{display:flex;flex-direction:column;gap:20px;border-left:1px solid #a8a29e;border-right:1px solid #a8a29e;padding:0 20px}
+    .col-item:not(:first-child){border-top:1px solid #a8a29e;padding-top:16px;margin-top:16px}
+    .col-item h3{font-size:20px;line-height:1.25;font-weight:700;margin:6px 0}
+    .col-item p{font-size:14px;line-height:1.6;color:#292524}
+    .side{background:#e7ded0;padding:16px;border:1px solid #a8a29e}
+    .side .quote{font-size:20px;line-height:1.5;font-weight:700;font-style:italic;margin:12px 0;color:#7f1d1d}
+    .side .note{font-size:13px;line-height:1.6;color:#44403c;border-top:1px solid #a8a29e;padding-top:12px;margin-top:12px}
+    .briefs{margin-top:24px;background:#1c1917;color:#f0e6d2;padding:16px}
+    .briefs h4{margin:0 0 10px;font-size:16px;border-bottom:1px solid #57534e;padding-bottom:6px}
+    .briefs ul{margin:0;padding-left:18px}
+    .briefs li{margin:6px 0;font-size:13px;line-height:1.5}
+    .ticker{margin-top:24px;border-top:3px double #1c1917;padding-top:12px;display:flex;flex-wrap:wrap;justify-content:center;gap:16px}
+    .ticker span{font-size:14px;font-weight:700;color:#b91c1c;background:#e7ded0;padding:2px 8px;border-radius:2px}
+    @media (max-width: 1024px) {
+      .body { grid-template-columns: 1fr; }
+      .cols { border: none; padding: 0; border-top: 1px solid #a8a29e; padding-top: 20px; }
+    }
   </style>
 </head>
 <body>
   <main class="paper">
-    <header class="head">
-      <div class="mast">${escapeHtml(issue.masthead)}</div>
-      <div class="sub">${escapeHtml(issue.subtitle)}</div>
-      <div class="meta">
-        <span>${escapeHtml(issue.dateLine)}</span>
-        <span>${escapeHtml(issue.issueNo)}</span>
-      </div>
-    </header>
-    <section class="insight">
-      <div>
-        <div class="chart-title">战况折线</div>
-        <svg width="${lineW}" height="${lineH}" viewBox="0 0 ${lineW} ${lineH}">
-          <rect x="0" y="0" width="${lineW}" height="${lineH}" fill="rgba(255,255,255,.65)" stroke="rgba(41,37,36,.35)"/>
-          <path d="${linePath}" fill="none" stroke="#7f1d1d" stroke-width="2.2"/>
-          ${lineDots}
-        </svg>
-      </div>
-      <div class="mini-grid">
-        <div>
-          <div class="chart-title">战力柱状</div>
-          <svg width="100%" height="168" viewBox="0 0 560 168">
-            <rect x="0" y="0" width="560" height="168" fill="rgba(255,255,255,.65)" stroke="rgba(41,37,36,.35)"/>
-            ${bars}
-          </svg>
+    <div class="inner">
+      <header class="head">
+        <div class="mast">${escapeHtml(issue.masthead)}</div>
+        <div class="sub">${escapeHtml(issue.subtitle)}</div>
+        <div class="meta">
+          <span>${escapeHtml(issue.dateLine)}</span>
+          <span>${escapeHtml(issue.issueNo)}</span>
+          <span>售价：1 第纳尔</span>
         </div>
-        <div>
-          <div class="chart-title">关系条形</div>
-          ${progressItems}
-        </div>
-      </div>
-    </section>
-    <section class="body">
-      <article class="lead">
-        <div class="tag">${escapeHtml(issue.leadTag)}</div>
-        <h1>${escapeHtml(issue.leadTitle)}</h1>
-        <div class="deck">${escapeHtml(issue.leadDeck)}</div>
-        <p>${escapeHtml(issue.leadBody)}</p>
-        <div class="briefs">
-          <h4>快讯</h4>
-          <ul>${briefs}</ul>
-        </div>
-      </article>
-      <section class="cols">${columns}</section>
-      <aside class="side">
-        <div class="tag">社评</div>
-        <div class="quote">${escapeHtml(issue.sideQuote)}</div>
-        <div class="note">${escapeHtml(issue.sideNote)}</div>
-        <div class="chart-title" style="margin-top:10px">关系图谱</div>
-        <svg width="${graphW}" height="${graphH}" viewBox="0 0 ${graphW} ${graphH}">
-          <rect x="0" y="0" width="${graphW}" height="${graphH}" fill="rgba(255,255,255,.65)" stroke="rgba(41,37,36,.35)"/>
-          ${relLines}
-          ${relNodes}
-        </svg>
-      </aside>
-    </section>
-    <footer class="keywords">${keywordBadges}</footer>
-    <section class="mermaid"><pre>${escapeHtml(issue.mermaid || '')}</pre></section>
+      </header>
+      <section class="body">
+        <article class="lead">
+          <div class="tag red">${escapeHtml(issue.leadTag)}</div>
+          <h1>${escapeHtml(issue.leadTitle)}</h1>
+          <div class="deck">${escapeHtml(issue.leadDeck)}</div>
+          <p>${escapeHtml(issue.leadBody)}</p>
+          <div class="briefs">
+            <h4>最新快讯</h4>
+            <ul>${briefs}</ul>
+          </div>
+        </article>
+        <section class="cols">${columns}</section>
+        <aside class="side">
+          <div class="tag">社评</div>
+          <div class="quote">${escapeHtml(issue.sideQuote)}</div>
+          <div class="note">${escapeHtml(issue.sideNote)}</div>
+        </aside>
+      </section>
+      <footer class="ticker">${ticker}</footer>
+    </div>
   </main>
 </body>
 </html>`;
@@ -422,51 +267,6 @@ export const WorldBoardView = ({
     }
   };
 
-  const renderPaperLineChart = (rows: Array<{ label: string; value: number }>) => {
-    const w = 520;
-    const h = 180;
-    const p = 22;
-    const max = Math.max(1, ...rows.map(x => x.value));
-    const path = buildLinePathByRows(rows, w, h, p);
-    return (
-      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`}>
-        <rect x={0} y={0} width={w} height={h} fill="rgba(255,255,255,0.58)" stroke="rgba(41,37,36,0.35)" />
-        <path d={path} fill="none" stroke="rgba(127,29,29,0.95)" strokeWidth={2.2} />
-        {rows.map((point, index) => {
-          const stepX = rows.length > 1 ? (w - p * 2) / (rows.length - 1) : 0;
-          const x = p + stepX * index;
-          const y = h - p - (point.value / max) * (h - p * 2);
-          return <circle key={`lc_${index}`} cx={x} cy={y} r={2.8} fill="rgba(127,29,29,0.95)" />;
-        })}
-      </svg>
-    );
-  };
-
-  const renderPaperBarChart = (rows: Array<{ label: string; value: number }>) => {
-    const w = 560;
-    const h = 170;
-    const max = Math.max(1, ...rows.map(x => x.value));
-    const safe = rows.slice(0, 8);
-    return (
-      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`}>
-        <rect x={0} y={0} width={w} height={h} fill="rgba(255,255,255,0.58)" stroke="rgba(41,37,36,0.35)" />
-        {safe.map((row, idx) => {
-          const bw = 56;
-          const gap = 10;
-          const x = 20 + idx * (bw + gap);
-          const hh = (row.value / max) * 110;
-          const y = 142 - hh;
-          return (
-            <g key={`bc_${idx}`}>
-              <rect x={x} y={y} width={bw} height={hh} fill="rgba(180,83,9,0.9)" />
-              <text x={x + bw / 2} y={156} textAnchor="middle" fontSize="9" fill="#1f2937">{row.label.slice(0, 6)}</text>
-            </g>
-          );
-        })}
-      </svg>
-    );
-  };
-
   return (
     <div className="min-h-[80vh] p-4 pt-6">
       <div className="max-w-6xl mx-auto">
@@ -495,82 +295,76 @@ export const WorldBoardView = ({
         </div>
         {paperError && <div className="mb-4 text-sm text-red-300 bg-red-950/40 border border-red-900 rounded px-3 py-2">{paperError}</div>}
         {newspaper && (
-          <div className="mb-6 bg-[#f4ead6] text-stone-900 border border-[#9d947f] rounded overflow-hidden shadow-xl">
-            <div className="border-b-[3px] border-stone-900 px-4 py-3 bg-gradient-to-b from-[#f8f1e3] to-[#f1e5cd]">
-              <div className="text-3xl md:text-4xl font-black tracking-widest">{newspaper.masthead}</div>
-              <div className="text-xs text-stone-700 mt-1">{newspaper.subtitle}</div>
-              <div className="text-[11px] text-stone-600 mt-2 flex justify-between">
-                <span>{newspaper.dateLine}</span>
-                <span>{newspaper.issueNo}</span>
-              </div>
-            </div>
-            <div className="mx-4 my-3 border border-[#8f8573] bg-[#f9f3e5] p-3 grid grid-cols-1 xl:grid-cols-[1.1fr_0.9fr] gap-3">
-              <div>
-                <div className="text-[11px] tracking-widest text-stone-700 mb-1">战况折线</div>
-                {renderPaperLineChart(normalizeChartRows(newspaper.charts?.line, '日'))}
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <div>
-                  <div className="text-[11px] tracking-widest text-stone-700 mb-1">战力柱状</div>
-                  {renderPaperBarChart(normalizeChartRows(newspaper.charts?.bar, '部队'))}
-                </div>
-                <div>
-                  <div className="text-[11px] tracking-widest text-stone-700 mb-1">关系条形</div>
-                  <div className="space-y-2">
-                    {normalizeChartRows(newspaper.charts?.progress, '关系').slice(0, 8).map((row, idx) => {
-                      const v = Math.max(0, Math.min(100, row.value));
-                      return (
-                        <div key={`pr_${idx}`} className="grid grid-cols-[1fr_3fr_auto] gap-2 items-center text-xs">
-                          <div className="truncate">{row.label}</div>
-                          <div className="h-2 bg-[#e5dbc4] border border-[#b6a98f]">
-                            <div className="h-full bg-gradient-to-r from-amber-700 to-amber-500" style={{ width: `${v}%` }} />
-                          </div>
-                          <div>{Math.round(v)}</div>
-                        </div>
-                      );
-                    })}
+          <div className="mb-6 bg-[#f0e6d2] text-[#1c1917] font-serif border-4 border-double border-[#292524] shadow-2xl mx-auto max-w-5xl">
+            <div className="p-1">
+              <div className="border border-[#44403c] p-6">
+                {/* Header */}
+                <div className="text-center border-b-4 border-double border-[#1c1917] pb-4 mb-6">
+                  <div className="text-5xl md:text-7xl font-black tracking-widest text-[#1c1917] mb-2 drop-shadow-sm">{newspaper.masthead}</div>
+                  <div className="text-sm md:text-base italic text-[#44403c] mb-3 tracking-widest">{newspaper.subtitle}</div>
+                  <div className="flex justify-between items-center border-t border-b border-[#1c1917] py-1.5 text-xs md:text-sm font-bold uppercase tracking-wide">
+                    <span>{newspaper.dateLine}</span>
+                    <span>{newspaper.issueNo}</span>
+                    <span className="hidden md:inline">售价：1 第纳尔</span>
                   </div>
                 </div>
-              </div>
-            </div>
-            <div className="p-4 grid grid-cols-1 xl:grid-cols-[1.45fr_1fr_0.9fr] gap-4">
-              <div>
-                <div className="inline-flex text-[10px] tracking-widest border border-stone-800 px-2 py-0.5">{newspaper.leadTag}</div>
-                <div className="text-3xl md:text-4xl font-black leading-tight mt-2">{newspaper.leadTitle}</div>
-                <div className="text-sm mt-2 border-l-4 border-stone-900 pl-3 text-stone-800">{newspaper.leadDeck}</div>
-                <div className="text-[15px] leading-7 mt-3 whitespace-pre-wrap">{newspaper.leadBody}</div>
-                <div className="mt-4 border-t-2 border-stone-900 pt-2">
-                  <div className="font-bold text-lg">快讯</div>
-                  <ul className="mt-1 text-sm leading-6 list-disc pl-5">
-                    {newspaper.briefs.map((line, idx) => <li key={`brief_${idx}`}>{line}</li>)}
-                  </ul>
+
+                {/* Body */}
+                <div className="grid grid-cols-1 xl:grid-cols-[1.6fr_1fr_0.8fr] gap-6">
+                  {/* Lead Story */}
+                  <div>
+                    <div className="inline-block bg-[#b91c1c] text-[#f0e6d2] text-[10px] px-2 py-0.5 font-bold tracking-widest mb-2">{newspaper.leadTag}</div>
+                    <div className="text-3xl md:text-5xl font-black leading-[1.1] mb-3">{newspaper.leadTitle}</div>
+                    <div className="text-base md:text-lg italic text-[#292524] border-l-4 border-[#b91c1c] pl-3 mb-4 leading-relaxed">
+                      {newspaper.leadDeck}
+                    </div>
+                    <div className="text-[15px] leading-relaxed text-justify whitespace-pre-wrap">
+                      {newspaper.leadBody}
+                    </div>
+                    
+                    {/* Briefs Box */}
+                    <div className="mt-6 bg-[#1c1917] text-[#f0e6d2] p-4 shadow-md">
+                      <div className="font-bold text-lg border-b border-[#57534e] pb-1 mb-2">最新快讯</div>
+                      <ul className="text-sm leading-6 list-disc pl-5 space-y-1">
+                        {newspaper.briefs.map((line, idx) => <li key={`brief_${idx}`}>{line}</li>)}
+                      </ul>
+                    </div>
+                  </div>
+
+                  {/* Columns */}
+                  <div className="flex flex-col gap-5 xl:border-l xl:border-r border-[#a8a29e] xl:px-5">
+                    {newspaper.sections.slice(0, 6).map((section, idx) => (
+                      <div key={`section_${idx}`} className={idx > 0 ? "border-t border-[#a8a29e] pt-4" : ""}>
+                        <div className="inline-block bg-[#1c1917] text-[#f0e6d2] text-[10px] px-2 py-0.5 font-bold tracking-widest mb-1">{section.tag}</div>
+                        <div className="text-xl font-bold leading-tight mb-1">{section.title}</div>
+                        <div className="text-sm leading-relaxed text-[#292524]">{section.body}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Side Column */}
+                  <div>
+                    <div className="bg-[#e7ded0] p-4 border border-[#a8a29e] shadow-sm">
+                      <div className="inline-block bg-[#1c1917] text-[#f0e6d2] text-[10px] px-2 py-0.5 font-bold tracking-widest mb-2">社评</div>
+                      <div className="text-xl leading-relaxed font-bold italic text-[#7f1d1d] mb-3">
+                        “{newspaper.sideQuote.replace(/^[“"]|[”"]$/g, '')}”
+                      </div>
+                      <div className="text-xs leading-relaxed text-[#44403c] border-t border-[#a8a29e] pt-3">
+                        {newspaper.sideNote}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Ticker Footer */}
+                <div className="mt-6 pt-3 border-t-4 border-double border-[#1c1917] flex flex-wrap justify-center gap-3">
+                  {newspaper.ticker.map((line, idx) => (
+                    <span key={`ticker_${idx}`} className="text-xs font-bold bg-[#e7ded0] text-[#b91c1c] px-2 py-0.5 rounded shadow-sm">
+                      {line.startsWith('#') ? line : `#${line}`}
+                    </span>
+                  ))}
                 </div>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-3">
-                {newspaper.sections.slice(0, 6).map((section, idx) => (
-                  <div key={`section_${idx}`} className="border-t border-stone-700 pt-2">
-                    <div className="inline-flex text-[10px] tracking-widest border border-stone-800 px-2 py-0.5">{section.tag}</div>
-                    <div className="text-xl font-black leading-tight mt-1">{section.title}</div>
-                    <div className="text-sm leading-6 mt-1 text-stone-800">{section.body}</div>
-                  </div>
-                ))}
-              </div>
-              <div>
-                <div className="inline-flex text-[10px] tracking-widest border border-stone-800 px-2 py-0.5">社评</div>
-                <div className="mt-2 border border-stone-800 bg-[#efe3c8] p-3 text-lg leading-8">{newspaper.sideQuote}</div>
-                <div className="mt-3 text-sm leading-6 text-stone-800">{newspaper.sideNote}</div>
-                <div className="text-[11px] tracking-widest text-stone-700 mt-3 mb-1">关系图谱</div>
-                {renderRelationGraphSvg(newspaper, 520, 270)}
-              </div>
-            </div>
-            <div className="mx-4 mb-3 border border-dashed border-[#8f8573] bg-[#f8f2e2] p-2">
-              <div className="text-[11px] tracking-widest text-stone-700 mb-1">Mermaid 文本</div>
-              <pre className="text-[11px] leading-5 whitespace-pre-wrap">{newspaper.mermaid}</pre>
-            </div>
-            <div className="border-t-2 border-stone-900 px-4 py-2 text-xs text-stone-700 flex flex-wrap gap-2 bg-[#efe3c8]">
-              {(newspaper.keywords && newspaper.keywords.length > 0 ? newspaper.keywords : newspaper.ticker).slice(0, 12).map((line, idx) => (
-                <span key={`keyword_${idx}`} className="px-2 py-0.5 border border-[#8f8573] bg-[#f8f3e8]">#{line}</span>
-              ))}
             </div>
           </div>
         )}

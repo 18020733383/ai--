@@ -1026,17 +1026,6 @@ export type WorldNewspaperIssue = {
   sections: WorldNewspaperSection[];
   briefs: string[];
   ticker: string[];
-  keywords: string[];
-  charts: {
-    line: Array<{ label: string; value: number }>;
-    bar: Array<{ label: string; value: number }>;
-    progress: Array<{ label: string; value: number }>;
-  };
-  relationGraph: {
-    nodes: Array<{ id: string; label: string; group?: string }>;
-    links: Array<{ source: string; target: string; weight: number; label?: string }>;
-  };
-  mermaid: string;
 };
 
 export const generateWorldNewspaper = async (
@@ -1051,9 +1040,6 @@ export const generateWorldNewspaper = async (
     relationAlerts: string[];
     invasionAlerts: string[];
     worldForces: string[];
-    battleTimeline?: Array<{ label: string; value: number }>;
-    topForcePowers?: Array<{ label: string; value: number }>;
-    relationPairs?: Array<{ a: string; b: string; value: number }>;
   },
   openAI?: OpenAIConfig
 ): Promise<WorldNewspaperIssue> => {
@@ -1064,19 +1050,14 @@ export const generateWorldNewspaper = async (
   const relationBlock = payload.relationAlerts.filter(Boolean).slice(0, 16).map(x => `- ${x}`).join('\n') || '（无）';
   const invasionBlock = payload.invasionAlerts.filter(Boolean).slice(0, 10).map(x => `- ${x}`).join('\n') || '（无）';
   const forceBlock = payload.worldForces.filter(Boolean).slice(0, 20).map(x => `- ${x}`).join('\n') || '（无）';
-  const lineDataBlock = (payload.battleTimeline ?? []).slice(0, 16).map(x => `- ${x.label}:${x.value}`).join('\n') || '（无）';
-  const barDataBlock = (payload.topForcePowers ?? []).slice(0, 16).map(x => `- ${x.label}:${x.value}`).join('\n') || '（无）';
-  const relationDataBlock = (payload.relationPairs ?? []).slice(0, 24).map(x => `- ${x.a} -> ${x.b}: ${x.value}`).join('\n') || '（无）';
   const prompt = `
 你是“异世界报社总编”。你将根据世界战况和外交动态，产出一版中文报纸数据（JSON）。
 要求：
 1) 语气像严肃但有戏剧性的战地新闻。
 2) 信息尽量覆盖：最近战斗、关系恶化、入侵风险、重点兵力动向。
 3) 不要胡编世界外设定，不确定时使用“据传”“尚待核实”等表达。
-4) 所有字段必须有值；sections 给 5~8 条；briefs 给 4~8 条；ticker 给 4~8 条；keywords 给 6~12 条。
+4) 所有字段必须有值；sections 给 5~8 条；briefs 给 4~8 条；ticker 给 8~12 个简短关键词（如“#北境集结”“#粮食紧缺”），用于底部滚动栏。
 5) 每段中文尽量简洁，leadBody 160~320 字，sections.body 60~160 字。
-6) 图表由本地渲染，你只需要返回数据，不要返回 HTML/Markdown 代码块。
-7) mermaid 字段只返回纯文本图定义（例如 graph LR ...），不加反引号。
 
 返回 JSON 字段：
 - masthead, subtitle, dateLine, issueNo, editorNote
@@ -1085,10 +1066,6 @@ export const generateWorldNewspaper = async (
 - sections: [{ tag, title, body }]
 - briefs: string[]
 - ticker: string[]
-- keywords: string[]
-- charts: { line:[{label,value}], bar:[{label,value}], progress:[{label,value}] }
-- relationGraph: { nodes:[{id,label,group}], links:[{source,target,weight,label}] }
-- mermaid: string
 
 【世界日期】第 ${payload.day} 天
 【当前地点】${payload.locationName}
@@ -1114,15 +1091,6 @@ ${invasionBlock}
 
 【兵力快照】
 ${forceBlock}
-
-【图表基础数据：战斗趋势】
-${lineDataBlock}
-
-【图表基础数据：部队战力排行】
-${barDataBlock}
-
-【图表基础数据：关系边】
-${relationDataBlock}
   `.trim();
 
   const normalizeText = (v: any, fallback: string) => {
@@ -1147,53 +1115,6 @@ ${relationDataBlock}
       .map((x: any) => String(x ?? '').trim())
       .filter(Boolean)
       .slice(0, 8);
-    const keywords = (Array.isArray(raw?.keywords) ? raw.keywords : [])
-      .map((x: any) => String(x ?? '').trim())
-      .filter(Boolean)
-      .slice(0, 12);
-    const parseChartRows = (rows: any, fallback: Array<{ label: string; value: number }>) => {
-      const list = Array.isArray(rows) ? rows : [];
-      const normalized = list
-        .map((x: any, i: number) => ({
-          label: normalizeText(x?.label, `项${i + 1}`).slice(0, 24),
-          value: Math.max(0, Number(x?.value ?? 0))
-        }))
-        .filter((x: any) => Number.isFinite(x.value))
-        .slice(0, 16);
-      return normalized.length > 0 ? normalized : fallback;
-    };
-    const fallbackLine = (payload.battleTimeline ?? []).slice(0, 10).map(x => ({ label: normalizeText(x.label, '日'), value: Math.max(0, Number(x.value || 0)) }));
-    const fallbackBar = (payload.topForcePowers ?? []).slice(0, 10).map(x => ({ label: normalizeText(x.label, '部队'), value: Math.max(0, Number(x.value || 0)) }));
-    const fallbackProgress = (payload.relationPairs ?? []).slice(0, 8).map(x => ({ label: `${normalizeText(x.a, '甲')}-${normalizeText(x.b, '乙')}`.slice(0, 24), value: Math.max(0, Math.min(100, Math.abs(Number(x.value || 0)))) }));
-    const relationNodesRaw = Array.isArray(raw?.relationGraph?.nodes) ? raw.relationGraph.nodes : [];
-    const relationLinksRaw = Array.isArray(raw?.relationGraph?.links) ? raw.relationGraph.links : [];
-    const relationNodes = relationNodesRaw
-      .map((n: any) => ({
-        id: normalizeText(n?.id, ''),
-        label: normalizeText(n?.label, ''),
-        group: normalizeText(n?.group, '')
-      }))
-      .filter((n: any) => n.id && n.label)
-      .slice(0, 20);
-    const relationLinks = relationLinksRaw
-      .map((l: any) => ({
-        source: normalizeText(l?.source, ''),
-        target: normalizeText(l?.target, ''),
-        weight: Math.max(-100, Math.min(100, Number(l?.weight ?? 0))),
-        label: normalizeText(l?.label, '')
-      }))
-      .filter((l: any) => l.source && l.target)
-      .slice(0, 28);
-    const fallbackRelationNodes = (() => {
-      const set = new Map<string, { id: string; label: string; group?: string }>();
-      (payload.relationPairs ?? []).slice(0, 16).forEach(p => {
-        if (!set.has(p.a)) set.set(p.a, { id: p.a, label: p.a, group: 'FACTION' });
-        if (!set.has(p.b)) set.set(p.b, { id: p.b, label: p.b, group: 'FACTION' });
-      });
-      return [...set.values()].slice(0, 16);
-    })();
-    const fallbackRelationLinks = (payload.relationPairs ?? []).slice(0, 24).map(p => ({ source: p.a, target: p.b, weight: Math.max(-100, Math.min(100, Number(p.value ?? 0))), label: `${p.value}` }));
-    const mermaidText = normalizeText(raw?.mermaid, '');
     return {
       masthead: normalizeText(raw?.masthead, '卡拉迪亚纪闻'),
       subtitle: normalizeText(raw?.subtitle, '战火、盟约与阴影'),
@@ -1208,18 +1129,7 @@ ${relationDataBlock}
       sideNote: normalizeText(raw?.sideNote, '注：本版内容来自前线记录、议会通报与城镇口述，部分仍待核实。'),
       sections: sections.length > 0 ? sections : [{ tag: '快讯', title: '暂无更多栏目', body: '今日信息量较少，报社将持续追踪。' }],
       briefs: briefs.length > 0 ? briefs : ['暂无简讯。'],
-      ticker: ticker.length > 0 ? ticker : ['暂无滚动快讯。'],
-      keywords: keywords.length > 0 ? keywords : ['战线', '外交', '兵力', '盟约', '入侵', '边境'],
-      charts: {
-        line: parseChartRows(raw?.charts?.line, fallbackLine.length > 0 ? fallbackLine : [{ label: '第1天', value: 0 }]),
-        bar: parseChartRows(raw?.charts?.bar, fallbackBar.length > 0 ? fallbackBar : [{ label: '主力', value: 0 }]),
-        progress: parseChartRows(raw?.charts?.progress, fallbackProgress.length > 0 ? fallbackProgress : [{ label: '关系热度', value: 50 }])
-      },
-      relationGraph: {
-        nodes: relationNodes.length > 0 ? relationNodes : fallbackRelationNodes,
-        links: relationLinks.length > 0 ? relationLinks : fallbackRelationLinks
-      },
-      mermaid: mermaidText || 'graph LR\nA[势力A]--紧张-->B[势力B]'
+      ticker: ticker.length > 0 ? ticker : ['暂无滚动快讯。']
     };
   };
 
