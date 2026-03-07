@@ -163,6 +163,14 @@
                   <option value="100">100</option>
                 </select>
               </div>
+              <div>
+                <label>图片筛选</label>
+                <select id="troopImageFilter">
+                  <option value="ALL" selected>全部</option>
+                  <option value="HAS">有图</option>
+                  <option value="MISSING">未生图</option>
+                </select>
+              </div>
             </div>
             <div class="row">
               <div class="btnRow">
@@ -337,6 +345,7 @@
 
       const troopSearch = document.getElementById('troopSearch');
       const troopPageSize = document.getElementById('troopPageSize');
+      const troopImageFilter = document.getElementById('troopImageFilter');
       const troopList = document.getElementById('troopList');
       const troopTotalCount = document.getElementById('troopTotalCount');
       const troopMissingCount = document.getElementById('troopMissingCount');
@@ -378,6 +387,7 @@
           imgConcurrency.value = String(s.imgConcurrency ?? 2);
           skipExisting.value = s.skipExisting || 'YES';
           troopPageSize.value = String(s.troopPageSize ?? 50);
+          troopImageFilter.value = s.troopImageFilter || 'ALL';
         } catch {}
       };
 
@@ -397,6 +407,7 @@
           imgConcurrency: Number(imgConcurrency.value || 2),
           skipExisting: skipExisting.value || 'YES',
           troopPageSize: Number(troopPageSize.value || 50),
+          troopImageFilter: troopImageFilter.value || 'ALL',
         };
         localStorage.setItem('troopGenSettings', JSON.stringify(s));
       };
@@ -552,8 +563,17 @@
 
       const getFilteredTroops = () => {
         const q = String(troopSearch.value || '').trim().toLowerCase();
-        if (!q) return allTroopsCache;
-        return allTroopsCache.filter(t => String(t.id || '').toLowerCase().includes(q) || String(t.name || '').toLowerCase().includes(q));
+        const mode = String(troopImageFilter.value || 'ALL');
+        return allTroopsCache.filter(t => {
+          const matchesQuery = !q
+            ? true
+            : (String(t.id || '').toLowerCase().includes(q) || String(t.name || '').toLowerCase().includes(q));
+          if (!matchesQuery) return false;
+          const has = existingSetCache.has(t.id);
+          if (mode === 'HAS') return has;
+          if (mode === 'MISSING') return !has;
+          return true;
+        });
       };
 
       const renderTroopList = () => {
@@ -907,6 +927,13 @@
       });
 
       troopSearch.addEventListener('input', () => { selectionPage = 1; renderTroopList(); });
+      troopPageSize.addEventListener('change', () => { selectionPage = 1; renderTroopList(); });
+      pagePrevBtn.addEventListener('click', () => { selectionPage = Math.max(1, selectionPage - 1); renderTroopList(); });
+      pageNextBtn.addEventListener('click', () => { selectionPage += 1; renderTroopList(); });
+      troopImageFilter.addEventListener('change', () => {
+        selectionPage = 1;
+        renderTroopList();
+      });
       troopPageSize.addEventListener('change', () => { selectionPage = 1; renderTroopList(); });
       pagePrevBtn.addEventListener('click', () => { selectionPage = Math.max(1, selectionPage - 1); renderTroopList(); });
       pageNextBtn.addEventListener('click', () => { selectionPage += 1; renderTroopList(); });
