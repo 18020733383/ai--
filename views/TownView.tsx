@@ -1334,6 +1334,20 @@ export const TownView = ({
   const isSlotBuilt = (slot: { type: BuildingType | null; daysLeft?: number }) => !!slot.type && !(slot.daysLeft && slot.daysLeft > 0);
   const hideoutFacilitySlots = normalizeHideoutSlots(hideoutSelectedLayer?.facilitySlots as any);
   const hideoutDefenseSlots = normalizeHideoutSlots(hideoutSelectedLayer?.defenseSlots as any);
+  const hideoutFacilityBuilt = hideoutFacilitySlots.filter(isSlotBuilt).map(s => s.type as BuildingType);
+  const hideoutRecruiterCount = hideoutFacilityBuilt.filter(t => t === 'RECRUITER').length;
+  const hideoutShrineCount = hideoutFacilityBuilt.filter(t => t === 'SHRINE').length;
+  const hideoutReligionTroopIds = (() => {
+    const altar = locations.find(l => l.type === 'ALTAR' && (l.altar?.troopIds ?? []).length > 0 && !!l.altar?.doctrine?.religionName);
+    return altar?.altar?.troopIds ?? [];
+  })();
+  const hideoutRecruitOptions = [
+    ...(hideoutRecruiterCount > 0 ? [{ id: 'militia', label: getTroopTemplate('militia')?.name ?? '民兵', source: 'RECRUITER' }] : []),
+    ...(hideoutShrineCount > 0 && hideoutReligionTroopIds.length > 0
+      ? [{ id: hideoutReligionTroopIds[0], label: getTroopTemplate(hideoutReligionTroopIds[0])?.name ?? hideoutReligionTroopIds[0], source: 'SHRINE' }]
+      : [])
+  ];
+  const hideoutRecruitPlan = hideoutSelectedLayer?.recruitPlan ?? null;
   const hideoutFacilityUsed = hideoutFacilitySlots.filter(s => !!s.type).length;
   const hideoutFacilityBuilding = hideoutFacilitySlots.filter(s => !!s.type && !!s.daysLeft && s.daysLeft > 0).length;
   const hideoutDefenseUsed = hideoutDefenseSlots.filter(s => !!s.type).length;
@@ -1360,10 +1374,23 @@ export const TownView = ({
   const [hideoutRefineMineralId, setHideoutRefineMineralId] = React.useState<MineralId>('NULL_CRYSTAL');
   const [hideoutRefineFromPurity, setHideoutRefineFromPurity] = React.useState<MineralPurity>(1);
   const [hideoutRefineOutputCount, setHideoutRefineOutputCount] = React.useState(1);
-  const [hideoutPage, setHideoutPage] = React.useState<'DASHBOARD' | 'GARRISON' | 'GUARDIAN' | 'FACILITIES' | 'DEFENSE' | 'REFINERY' | 'LOGS' | 'BUILD' | 'DETAIL'>('DASHBOARD');
+  const [hideoutPage, setHideoutPage] = React.useState<'DASHBOARD' | 'GARRISON' | 'GUARDIAN' | 'FACILITIES' | 'DEFENSE' | 'RECRUIT' | 'REFINERY' | 'LOGS' | 'BUILD' | 'DETAIL'>('DASHBOARD');
+  const [hideoutRecruitTarget, setHideoutRecruitTarget] = React.useState(0);
+  const [hideoutRecruitTroopId, setHideoutRecruitTroopId] = React.useState<string>('');
   const [hideoutBuildTarget, setHideoutBuildTarget] = React.useState<{ category: 'FACILITY' | 'DEFENSE'; slotIndex: number } | null>(null);
   const [hideoutInspectTarget, setHideoutInspectTarget] = React.useState<{ category: 'FACILITY' | 'DEFENSE'; slotIndex: number } | null>(null);
   const [hideoutBuildAnim, setHideoutBuildAnim] = React.useState<{ category: 'FACILITY' | 'DEFENSE'; slotIndex: number; id: string } | null>(null);
+
+  React.useEffect(() => {
+    const defaultId = hideoutRecruitOptions[0]?.id ?? '';
+    if (hideoutRecruitPlan) {
+      setHideoutRecruitTarget(Math.max(0, Math.floor(hideoutRecruitPlan.target ?? 0)));
+      setHideoutRecruitTroopId(hideoutRecruitPlan.troopId ?? defaultId);
+      return;
+    }
+    setHideoutRecruitTarget(0);
+    setHideoutRecruitTroopId(defaultId);
+  }, [hideoutSelectedLayerIndex, hideoutRecruitPlan, hideoutRecruitOptions.length]);
 
   const hideoutFacilityBuildOptions = buildingOptions.filter(b => (
     b.type === 'HOUSING' ||
@@ -2613,6 +2640,7 @@ export const TownView = ({
                 { id: 'GUARDIAN', label: '守护者' },
                 { id: 'FACILITIES', label: '建筑槽' },
                 { id: 'DEFENSE', label: '防御槽' },
+                { id: 'RECRUIT', label: '征兵' },
                 { id: 'REFINERY', label: '精炼' },
                 { id: 'LOGS', label: '据点日志' }
               ] as const).map(item => (
@@ -2887,6 +2915,106 @@ export const TownView = ({
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {hideoutPage === 'RECRUIT' && (
+              <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4 animate-fade-in">
+                <div className="flex items-center justify-between">
+                  <div className="text-stone-200 font-bold">征兵计划</div>
+                  <div className="text-xs text-stone-500">当前金币 {player.gold}</div>
+                </div>
+                {hideoutRecruitOptions.length === 0 ? (
+                  <div className="text-sm text-stone-500">该层尚未建造征兵官或神殿，无法设定征兵计划。</div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs text-stone-500 mb-1">征兵类型</label>
+                        <select
+                          value={hideoutRecruitTroopId}
+                          onChange={(e) => setHideoutRecruitTroopId(e.target.value)}
+                          className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+                        >
+                          {hideoutRecruitOptions.map(opt => (
+                            <option key={opt.id} value={opt.id}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-stone-500 mb-1">本轮招募上限</label>
+                        <input
+                          value={hideoutRecruitTarget}
+                          onChange={(e) => setHideoutRecruitTarget(Math.max(0, Math.floor(Number(e.target.value) || 0)))}
+                          className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 outline-none focus:border-emerald-700"
+                          type="number"
+                          min={0}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs text-stone-500 mb-1">预计耗时</label>
+                        {(() => {
+                          const option = hideoutRecruitOptions.find(o => o.id === hideoutRecruitTroopId) ?? hideoutRecruitOptions[0];
+                          const depth = hideoutSelectedLayer?.depth ?? 0;
+                          const rate = option?.source === 'SHRINE'
+                            ? hideoutShrineCount * (3 + Math.min(4, depth))
+                            : hideoutRecruiterCount * (4 + Math.min(6, depth * 2));
+                          const target = Math.max(0, Math.floor(hideoutRecruitTarget));
+                          const recruited = option?.id === hideoutRecruitPlan?.troopId ? Math.max(0, Math.floor(hideoutRecruitPlan?.recruited ?? 0)) : 0;
+                          const remaining = Math.max(0, target - recruited);
+                          const days = rate > 0 ? Math.ceil(remaining / rate) * 4 : 0;
+                          return (
+                            <div className="w-full bg-black/40 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200">
+                              {rate <= 0 ? '不可征兵' : remaining <= 0 ? '已完成' : `${days} 天`}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    </div>
+                    <div className="text-xs text-stone-500">
+                      {(() => {
+                        const option = hideoutRecruitOptions.find(o => o.id === hideoutRecruitTroopId) ?? hideoutRecruitOptions[0];
+                        const tmpl = option ? getTroopTemplate(option.id) : null;
+                        const costPer = tmpl ? Math.max(10, Math.floor((tmpl.cost ?? 40) * 0.8)) : 0;
+                        const target = Math.max(0, Math.floor(hideoutRecruitTarget));
+                        const totalCost = costPer * target;
+                        return `单价 ${costPer} · 预计总花费 ${totalCost}`;
+                      })()}
+                    </div>
+                    <div className="flex flex-col md:flex-row gap-2 justify-end">
+                      <Button
+                        variant="secondary"
+                        onClick={() => {
+                          const option = hideoutRecruitOptions.find(o => o.id === hideoutRecruitTroopId) ?? hideoutRecruitOptions[0];
+                          if (!option) return;
+                          const target = Math.max(0, Math.floor(hideoutRecruitTarget));
+                          const tmpl = getTroopTemplate(option.id);
+                          const costPer = tmpl ? Math.max(10, Math.floor((tmpl.cost ?? 40) * 0.8)) : 0;
+                          updateHideoutLayer(hideoutSelectedLayerIndex, l => {
+                            if (target <= 0 || costPer <= 0) return { ...l, recruitPlan: undefined };
+                            const prev = l.recruitPlan;
+                            const recruited = prev && prev.troopId === option.id ? Math.min(prev.recruited ?? 0, target) : 0;
+                            return { ...l, recruitPlan: { troopId: option.id, target, recruited, costPerUnit: costPer } };
+                          });
+                        }}
+                      >
+                        {hideoutRecruitPlan ? '更新计划' : '启动征兵'}
+                      </Button>
+                      <Button
+                        variant="secondary"
+                        onClick={() => updateHideoutLayer(hideoutSelectedLayerIndex, l => ({ ...l, recruitPlan: undefined }))}
+                        disabled={!hideoutRecruitPlan}
+                      >
+                        停止征兵
+                      </Button>
+                    </div>
+                    {hideoutRecruitPlan && (
+                      <div className="text-xs text-stone-500">
+                        已招募 {hideoutRecruitPlan.recruited}/{hideoutRecruitPlan.target}，目标兵种 {getTroopTemplate(hideoutRecruitPlan.troopId)?.name ?? hideoutRecruitPlan.troopId}。
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             )}
 

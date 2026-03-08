@@ -1589,6 +1589,7 @@ export default function App() {
     if (location.type === 'GRAVEYARD' || location.type === 'COFFEE') return 'UNDEAD';
     if (location.type === 'IMPOSTER_PORTAL') return 'IMPOSTER';
     if (location.type === 'BANDIT_CAMP') return location.id.startsWith('goblin_camp_') ? 'GOBLIN' : 'BANDIT';
+    if (location.id.startsWith('village_goblin_')) return 'GOBLIN';
     if (location.type === 'MYSTERIOUS_CAVE') return 'VOID';
     if (location.type === 'ASYLUM') return 'MADNESS';
     return null;
@@ -4303,46 +4304,39 @@ export default function App() {
                 }
               }
 
-              if (recruiterCount > 0) {
-                const lastRecruitDay = nextLayer.lastRecruitDay ?? 0;
-                if (nextDay - lastRecruitDay >= 4) {
-                  nextLayer.lastRecruitDay = nextDay;
+              const recruitPlan = (nextLayer as any).recruitPlan as { troopId: string; target: number; recruited: number; costPerUnit: number } | undefined;
+              if (recruitPlan && recruitPlan.target > 0) {
+                const planTarget = Math.max(0, Math.floor(recruitPlan.target));
+                const planRecruited = Math.max(0, Math.floor(recruitPlan.recruited ?? 0));
+                const planRemaining = Math.max(0, planTarget - planRecruited);
+                const isShrinePlan = recruitPlan.troopId === religionTroopIds[0] && shrineCount > 0;
+                const rate = isShrinePlan
+                  ? shrineCount * (3 + Math.min(4, nextLayer.depth))
+                  : recruiterCount > 0
+                    ? recruiterCount * (4 + Math.min(6, nextLayer.depth * 2))
+                    : 0;
+                const lastPlanDay = isShrinePlan ? (nextLayer.lastShrineDay ?? 0) : (nextLayer.lastRecruitDay ?? 0);
+                if (planRemaining > 0 && rate > 0 && nextDay - lastPlanDay >= 4) {
+                  if (isShrinePlan) nextLayer.lastShrineDay = nextDay;
+                  else nextLayer.lastRecruitDay = nextDay;
                   const garrison = (nextLayer.garrison ?? []).map(t => ({ ...t }));
                   const currentCount = getGarrisonCount(garrison);
-                  if (currentCount < cap) {
-                    const recruitCount = recruiterCount * (4 + Math.min(6, nextLayer.depth * 2));
-                    const available = Math.min(cap - currentCount, recruitCount);
-                    if (available > 0) {
-                      const recruitId = 'militia';
-                      const template = getTroopTemplate(recruitId);
-                      if (template) {
-                        const index = garrison.findIndex(t => t.id === template.id);
-                        if (index >= 0) garrison[index] = { ...garrison[index], count: garrison[index].count + available };
-                        else garrison.push({ ...template, count: available, xp: 0 });
-                        nextLayer.garrison = garrison;
-                        logsToAdd.push(`【征兵官】${updated.name}·${nextLayer.name} 新增了 ${available} 名守军。`);
-                      }
-                    }
-                  }
-                }
-              }
-
-              if (shrineCount > 0 && religionTroopIds.length > 0) {
-                const lastShrineDay = nextLayer.lastShrineDay ?? 0;
-                if (nextDay - lastShrineDay >= 4) {
-                  nextLayer.lastShrineDay = nextDay;
-                  const garrison = (nextLayer.garrison ?? []).map(t => ({ ...t }));
-                  const currentCount = getGarrisonCount(garrison);
-                  if (currentCount < cap) {
-                    const recruitId = religionTroopIds[0];
-                    const template = getTroopTemplate(recruitId);
-                    const totalAdd = Math.min(cap - currentCount, shrineCount * (3 + Math.min(4, nextLayer.depth)));
-                    if (template && totalAdd > 0) {
+                  const capRemaining = Math.max(0, cap - currentCount);
+                  const attempt = Math.min(rate, planRemaining, capRemaining);
+                  if (attempt > 0) {
+                    const template = getTroopTemplate(recruitPlan.troopId);
+                    const costPerUnit = Math.max(1, Math.floor(recruitPlan.costPerUnit ?? (template?.cost ?? 0) ?? 0));
+                    const affordable = costPerUnit > 0 ? Math.min(attempt, Math.floor(nextPlayer.gold / costPerUnit)) : 0;
+                    if (template && affordable > 0) {
                       const index = garrison.findIndex(t => t.id === template.id);
-                      if (index >= 0) garrison[index] = { ...garrison[index], count: garrison[index].count + totalAdd };
-                      else garrison.push({ ...template, count: totalAdd, xp: 0 });
+                      if (index >= 0) garrison[index] = { ...garrison[index], count: garrison[index].count + affordable };
+                      else garrison.push({ ...template, count: affordable, xp: 0 });
                       nextLayer.garrison = garrison;
-                      logsToAdd.push(`【神殿】${updated.name}·${nextLayer.name} 新增了 ${totalAdd} 名信徒守卫。`);
+                      recruitPlan.recruited = planRecruited + affordable;
+                      (nextLayer as any).recruitPlan = { ...recruitPlan };
+                      const totalCost = affordable * costPerUnit;
+                      nextPlayer = { ...nextPlayer, gold: Math.max(0, nextPlayer.gold - totalCost) };
+                      logsToAdd.push(`【征兵官】${updated.name}·${nextLayer.name} 招募 ${affordable} 名守军（花费 ${totalCost}）。`);
                     }
                   }
                 }

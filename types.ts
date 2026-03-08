@@ -523,6 +523,12 @@ export type HideoutLayer = {
   lastTrainingDay?: number;
   lastRecruitDay?: number;
   lastShrineDay?: number;
+  recruitPlan?: {
+    troopId: string;
+    target: number;
+    recruited: number;
+    costPerUnit: number;
+  };
   guardianHeroId?: string;
   garrisonBaseLimit?: number;
   facilitySlots?: HideoutSlot[];
