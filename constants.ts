@@ -1,8 +1,8 @@
 
 import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, ParrotVariant, Hero, RaceId, TroopRace, BugSummonRecipe, MineralId, Anomaly } from './types';
 
-export const MAP_WIDTH = 480;
-export const MAP_HEIGHT = 480;
+export const MAP_WIDTH = 960;
+export const MAP_HEIGHT = 960;
 
 export const WORLD_BOOK = [
   '词条：附加规则效果，影响命中、伤害、控制或属性。',
@@ -176,6 +176,15 @@ export const FACTIONS = [
     focus: 'CAVALRY',
     color: '#f97316',
     specialTroopIds: ['red_dune_lancer', 'red_dune_cataphract']
+  },
+  {
+    id: 'AUREATE_LEAGUE',
+    name: '曜金同盟',
+    shortName: '曜金',
+    description: '沿着日升大道崛起的新贵联盟，偏好秩序与贸易，信奉“税票与长弓同样致命”。',
+    focus: 'RANGED',
+    color: '#facc15',
+    specialTroopIds: ['imperial_elite_knight', 'knight']
   }
 ] as const;
 
@@ -5169,7 +5178,8 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
     factions: {
       VERDANT_COVENANT: 0,
       FROST_OATH: 0,
-      RED_DUNE: 0
+      RED_DUNE: 0,
+      AUREATE_LEAGUE: 0
     },
     races: {
       HUMAN: 0,
@@ -5194,7 +5204,7 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
 };
 
 // Initial state for locations, recruits will be generated at runtime
-// Spreading coordinates out for 400x400 map
+// Spreading coordinates out for 900x900 map
 export const LOCATIONS: Location[] = [
   // --- CENTER (PLAINS) ---
   {
@@ -5422,7 +5432,7 @@ export const LOCATIONS: Location[] = [
     mercenaries: []
   },
 
-  // --- NEW LOCATIONS (FILLING 400x400) ---
+  // --- NEW LOCATIONS (FILLING 900x900) ---
   {
     id: 'city_riverun',
     name: '奔流城',
@@ -6305,6 +6315,142 @@ export const LOCATIONS: Location[] = [
     terrain: 'BANDIT_CAMP',
     lastRefreshDay: 0,
     banditSpawnDay: 1,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'city_solcrest',
+    name: '曜辉城',
+    type: 'CITY',
+    description: '曜金同盟的首都，以税票、箭塔与精算闻名。',
+    coordinates: { x: 720, y: 260 },
+    terrain: 'PLAINS',
+    factionId: 'AUREATE_LEAGUE',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: [],
+    lord: {
+      id: 'lord_solcrest',
+      name: '艾琳',
+      title: '晨辉女公',
+      factionId: 'AUREATE_LEAGUE',
+      fiefId: 'city_solcrest',
+      traits: ['务实', '精算'],
+      temperament: '冷静',
+      focus: 'DIPLOMACY',
+      relation: 0,
+      currentLocationId: 'city_solcrest',
+      state: 'RESTING',
+      stateSinceDay: 1,
+      partyTroops: [
+        createTroop('footman', 80),
+        createTroop('archer', 70),
+        createTroop('knight', 18)
+      ],
+      partyMaxCount: 168
+    }
+  },
+  {
+    id: 'city_dawnspire',
+    name: '曙穹城',
+    type: 'CITY',
+    description: '高塔密布的学城，以监督“异常术式”闻名。',
+    coordinates: { x: 860, y: 190 },
+    terrain: 'PLAINS',
+    factionId: 'AUREATE_LEAGUE',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'castle_sunwatch',
+    name: '日望堡',
+    type: 'CASTLE',
+    description: '曜金同盟的前哨堡垒，长弓兵与账册同样锋利。',
+    coordinates: { x: 810, y: 240 },
+    terrain: 'MOUNTAIN',
+    factionId: 'AUREATE_LEAGUE',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: [],
+    lord: {
+      id: 'lord_sunwatch',
+      name: '洛安',
+      title: '金炬侯',
+      factionId: 'AUREATE_LEAGUE',
+      fiefId: 'castle_sunwatch',
+      traits: ['严苛', '守序'],
+      temperament: '克制',
+      focus: 'DEFENSE',
+      relation: 0,
+      currentLocationId: 'castle_sunwatch',
+      state: 'RESTING',
+      stateSinceDay: 1,
+      partyTroops: [
+        createTroop('militia', 60),
+        createTroop('archer', 50),
+        createTroop('footman', 40)
+      ],
+      partyMaxCount: 150
+    }
+  },
+  {
+    id: 'village_gildedfields',
+    name: '镀金原村',
+    type: 'VILLAGE',
+    description: '盛产黄金麦的平原聚落，信奉“先缴税再耕作”。',
+    coordinates: { x: 700, y: 320 },
+    terrain: 'PLAINS',
+    factionId: 'AUREATE_LEAGUE',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'village_coppershore',
+    name: '铜潮村',
+    type: 'VILLAGE',
+    description: '沿海盐场与铜井并存的小村。',
+    coordinates: { x: 840, y: 300 },
+    terrain: 'PLAINS',
+    factionId: 'AUREATE_LEAGUE',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'city_greenhollow',
+    name: '翠谷城',
+    type: 'CITY',
+    description: '翠弦盟约的南线商埠，绿蔓覆盖城墙。',
+    coordinates: { x: 520, y: 120 },
+    terrain: 'FOREST',
+    factionId: 'VERDANT_COVENANT',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'castle_frostline',
+    name: '寒锋堡',
+    type: 'CASTLE',
+    description: '霜誓王庭的新筑关隘，专守北境要道。',
+    coordinates: { x: 540, y: 60 },
+    terrain: 'SNOW',
+    factionId: 'FROST_OATH',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'village_dunebridge',
+    name: '沙桥村',
+    type: 'VILLAGE',
+    description: '赤沙驭团的驿站村落，以驼队与马队中转闻名。',
+    coordinates: { x: 640, y: 360 },
+    terrain: 'DESERT',
+    factionId: 'RED_DUNE',
+    lastRefreshDay: 0,
     volunteers: [],
     mercenaries: []
   },

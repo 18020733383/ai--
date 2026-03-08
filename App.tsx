@@ -78,6 +78,18 @@ const buildInitialWorldDiplomacy = (): WorldDiplomacyState => {
     (factionRelations as any).FROST_OATH.RED_DUNE = -22;
     (factionRelations as any).RED_DUNE.FROST_OATH = -22;
   }
+  if (factionIds.includes('AUREATE_LEAGUE') && factionIds.includes('VERDANT_COVENANT')) {
+    (factionRelations as any).AUREATE_LEAGUE.VERDANT_COVENANT = -8;
+    (factionRelations as any).VERDANT_COVENANT.AUREATE_LEAGUE = -8;
+  }
+  if (factionIds.includes('AUREATE_LEAGUE') && factionIds.includes('FROST_OATH')) {
+    (factionRelations as any).AUREATE_LEAGUE.FROST_OATH = -12;
+    (factionRelations as any).FROST_OATH.AUREATE_LEAGUE = -12;
+  }
+  if (factionIds.includes('AUREATE_LEAGUE') && factionIds.includes('RED_DUNE')) {
+    (factionRelations as any).AUREATE_LEAGUE.RED_DUNE = -6;
+    (factionRelations as any).RED_DUNE.AUREATE_LEAGUE = -6;
+  }
   const raceRelations = raceIds.reduce((acc, a) => {
     acc[a] = raceIds.reduce((row, b) => {
       row[b] = clampRelation(RACE_RELATION_MATRIX[a]?.[b] ?? 0);
@@ -1554,7 +1566,8 @@ export default function App() {
     factions: {
       VERDANT_COVENANT: matrix?.factions?.VERDANT_COVENANT ?? INITIAL_PLAYER_STATE.relationMatrix.factions.VERDANT_COVENANT,
       FROST_OATH: matrix?.factions?.FROST_OATH ?? INITIAL_PLAYER_STATE.relationMatrix.factions.FROST_OATH,
-      RED_DUNE: matrix?.factions?.RED_DUNE ?? INITIAL_PLAYER_STATE.relationMatrix.factions.RED_DUNE
+      RED_DUNE: matrix?.factions?.RED_DUNE ?? INITIAL_PLAYER_STATE.relationMatrix.factions.RED_DUNE,
+      AUREATE_LEAGUE: (matrix as any)?.factions?.AUREATE_LEAGUE ?? (INITIAL_PLAYER_STATE as any).relationMatrix.factions.AUREATE_LEAGUE ?? 0
     },
     races: {
       HUMAN: matrix?.races?.HUMAN ?? INITIAL_PLAYER_STATE.relationMatrix.races.HUMAN,
@@ -3007,8 +3020,8 @@ export default function App() {
       if (rect) {
         const screen = { x: e.clientX - rect.left, y: e.clientY - rect.top };
         const unitSize = 10 * zoomRef.current;
-        const translateX = -200 * unitSize + cameraRef.current.x;
-        const translateY = -200 * unitSize + cameraRef.current.y;
+        const translateX = -(MAP_WIDTH / 2) * unitSize + cameraRef.current.x;
+        const translateY = -(MAP_HEIGHT / 2) * unitSize + cameraRef.current.y;
         const world = { x: (screen.x - translateX) / unitSize, y: (screen.y - translateY) / unitSize };
         zoomAnchorRef.current = { screen, world };
       }
@@ -3086,8 +3099,8 @@ export default function App() {
         if (anchor && mapRef.current && !isDraggingRef.current) {
           const unitSize = 10 * roundedZoom;
           const nextCamera = {
-            x: anchor.screen.x - anchor.world.x * unitSize + 200 * unitSize,
-            y: anchor.screen.y - anchor.world.y * unitSize + 200 * unitSize
+            x: anchor.screen.x - anchor.world.x * unitSize + (MAP_WIDTH / 2) * unitSize,
+            y: anchor.screen.y - anchor.world.y * unitSize + (MAP_HEIGHT / 2) * unitSize
           };
           const roundedCamera = {
             x: Math.round(nextCamera.x * 10) / 10,
@@ -10985,7 +10998,10 @@ export default function App() {
       shortName: faction.shortName,
       color: faction.color
     }));
+    const playerRow = { id: 'PLAYER', name: '玩家', shortName: '你', color: '#facc15' };
+    const factionMatrixRows = [...factionRows, playerRow];
     const raceIds = Object.keys(RACE_LABELS) as RaceId[];
+    const raceMatrixRows = [...raceIds, 'PLAYER'];
     const getCellStyle = (value: number) => {
       const intensity = Math.min(1, Math.abs(value) / 100);
       if (value > 0) return { backgroundColor: `rgba(16,185,129, ${0.12 + intensity * 0.55})`, color: '#ecfdf5' };
@@ -11029,14 +11045,14 @@ export default function App() {
           <div className="bg-stone-900 border border-stone-700 rounded-lg p-4">
             <div className="flex items-center justify-between mb-3">
               <div className="text-stone-200 font-semibold">势力外交关系</div>
-              <div className="text-xs text-stone-500">{factionRows.length} 个势力</div>
+              <div className="text-xs text-stone-500">{factionMatrixRows.length} 个势力</div>
             </div>
             <div className="overflow-x-auto">
               <table className="min-w-[680px] w-full border-collapse text-xs">
                 <thead>
                   <tr>
                     <th className="p-2 text-left text-stone-400 font-semibold">关系</th>
-                    {factionRows.map(f => (
+                    {factionMatrixRows.map(f => (
                       <th key={f.id} className="p-2 text-left text-stone-400 font-semibold">
                         <span className="inline-flex items-center gap-2">
                           <span className="h-2 w-2 rounded-full" style={{ backgroundColor: f.color }} />
@@ -11047,12 +11063,21 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {factionRows.map(rowFaction => (
+                  {factionMatrixRows.map(rowFaction => (
                     <tr key={rowFaction.id} className="border-t border-stone-800">
                       <td className="p-2 text-stone-300 font-semibold whitespace-nowrap">{rowFaction.name}</td>
-                      {factionRows.map(colFaction => {
+                      {factionMatrixRows.map(colFaction => {
                         const same = rowFaction.id === colFaction.id;
-                        const raw = same ? 0 : clampRelation(Number((worldDiplomacy.factionRelations as any)?.[rowFaction.id]?.[colFaction.id] ?? 0));
+                        const raw = (() => {
+                          if (same) return 0;
+                          if (rowFaction.id === 'PLAYER') {
+                            return clampRelation(Number((player.relationMatrix?.factions as any)?.[colFaction.id] ?? 0));
+                          }
+                          if (colFaction.id === 'PLAYER') {
+                            return clampRelation(Number((player.relationMatrix?.factions as any)?.[rowFaction.id] ?? 0));
+                          }
+                          return clampRelation(Number((worldDiplomacy.factionRelations as any)?.[rowFaction.id]?.[colFaction.id] ?? 0));
+                        })();
                         const style = getCellStyle(raw);
                         return (
                           <td key={`${rowFaction.id}_${colFaction.id}`} className="p-2 align-middle">
@@ -11108,6 +11133,21 @@ export default function App() {
                       })}
                     </tr>
                   ))}
+                  <tr className="border-t border-stone-800">
+                    <td className="p-2 text-stone-300 font-semibold whitespace-nowrap">玩家</td>
+                    {raceIds.map(raceId => {
+                      const raw = clampRelation(Number((player.relationMatrix?.races as any)?.[raceId] ?? 0));
+                      const style = getCellStyle(raw);
+                      return (
+                        <td key={`player_race_${raceId}`} className="p-2 align-middle">
+                          <div className="rounded px-2 py-1 border border-black/30 inline-flex items-center gap-2" style={style}>
+                            <span className="font-mono">{raw}</span>
+                            <span className="opacity-90">{getTone(raw)}</span>
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
                 </tbody>
               </table>
             </div>
@@ -11118,25 +11158,30 @@ export default function App() {
         <div className="bg-stone-900 border border-stone-700 rounded-lg p-4 mt-6">
           <div className="flex items-center justify-between mb-3">
             <div className="text-stone-200 font-semibold">物种外交关系</div>
-            <div className="text-xs text-stone-500">{raceIds.length} 个物种</div>
+            <div className="text-xs text-stone-500">{raceMatrixRows.length} 个物种</div>
           </div>
           <div className="overflow-x-auto">
             <table className="min-w-[780px] w-full border-collapse text-xs">
               <thead>
                 <tr>
                   <th className="p-2 text-left text-stone-400 font-semibold">关系</th>
-                  {raceIds.map(raceId => (
-                    <th key={`rh_${raceId}`} className="p-2 text-left text-stone-400 font-semibold">{RACE_LABELS[raceId]}</th>
+                  {raceMatrixRows.map(raceId => (
+                    <th key={`rh_${raceId}`} className="p-2 text-left text-stone-400 font-semibold">{raceId === 'PLAYER' ? '玩家' : RACE_LABELS[raceId]}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {raceIds.map(rowId => (
+                {raceMatrixRows.map(rowId => (
                   <tr key={`rr_${rowId}`} className="border-t border-stone-800">
-                    <td className="p-2 text-stone-300 font-semibold whitespace-nowrap">{RACE_LABELS[rowId]}</td>
-                    {raceIds.map(colId => {
+                    <td className="p-2 text-stone-300 font-semibold whitespace-nowrap">{rowId === 'PLAYER' ? '玩家' : RACE_LABELS[rowId]}</td>
+                    {raceMatrixRows.map(colId => {
                       const same = rowId === colId;
-                      const raw = same ? 0 : clampRelation(Number((worldDiplomacy.raceRelations as any)?.[rowId]?.[colId] ?? 0));
+                      const raw = (() => {
+                        if (same) return 0;
+                        if (rowId === 'PLAYER') return clampRelation(Number((player.relationMatrix?.races as any)?.[colId] ?? 0));
+                        if (colId === 'PLAYER') return clampRelation(Number((player.relationMatrix?.races as any)?.[rowId] ?? 0));
+                        return clampRelation(Number((worldDiplomacy.raceRelations as any)?.[rowId]?.[colId] ?? 0));
+                      })();
                       const style = getCellStyle(raw);
                       return (
                         <td key={`${rowId}_${colId}`} className="p-2 align-middle">

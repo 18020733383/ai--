@@ -259,7 +259,7 @@ export interface PlayerState {
   currentHp: number;
   maxHp: number;
   status: 'ACTIVE' | 'INJURED'; // 受伤状态无法战斗，随时间恢复
-  position: { x: number; y: number }; // Map coordinates (Now 0-200)
+  position: { x: number; y: number }; // Map coordinates (Now 0-960)
   minerals: MineralInventory;
   anomalies: AnomalyInventory;
   relationMatrix: RelationMatrix;
@@ -290,7 +290,7 @@ export interface EnemyForce {
 
 export type TerrainType = 'PLAINS' | 'FOREST' | 'MOUNTAIN' | 'SNOW' | 'DESERT' | 'RUINS' | 'GRAVEYARD' | 'MARKET' | 'RESTAURANT' | 'BANDIT_CAMP' | 'CAVE';
 
-export type FactionId = 'VERDANT_COVENANT' | 'FROST_OATH' | 'RED_DUNE';
+export type FactionId = 'VERDANT_COVENANT' | 'FROST_OATH' | 'RED_DUNE' | 'AUREATE_LEAGUE';
 export type FactionSpecialization = 'MELEE' | 'RANGED' | 'CAVALRY';
 
 export type FactionInfo = {

@@ -407,7 +407,7 @@ export const BigMapView = ({
         style={{
           width: `${MAP_WIDTH * unitSize}px`,
           height: `${MAP_HEIGHT * unitSize}px`,
-          transform: `translate3d(${Math.round((-200 * unitSize + camera.x) * 10) / 10}px, ${Math.round((-200 * unitSize + camera.y) * 10) / 10}px, 0)`,
+          transform: `translate3d(${Math.round((-(MAP_WIDTH / 2) * unitSize + camera.x) * 10) / 10}px, ${Math.round((-(MAP_HEIGHT / 2) * unitSize + camera.y) * 10) / 10}px, 0)`,
           backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M30 30h30v30H30zM0 0h30v30H0z\' fill=\'%235c4d3c\' fill-opacity=\'0.1\' fill-rule=\'evenodd\'/%3E%3C/svg%3E")',
           backgroundColor: '#e6d5a7',
           backgroundSize: `${60 * zoom}px ${60 * zoom}px`,
