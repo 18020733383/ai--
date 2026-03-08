@@ -1394,6 +1394,13 @@ export const TownView = ({
 
   const hideoutFacilityBuildOptions = buildingOptions.filter(b => (
     b.type === 'HOUSING' ||
+    b.type === 'HOUSING_II' ||
+    b.type === 'HOUSING_III' ||
+    b.type === 'UNDERGROUND_PLAZA' ||
+    b.type === 'CANTEEN' ||
+    b.type === 'TAVERN' ||
+    b.type === 'THEATER' ||
+    b.type === 'ARENA' ||
     b.type === 'TRAINING_CAMP' ||
     b.type === 'BARRACKS' ||
     b.type === 'RECRUITER' ||
@@ -1435,6 +1442,13 @@ export const TownView = ({
 
   const getBuildingEffects = (type: BuildingType) => {
     if (type === 'HOUSING') return ['每 3 天征税一次（与数量叠加）', '会提高暴露程度上升速度'];
+    if (type === 'HOUSING_II') return ['提升税收效率', '会提高暴露程度上升速度'];
+    if (type === 'HOUSING_III') return ['显著提升税收效率', '会提高暴露程度上升速度'];
+    if (type === 'UNDERGROUND_PLAZA') return ['仅地下层可建', '提升稳定与和谐（可叠加）'];
+    if (type === 'CANTEEN') return ['提升和谐与繁荣（可叠加）'];
+    if (type === 'TAVERN') return ['提升繁荣与士气（可叠加）'];
+    if (type === 'THEATER') return ['显著提升繁荣与和谐（可叠加）'];
+    if (type === 'ARENA') return ['提升稳定与生产力（可叠加）'];
     if (type === 'TRAINING_CAMP') return ['每 3 天训练一次（与数量叠加）', '提升该层驻军经验'];
     if (type === 'BARRACKS') return ['该层驻军上限 +50%'];
     if (type === 'RECRUITER') return ['每 4 天征募一次（与数量叠加）', '优先补满驻军空位'];
@@ -1470,6 +1484,11 @@ export const TownView = ({
     if (type === 'HOUSING') return [`税收：每 3 天 +${18 + depth * 4} 第纳尔（每座）`];
     if (type === 'HOUSING_II') return [`税收：每 3 天 +${26 + depth * 5} 第纳尔（每座）`];
     if (type === 'HOUSING_III') return [`税收：每 3 天 +${36 + depth * 6} 第纳尔（每座）`];
+    if (type === 'UNDERGROUND_PLAZA') return ['治理：稳定与和谐缓慢提升'];
+    if (type === 'CANTEEN') return ['治理：和谐与繁荣缓慢提升'];
+    if (type === 'TAVERN') return ['治理：繁荣提升并提升士气氛围'];
+    if (type === 'THEATER') return ['治理：繁荣与和谐显著提升'];
+    if (type === 'ARENA') return ['治理：稳定与生产力提升'];
     if (type === 'TRAINING_CAMP') return [`训练：每 3 天触发一次（强度随数量提升）`];
     if (type === 'RECRUITER') return [`征募：每 4 天 +${4 + Math.min(6, depth * 2)} 名守军（每座，上限内）`];
     if (type === 'SHRINE') return [`信徒：每 4 天 +${3 + Math.min(4, depth)} 名（每座，上限内，需宗教）`];
@@ -1493,20 +1512,23 @@ export const TownView = ({
 
   const getBuildingSpec = (type: BuildingType) => buildingOptions.find(b => b.type === type) ?? null;
 
-  const getUpgradeNextType = (type: BuildingType): BuildingType | null => {
-    if (type === 'AA_TOWER_I') return 'AA_TOWER_II';
-    if (type === 'AA_TOWER_II') return 'AA_TOWER_III';
-    if (type === 'AA_NET_I') return 'AA_NET_II';
-    if (type === 'AA_RADAR_I') return 'AA_RADAR_II';
-    if (type === 'MAZE_I') return 'MAZE_II';
-    if (type === 'MAZE_II') return 'MAZE_III';
-    if (type === 'HOSPITAL_I') return 'HOSPITAL_II';
-    if (type === 'HOSPITAL_II') return 'HOSPITAL_III';
-    if (type === 'HOUSING') return 'HOUSING_II';
-    if (type === 'HOUSING_II') return 'HOUSING_III';
-    if (type === 'CAMOUFLAGE_STRUCTURE') return 'CAMOUFLAGE_STRUCTURE_II';
-    if (type === 'CAMOUFLAGE_STRUCTURE_II') return 'CAMOUFLAGE_STRUCTURE_III';
-    return null;
+  const getUpgradeNextType = (type: BuildingType | null): BuildingType | null => {
+    if (!type) return null;
+    const mapping: Partial<Record<BuildingType, BuildingType>> = {
+      HOUSING: 'HOUSING_II',
+      HOUSING_II: 'HOUSING_III',
+      AA_TOWER_I: 'AA_TOWER_II',
+      AA_TOWER_II: 'AA_TOWER_III',
+      AA_NET_I: 'AA_NET_II',
+      AA_RADAR_I: 'AA_RADAR_II',
+      MAZE_I: 'MAZE_II',
+      MAZE_II: 'MAZE_III',
+      HOSPITAL_I: 'HOSPITAL_II',
+      HOSPITAL_II: 'HOSPITAL_III',
+      CAMOUFLAGE_STRUCTURE: 'CAMOUFLAGE_STRUCTURE_II',
+      CAMOUFLAGE_STRUCTURE_II: 'CAMOUFLAGE_STRUCTURE_III'
+    };
+    return mapping[type] ?? null;
   };
 
   const getUpgradeCostDays = (fromType: BuildingType, toType: BuildingType) => {
@@ -3154,6 +3176,7 @@ export const TownView = ({
                         const hasHospital = (hideoutState?.layers ?? []).some(l => (l.facilitySlots ?? []).some(s => s.type === 'HOSPITAL_I' || s.type === 'HOSPITAL_II' || s.type === 'HOSPITAL_III'));
                         const canBuildType = (type: BuildingType) => {
                           if (type === 'CHAPEL') return { ok: false, reason: '仅可在城市建造' };
+                          if (type === 'UNDERGROUND_PLAZA' && depth === 0) return { ok: false, reason: '仅地下层可建造' };
                           if (category === 'DEFENSE' && type === 'CAMOUFLAGE_STRUCTURE' && depth !== 0) return { ok: false, reason: '仅地面层可建造' };
                           if (type === 'MAZE_I') {
                             if (category !== 'DEFENSE') return { ok: false, reason: '迷宫属于防御设施' };

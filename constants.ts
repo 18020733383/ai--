@@ -185,6 +185,15 @@ export const FACTIONS = [
     focus: 'RANGED',
     color: '#facc15',
     specialTroopIds: ['imperial_elite_knight', 'knight']
+  },
+  {
+    id: 'ARCANE_CONCORD',
+    name: '星辉秘约',
+    shortName: '星辉',
+    description: '由高阶法师与塔城学派构成的秘约联盟，擅长以符文与法阵压制战场。',
+    focus: 'RANGED',
+    color: '#a78bfa',
+    specialTroopIds: ['stellar_initiate', 'lumen_disciple', 'rift_sentinel', 'aether_scholar']
   }
 ] as const;
 
@@ -448,6 +457,262 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     description: '掌控核心协议，短暂改写因果序列。【技能：先验推演】显著提升远程命中。',
     equipment: ['内核法冠', '协议披肩'],
     attributes: troopAttr(130, 80, 85, 115, 180, 85)
+  },
+  stellar_initiate: {
+    id: 'stellar_initiate',
+    name: '星辉见习者',
+    tier: TroopTier.TIER_1,
+    basePower: 10,
+    cost: 35,
+    upgradeCost: 55,
+    maxXp: 40,
+    upgradeTargetId: 'stellar_acolyte',
+    description: '初窥星辉符文的学徒。【技能：星息】远程命中略微提升。',
+    equipment: ['星砂短杖', '夜纹斗篷'],
+    attributes: troopAttr(40, 30, 45, 40, 60, 45)
+  },
+  stellar_acolyte: {
+    id: 'stellar_acolyte',
+    name: '星辉侍法者',
+    tier: TroopTier.TIER_2,
+    basePower: 22,
+    cost: 85,
+    upgradeCost: 120,
+    maxXp: 80,
+    upgradeTargetId: 'stellar_magus',
+    description: '星辉符文逐渐成形。【技能：星辉阵】小幅提升远程压制。',
+    equipment: ['星纹法杖', '银丝法袍'],
+    attributes: troopAttr(60, 45, 55, 60, 90, 60)
+  },
+  stellar_magus: {
+    id: 'stellar_magus',
+    name: '星辉法官',
+    tier: TroopTier.TIER_3,
+    basePower: 45,
+    cost: 170,
+    upgradeCost: 230,
+    maxXp: 150,
+    upgradeTargetId: 'stellar_archon',
+    description: '以星辉轨迹锁定敌阵。【技能：星轨】远程伤害提升。',
+    equipment: ['星轨法杖', '折光披肩'],
+    attributes: troopAttr(85, 60, 70, 85, 120, 70)
+  },
+  stellar_archon: {
+    id: 'stellar_archon',
+    name: '星辉执政',
+    tier: TroopTier.TIER_4,
+    basePower: 70,
+    cost: 290,
+    upgradeCost: 360,
+    maxXp: 240,
+    upgradeTargetId: 'stellar_seraph',
+    description: '以星辉法阵笼罩战场。【技能：星幕】显著提升远程命中。',
+    equipment: ['星幕权杖', '曜纹披风'],
+    attributes: troopAttr(115, 80, 75, 105, 150, 80)
+  },
+  stellar_seraph: {
+    id: 'stellar_seraph',
+    name: '星辉圣裁者',
+    tier: TroopTier.TIER_5,
+    basePower: 105,
+    cost: 470,
+    upgradeCost: 0,
+    maxXp: 450,
+    description: '以星辉刻写裁决法则。【技能：圣裁】远程压制与命中大幅提升。',
+    equipment: ['圣裁权杖', '星辉冠冕'],
+    attributes: troopAttr(140, 95, 85, 125, 185, 90)
+  },
+  lumen_initiate: {
+    id: 'lumen_initiate',
+    name: '流光学徒',
+    tier: TroopTier.TIER_1,
+    basePower: 11,
+    cost: 38,
+    upgradeCost: 58,
+    maxXp: 40,
+    upgradeTargetId: 'lumen_disciple',
+    description: '以光纹驱动术式。【技能：引光】远程命中略增。',
+    equipment: ['光纹短杖', '轻纱披风'],
+    attributes: troopAttr(42, 32, 50, 42, 62, 45)
+  },
+  lumen_disciple: {
+    id: 'lumen_disciple',
+    name: '流光侍法者',
+    tier: TroopTier.TIER_2,
+    basePower: 24,
+    cost: 90,
+    upgradeCost: 125,
+    maxXp: 85,
+    upgradeTargetId: 'lumen_savant',
+    description: '以光束描绘战场。【技能：折光】远程压制提升。',
+    equipment: ['流光法杖', '晶丝长袍'],
+    attributes: troopAttr(62, 48, 58, 62, 95, 60)
+  },
+  lumen_savant: {
+    id: 'lumen_savant',
+    name: '流光智者',
+    tier: TroopTier.TIER_3,
+    basePower: 47,
+    cost: 180,
+    upgradeCost: 240,
+    maxXp: 160,
+    upgradeTargetId: 'lumen_vizier',
+    description: '以光轨穿刺防线。【技能：光刃】远程伤害提升。',
+    equipment: ['光刃权杖', '折射披肩'],
+    attributes: troopAttr(88, 62, 70, 88, 125, 70)
+  },
+  lumen_vizier: {
+    id: 'lumen_vizier',
+    name: '流光辅政',
+    tier: TroopTier.TIER_4,
+    basePower: 72,
+    cost: 300,
+    upgradeCost: 370,
+    maxXp: 250,
+    upgradeTargetId: 'lumen_arbiter',
+    description: '以光幕护持阵列。【技能：辉幕】远程命中显著提升。',
+    equipment: ['辉幕权杖', '曜流斗篷'],
+    attributes: troopAttr(118, 82, 78, 110, 155, 82)
+  },
+  lumen_arbiter: {
+    id: 'lumen_arbiter',
+    name: '流光裁决者',
+    tier: TroopTier.TIER_5,
+    basePower: 108,
+    cost: 480,
+    upgradeCost: 0,
+    maxXp: 460,
+    description: '以光辉裁断敌军意志。【技能：辉斩】远程命中与士气压制提升。',
+    equipment: ['裁决权杖', '流光王冠'],
+    attributes: troopAttr(142, 98, 86, 128, 188, 92)
+  },
+  rift_initiate: {
+    id: 'rift_initiate',
+    name: '裂隙学徒',
+    tier: TroopTier.TIER_1,
+    basePower: 12,
+    cost: 40,
+    upgradeCost: 60,
+    maxXp: 45,
+    upgradeTargetId: 'rift_acolyte',
+    description: '学习折叠空间的初级法术。【技能：扰动】削弱敌方远程压制。',
+    equipment: ['裂隙短杖', '灰纹披风'],
+    attributes: troopAttr(45, 34, 48, 45, 60, 46)
+  },
+  rift_acolyte: {
+    id: 'rift_acolyte',
+    name: '裂隙侍法者',
+    tier: TroopTier.TIER_2,
+    basePower: 26,
+    cost: 95,
+    upgradeCost: 135,
+    maxXp: 90,
+    upgradeTargetId: 'rift_sentinel',
+    description: '打开短暂裂隙削弱敌阵。【技能：断链】敌方命中下降。',
+    equipment: ['裂隙法杖', '折影袍'],
+    attributes: troopAttr(66, 50, 60, 66, 90, 62)
+  },
+  rift_sentinel: {
+    id: 'rift_sentinel',
+    name: '裂隙守望',
+    tier: TroopTier.TIER_3,
+    basePower: 50,
+    cost: 190,
+    upgradeCost: 250,
+    maxXp: 170,
+    upgradeTargetId: 'rift_marshal',
+    description: '用裂隙扰乱敌军阵线。【技能：裂界】削弱敌远程伤害。',
+    equipment: ['裂界权杖', '夜影斗篷'],
+    attributes: troopAttr(92, 70, 72, 92, 115, 72)
+  },
+  rift_marshal: {
+    id: 'rift_marshal',
+    name: '裂隙统帅',
+    tier: TroopTier.TIER_4,
+    basePower: 75,
+    cost: 310,
+    upgradeCost: 380,
+    maxXp: 260,
+    upgradeTargetId: 'rift_overseer',
+    description: '裂隙阵列笼罩战场。【技能：裂幕】削弱敌远程火力并提升己方稳定。',
+    equipment: ['裂幕权杖', '虚影披风'],
+    attributes: troopAttr(120, 90, 78, 115, 140, 85)
+  },
+  rift_overseer: {
+    id: 'rift_overseer',
+    name: '裂隙督军',
+    tier: TroopTier.TIER_5,
+    basePower: 112,
+    cost: 490,
+    upgradeCost: 0,
+    maxXp: 470,
+    description: '以裂隙封锁敌军阵型。【技能：裂禁】敌军远程压制大幅下降。',
+    equipment: ['裂禁权杖', '虚空冠冕'],
+    attributes: troopAttr(145, 105, 88, 130, 165, 95)
+  },
+  aether_initiate: {
+    id: 'aether_initiate',
+    name: '以太学徒',
+    tier: TroopTier.TIER_1,
+    basePower: 12,
+    cost: 42,
+    upgradeCost: 62,
+    maxXp: 45,
+    upgradeTargetId: 'aether_disciple',
+    description: '掌握以太流动的初级学徒。【技能：涌动】远程伤害略增。',
+    equipment: ['以太短杖', '轻纹斗篷'],
+    attributes: troopAttr(45, 34, 50, 46, 62, 47)
+  },
+  aether_disciple: {
+    id: 'aether_disciple',
+    name: '以太侍法者',
+    tier: TroopTier.TIER_2,
+    basePower: 27,
+    cost: 100,
+    upgradeCost: 140,
+    maxXp: 95,
+    upgradeTargetId: 'aether_scholar',
+    description: '操纵以太流束进行压制。【技能：以太潮】远程伤害提升。',
+    equipment: ['以太法杖', '流纹长袍'],
+    attributes: troopAttr(68, 52, 62, 68, 95, 64)
+  },
+  aether_scholar: {
+    id: 'aether_scholar',
+    name: '以太学者',
+    tier: TroopTier.TIER_3,
+    basePower: 52,
+    cost: 200,
+    upgradeCost: 260,
+    maxXp: 175,
+    upgradeTargetId: 'aether_weaver',
+    description: '以太流束形成持续压制。【技能：以太织】远程伤害提升。',
+    equipment: ['以太权杖', '流光披肩'],
+    attributes: troopAttr(95, 72, 74, 95, 125, 74)
+  },
+  aether_weaver: {
+    id: 'aether_weaver',
+    name: '以太织法者',
+    tier: TroopTier.TIER_4,
+    basePower: 78,
+    cost: 320,
+    upgradeCost: 390,
+    maxXp: 270,
+    upgradeTargetId: 'aether_archsage',
+    description: '以太织网稳固阵线。【技能：以太幕】远程命中与稳定提升。',
+    equipment: ['以太权杖', '织法斗篷'],
+    attributes: troopAttr(122, 92, 80, 118, 150, 88)
+  },
+  aether_archsage: {
+    id: 'aether_archsage',
+    name: '以太大贤者',
+    tier: TroopTier.TIER_5,
+    basePower: 115,
+    cost: 500,
+    upgradeCost: 0,
+    maxXp: 480,
+    description: '以太潮汐覆压战场。【技能：以太洪流】远程火力显著增强。',
+    equipment: ['以太法冠', '恒流披风'],
+    attributes: troopAttr(148, 108, 90, 132, 188, 96)
   },
   footman: {
     id: 'footman',
@@ -5179,7 +5444,8 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
       VERDANT_COVENANT: 0,
       FROST_OATH: 0,
       RED_DUNE: 0,
-      AUREATE_LEAGUE: 0
+      AUREATE_LEAGUE: 0,
+      ARCANE_CONCORD: 0
     },
     races: {
       HUMAN: 0,
@@ -6587,6 +6853,139 @@ export const LOCATIONS: Location[] = [
     mercenaries: []
   },
   {
+    id: 'city_starwell',
+    name: '星涌城',
+    type: 'CITY',
+    description: '星辉秘约的主城，高塔与法阵交织成光环。',
+    coordinates: { x: 140, y: 780 },
+    terrain: 'PLAINS',
+    factionId: 'ARCANE_CONCORD',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: [],
+    lord: {
+      id: 'lord_starwell',
+      name: '伊莱雅',
+      title: '星辉议主',
+      factionId: 'ARCANE_CONCORD',
+      fiefId: 'city_starwell',
+      traits: ['冷静', '睿智'],
+      temperament: '沉稳',
+      focus: 'DIPLOMACY',
+      relation: 0,
+      currentLocationId: 'city_starwell',
+      state: 'RESTING',
+      stateSinceDay: 1,
+      partyTroops: [
+        createTroop('stellar_acolyte', 70),
+        createTroop('lumen_disciple', 55),
+        createTroop('rift_acolyte', 45),
+        createTroop('aether_disciple', 50)
+      ],
+      partyMaxCount: 220
+    }
+  },
+  {
+    id: 'castle_runehold',
+    name: '符铭堡',
+    type: 'CASTLE',
+    description: '符文石墙守护的秘约前哨。',
+    coordinates: { x: 100, y: 840 },
+    terrain: 'MOUNTAIN',
+    factionId: 'ARCANE_CONCORD',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: [],
+    lord: {
+      id: 'lord_runehold',
+      name: '塞洛',
+      title: '符铭侯',
+      factionId: 'ARCANE_CONCORD',
+      fiefId: 'castle_runehold',
+      traits: ['谨慎', '固执'],
+      temperament: '克制',
+      focus: 'DEFENSE',
+      relation: 0,
+      currentLocationId: 'castle_runehold',
+      state: 'RESTING',
+      stateSinceDay: 1,
+      partyTroops: [
+        createTroop('stellar_acolyte', 45),
+        createTroop('rift_sentinel', 28),
+        createTroop('aether_scholar', 22)
+      ],
+      partyMaxCount: 135
+    }
+  },
+  {
+    id: 'castle_mooncrag',
+    name: '月崖堡',
+    type: 'CASTLE',
+    description: '月辉映照的断崖堡垒，法阵贯穿岩壁。',
+    coordinates: { x: 200, y: 820 },
+    terrain: 'MOUNTAIN',
+    factionId: 'ARCANE_CONCORD',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: [],
+    lord: {
+      id: 'lord_mooncrag',
+      name: '洛维恩',
+      title: '月崖侯',
+      factionId: 'ARCANE_CONCORD',
+      fiefId: 'castle_mooncrag',
+      traits: ['倔强', '果断'],
+      temperament: '刚毅',
+      focus: 'WAR',
+      relation: 0,
+      currentLocationId: 'castle_mooncrag',
+      state: 'RESTING',
+      stateSinceDay: 1,
+      partyTroops: [
+        createTroop('lumen_savant', 30),
+        createTroop('rift_sentinel', 30),
+        createTroop('aether_scholar', 24)
+      ],
+      partyMaxCount: 140
+    }
+  },
+  {
+    id: 'village_starslate',
+    name: '星板村',
+    type: 'VILLAGE',
+    description: '矿脉浅层流出星板石，秘约在此设立驻点。',
+    coordinates: { x: 70, y: 790 },
+    terrain: 'PLAINS',
+    factionId: 'ARCANE_CONCORD',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'village_runeweald',
+    name: '符林村',
+    type: 'VILLAGE',
+    description: '林间布满刻符石碑，居民习惯低声诵咒。',
+    coordinates: { x: 180, y: 880 },
+    terrain: 'FOREST',
+    factionId: 'ARCANE_CONCORD',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
+    id: 'village_mistfont',
+    name: '雾泉村',
+    type: 'VILLAGE',
+    description: '泉雾终年不散，据说能用于净化符文。',
+    coordinates: { x: 220, y: 900 },
+    terrain: 'PLAINS',
+    factionId: 'ARCANE_CONCORD',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: []
+  },
+  {
     id: 'village_goblin_slag',
     name: '哥布林村·炉渣',
     type: 'VILLAGE',
@@ -6596,6 +6995,11 @@ export const LOCATIONS: Location[] = [
     lastRefreshDay: 0,
     volunteers: [],
     mercenaries: [],
+    garrison: [
+      createTroop('goblin_scavenger', 40),
+      createTroop('goblin_slinger', 25),
+      createTroop('goblin_scrap_shield', 12)
+    ],
     lord: {
       id: 'goblin_lord_slag',
       name: '格鲁克',
@@ -6626,6 +7030,11 @@ export const LOCATIONS: Location[] = [
     lastRefreshDay: 0,
     volunteers: [],
     mercenaries: [],
+    garrison: [
+      createTroop('goblin_spear_urchin', 32),
+      createTroop('goblin_slinger', 20),
+      createTroop('goblin_sneak', 14)
+    ],
     lord: {
       id: 'goblin_lord_murk',
       name: '祖克',
@@ -6656,6 +7065,11 @@ export const LOCATIONS: Location[] = [
     lastRefreshDay: 0,
     volunteers: [],
     mercenaries: [],
+    garrison: [
+      createTroop('goblin_scavenger', 30),
+      createTroop('goblin_bomber', 10),
+      createTroop('goblin_slinger', 18)
+    ],
     lord: {
       id: 'goblin_lord_cog',
       name: '布里克',
@@ -6686,6 +7100,11 @@ export const LOCATIONS: Location[] = [
     lastRefreshDay: 0,
     volunteers: [],
     mercenaries: [],
+    garrison: [
+      createTroop('goblin_wolf_pup_rider', 12),
+      createTroop('goblin_spear_urchin', 24),
+      createTroop('goblin_scrap_shield', 14)
+    ],
     lord: {
       id: 'goblin_lord_ridge',
       name: '乌兹',

@@ -290,7 +290,7 @@ export interface EnemyForce {
 
 export type TerrainType = 'PLAINS' | 'FOREST' | 'MOUNTAIN' | 'SNOW' | 'DESERT' | 'RUINS' | 'GRAVEYARD' | 'MARKET' | 'RESTAURANT' | 'BANDIT_CAMP' | 'CAVE';
 
-export type FactionId = 'VERDANT_COVENANT' | 'FROST_OATH' | 'RED_DUNE' | 'AUREATE_LEAGUE';
+export type FactionId = 'VERDANT_COVENANT' | 'FROST_OATH' | 'RED_DUNE' | 'AUREATE_LEAGUE' | 'ARCANE_CONCORD';
 export type FactionSpecialization = 'MELEE' | 'RANGED' | 'CAVALRY';
 
 export type FactionInfo = {
@@ -423,6 +423,11 @@ export type BuildingType =
   | 'HOUSING'
   | 'HOUSING_II'
   | 'HOUSING_III'
+  | 'UNDERGROUND_PLAZA'
+  | 'CANTEEN'
+  | 'TAVERN'
+  | 'THEATER'
+  | 'ARENA'
   | 'TRAINING_CAMP'
   | 'BARRACKS'
   | 'DEFENSE'

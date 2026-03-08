@@ -90,6 +90,22 @@ const buildInitialWorldDiplomacy = (): WorldDiplomacyState => {
     (factionRelations as any).AUREATE_LEAGUE.RED_DUNE = -6;
     (factionRelations as any).RED_DUNE.AUREATE_LEAGUE = -6;
   }
+  if (factionIds.includes('ARCANE_CONCORD') && factionIds.includes('VERDANT_COVENANT')) {
+    (factionRelations as any).ARCANE_CONCORD.VERDANT_COVENANT = -4;
+    (factionRelations as any).VERDANT_COVENANT.ARCANE_CONCORD = -4;
+  }
+  if (factionIds.includes('ARCANE_CONCORD') && factionIds.includes('FROST_OATH')) {
+    (factionRelations as any).ARCANE_CONCORD.FROST_OATH = -10;
+    (factionRelations as any).FROST_OATH.ARCANE_CONCORD = -10;
+  }
+  if (factionIds.includes('ARCANE_CONCORD') && factionIds.includes('RED_DUNE')) {
+    (factionRelations as any).ARCANE_CONCORD.RED_DUNE = -6;
+    (factionRelations as any).RED_DUNE.ARCANE_CONCORD = -6;
+  }
+  if (factionIds.includes('ARCANE_CONCORD') && factionIds.includes('AUREATE_LEAGUE')) {
+    (factionRelations as any).ARCANE_CONCORD.AUREATE_LEAGUE = 4;
+    (factionRelations as any).AUREATE_LEAGUE.ARCANE_CONCORD = 4;
+  }
   const raceRelations = raceIds.reduce((acc, a) => {
     acc[a] = raceIds.reduce((row, b) => {
       row[b] = clampRelation(RACE_RELATION_MATRIX[a]?.[b] ?? 0);
@@ -629,6 +645,37 @@ const buildLordPartyTroops = (location: Location) => {
     const template = TROOP_TEMPLATES[id];
     return template ? { ...template, count, xp: 0 } : null;
   };
+  if (location.factionId === 'ARCANE_CONCORD') {
+    if (location.type === 'CITY') {
+      const base = [
+        pickTroop('stellar_acolyte', 70),
+        pickTroop('lumen_disciple', 60),
+        pickTroop('rift_acolyte', 50),
+        pickTroop('aether_disciple', 50),
+        pickTroop('stellar_magus', 20),
+        pickTroop('aether_scholar', 15)
+      ].filter(Boolean) as Troop[];
+      return base;
+    }
+    if (location.type === 'CASTLE') {
+      const base = [
+        pickTroop('lumen_disciple', 40),
+        pickTroop('rift_sentinel', 30),
+        pickTroop('aether_scholar', 25),
+        pickTroop('stellar_magus', 20)
+      ].filter(Boolean) as Troop[];
+      return base;
+    }
+    if (location.type === 'VILLAGE') {
+      const base = [
+        pickTroop('stellar_initiate', 35),
+        pickTroop('lumen_initiate', 25),
+        pickTroop('rift_initiate', 20),
+        pickTroop('aether_initiate', 20)
+      ].filter(Boolean) as Troop[];
+      return base;
+    }
+  }
   if (location.type === 'CITY') {
     const base = [pickTroop('militia', 120), pickTroop('footman', 80), pickTroop('hunter', 50), pickTroop('heavy_fire_cannon', 1), pickTroop('arcane_glider', 1)].filter(Boolean) as Troop[];
     return base;
@@ -1567,7 +1614,8 @@ export default function App() {
       VERDANT_COVENANT: matrix?.factions?.VERDANT_COVENANT ?? INITIAL_PLAYER_STATE.relationMatrix.factions.VERDANT_COVENANT,
       FROST_OATH: matrix?.factions?.FROST_OATH ?? INITIAL_PLAYER_STATE.relationMatrix.factions.FROST_OATH,
       RED_DUNE: matrix?.factions?.RED_DUNE ?? INITIAL_PLAYER_STATE.relationMatrix.factions.RED_DUNE,
-      AUREATE_LEAGUE: (matrix as any)?.factions?.AUREATE_LEAGUE ?? (INITIAL_PLAYER_STATE as any).relationMatrix.factions.AUREATE_LEAGUE ?? 0
+      AUREATE_LEAGUE: (matrix as any)?.factions?.AUREATE_LEAGUE ?? (INITIAL_PLAYER_STATE as any).relationMatrix.factions.AUREATE_LEAGUE ?? 0,
+      ARCANE_CONCORD: (matrix as any)?.factions?.ARCANE_CONCORD ?? (INITIAL_PLAYER_STATE as any).relationMatrix.factions.ARCANE_CONCORD ?? 0
     },
     races: {
       HUMAN: matrix?.races?.HUMAN ?? INITIAL_PLAYER_STATE.relationMatrix.races.HUMAN,
@@ -1593,6 +1641,14 @@ export default function App() {
     if (location.type === 'MYSTERIOUS_CAVE') return 'VOID';
     if (location.type === 'ASYLUM') return 'MADNESS';
     return null;
+  };
+  const getLocationRecruitId = (location: Location) => {
+    const race = getLocationRace(location);
+    if (race === 'GOBLIN') return 'goblin_scavenger';
+    if (location.type === 'CITY') return 'militia';
+    if (isUndeadFortressLocation(location)) return 'zombie';
+    if (isCastleLikeLocation(location)) return 'footman';
+    return 'peasant';
   };
 
   const getLocationRelationTarget = (location?: Location | null) => {
@@ -2418,7 +2474,8 @@ export default function App() {
   };
 
   const normalizePlayerSoldiers = (player: PlayerState): PlayerState => {
-    const troops = Array.isArray(player.troops) ? player.troops : [];
+    const troops = (Array.isArray(player.troops) ? player.troops : [])
+      .filter(t => !!getTroopTemplate(t.id));
     const troopMap = new Map(troops.map(t => [t.id, t]));
     let soldiers = Array.isArray(player.soldiers) ? player.soldiers.map(s => ({ ...s })) : [];
     let nextId = typeof player.nextSoldierId === 'number' ? player.nextSoldierId : 1;
@@ -3372,6 +3429,11 @@ export default function App() {
     { type: 'HOUSING', name: '民居', cost: 260, days: 2, description: '提供税收来源，也会提高据点的存在感。' },
     { type: 'HOUSING_II', name: '民居·II', cost: 520, days: 3, description: '扩建居所与附属设施，提高税收与稳定预期。' },
     { type: 'HOUSING_III', name: '民居·III', cost: 980, days: 4, description: '成熟社区与配套体系，显著提升税收与民心。' },
+    { type: 'UNDERGROUND_PLAZA', name: '地下广场', cost: 760, days: 4, description: '地下层的集会空间，提升稳定与和谐。' },
+    { type: 'CANTEEN', name: '餐厅', cost: 540, days: 3, description: '提供稳定餐食，改善士气与和谐。' },
+    { type: 'TAVERN', name: '酒馆', cost: 640, days: 3, description: '放松与消息交换场所，提升繁荣。' },
+    { type: 'THEATER', name: '剧场', cost: 920, days: 4, description: '娱乐演出提升繁荣与和谐。' },
+    { type: 'ARENA', name: '斗技场', cost: 980, days: 4, description: '训练与竞技并行，提升稳定与生产力。' },
     { type: 'TRAINING_CAMP', name: '训练营', cost: 500, days: 3, description: '驻军获得经验并自动晋升。' },
     { type: 'BARRACKS', name: '兵营', cost: 800, days: 4, description: '驻军容量提升 50%。' },
     { type: 'DEFENSE', name: '防御建筑', cost: 700, days: 4, description: '增强据点防御强度。' },
@@ -3784,16 +3846,31 @@ export default function App() {
         newLocations = newLocations.map(loc => {
           if (loc.type !== 'HIDEOUT' || loc.owner !== 'PLAYER' || !loc.hideout) return loc;
           const gov = loc.hideout.governance ?? { stability: 60, productivity: 55, prosperity: 50, harmony: 55 };
+          const builtFacilities = (loc.hideout.layers ?? []).flatMap(layer => (layer.facilitySlots ?? []))
+            .filter(s => !!s?.type && !(typeof s?.daysLeft === 'number' && s.daysLeft > 0))
+            .map(s => s.type as BuildingType);
+          const countFacility = (type: BuildingType) => builtFacilities.reduce((acc, t) => acc + (t === type ? 1 : 0), 0);
+          const plaza = countFacility('UNDERGROUND_PLAZA');
+          const canteen = countFacility('CANTEEN');
+          const tavern = countFacility('TAVERN');
+          const theater = countFacility('THEATER');
+          const arena = countFacility('ARENA');
+          const nextGov = {
+            stability: clampPct(gov.stability + plaza * 0.6 + arena * 0.6),
+            productivity: clampPct(gov.productivity + arena * 0.3),
+            prosperity: clampPct(gov.prosperity + canteen * 0.4 + tavern * 0.6 + theater * 0.8),
+            harmony: clampPct(gov.harmony + plaza * 0.6 + canteen * 0.6 + tavern * 0.3 + theater * 0.6)
+          };
           let nextEventDay = typeof gov.nextEventDay === 'number' ? gov.nextEventDay : nextDay + rollInt(2, 4);
           const lastEventDay = typeof gov.lastEventDay === 'number' ? gov.lastEventDay : nextDay - rollInt(2, 5);
           const daysSince = Math.max(0, nextDay - lastEventDay);
           const baseChance = Math.min(0.7, 0.2 + daysSince * 0.12);
           if (nextDay < nextEventDay) {
-            return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, stability: clampPct(gov.stability), productivity: clampPct(gov.productivity), prosperity: clampPct(gov.prosperity), harmony: clampPct(gov.harmony), nextEventDay, lastEventDay } } };
+            return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, ...nextGov, nextEventDay, lastEventDay } } };
           }
           if (Math.random() >= baseChance) {
             nextEventDay = nextDay + rollInt(2, 4);
-            return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, stability: clampPct(gov.stability), productivity: clampPct(gov.productivity), prosperity: clampPct(gov.prosperity), harmony: clampPct(gov.harmony), nextEventDay, lastEventDay } } };
+            return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, ...nextGov, nextEventDay, lastEventDay } } };
           }
           const evt = govEvents[Math.floor(Math.random() * govEvents.length)];
           const relationImpact = Math.random() < 0.45
@@ -3811,12 +3888,12 @@ export default function App() {
             description: [
               ...evt.lines,
               relationImpact ? `牵涉与 ${RACE_LABELS[relationImpact.raceId]} 的关系走向。` : '',
-              `稳定性 ${clampPct(gov.stability)}｜生产力 ${clampPct(gov.productivity)}｜繁荣度 ${clampPct(gov.prosperity)}｜和谐度 ${clampPct(gov.harmony)}`,
-              clampPct(gov.stability) <= 20 ? '警告：稳定性过低，叛乱风险上升。' : ''
+              `稳定性 ${clampPct(nextGov.stability)}｜生产力 ${clampPct(nextGov.productivity)}｜繁荣度 ${clampPct(nextGov.prosperity)}｜和谐度 ${clampPct(nextGov.harmony)}`,
+              clampPct(nextGov.stability) <= 20 ? '警告：稳定性过低，叛乱风险上升。' : ''
             ].filter(Boolean).join('\n'),
-            payload: { gov, eventId: evt.id, relationImpact }
+            payload: { gov: nextGov, eventId: evt.id, relationImpact }
           });
-          return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, nextEventDay: nextDay + rollInt(3, 6), lastEventDay } } };
+          return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, ...nextGov, nextEventDay: nextDay + rollInt(3, 6), lastEventDay } } };
         });
       }
       const stayLoc = location ? (newLocations.find(l => l.id === location.id) ?? location) : null;
@@ -3928,13 +4005,7 @@ export default function App() {
           }
         }
         if (remaining <= 0) return updated;
-        const recruitId = loc.type === 'CITY'
-          ? 'militia'
-          : isUndeadFortressLocation(loc)
-            ? 'zombie'
-            : isCastleLikeLocation(loc)
-              ? 'footman'
-              : 'peasant';
+        const recruitId = getLocationRecruitId(loc);
         const template = getTroopTemplate(recruitId);
         if (!template) return updated;
         const index = updated.findIndex(t => t.id === template.id);
@@ -4434,13 +4505,7 @@ export default function App() {
                 const recruitCount = updated.type === 'CITY' ? 12 : isCastleLikeLocation(updated) ? 8 : 5;
                 const available = Math.min(limit - currentCount, recruitCount);
                 if (available > 0) {
-                  const recruitId = updated.type === 'CITY'
-                    ? 'militia'
-                    : isUndeadFortressLocation(updated)
-                      ? 'zombie'
-                      : isCastleLikeLocation(updated)
-                        ? 'footman'
-                        : 'peasant';
+                  const recruitId = getLocationRecruitId(updated);
                   const template = getTroopTemplate(recruitId);
                   if (template) {
                     const index = garrison.findIndex(t => t.id === template.id);
@@ -6862,7 +6927,26 @@ export default function App() {
         ? ['frost_oath_halberdier', 'frost_oath_bladeguard']
         : factionId === 'RED_DUNE'
           ? ['red_dune_lancer', 'red_dune_cataphract']
-          : [];
+          : factionId === 'ARCANE_CONCORD'
+            ? ['stellar_magus', 'lumen_savant', 'rift_sentinel', 'aether_scholar']
+            : [];
+    if (location.id.startsWith('village_goblin_')) {
+      return mode === 'VOLUNTEER'
+        ? ['goblin_scavenger', 'goblin_slinger', 'goblin_spear_urchin', 'goblin_sneak']
+        : ['goblin_scrap_shield', 'goblin_bomber', 'goblin_wolf_pup_rider'];
+    }
+    if (factionId === 'ARCANE_CONCORD') {
+      if (mode === 'VOLUNTEER') {
+        return ['stellar_initiate', 'lumen_initiate', 'rift_initiate', 'aether_initiate'];
+      }
+      return [
+        'stellar_acolyte',
+        'lumen_disciple',
+        'rift_acolyte',
+        'aether_disciple',
+        ...factionMercs
+      ];
+    }
     if (type === 'HEAVY_TRIAL_GROUNDS') {
       if (mode === 'VOLUNTEER') return [];
       return [
@@ -10231,10 +10315,52 @@ export default function App() {
           }
         } as Location);
       });
+      const locationTemplates = new Map(LOCATIONS.map(loc => [loc.id, loc]));
+      const normalizeTroops = (troops?: Troop[]) => {
+        if (!Array.isArray(troops)) return [];
+        return troops
+          .map(t => ({ ...t, count: Math.max(0, Math.floor(t.count ?? 0)), xp: Math.max(0, Math.floor(t.xp ?? 0)) }))
+          .filter(t => !!getTroopTemplate(t.id) && t.count > 0);
+      };
+      const normalizeStayParties = (parties?: StayParty[]) => {
+        if (!Array.isArray(parties)) return [];
+        return parties.map(p => ({
+          ...p,
+          troops: normalizeTroops(p.troops)
+        }));
+      };
+      const buildGoblinFallback = () => {
+        const ids = ['goblin_scavenger', 'goblin_slinger', 'goblin_scrap_shield'];
+        return ids.map(id => {
+          const tmpl = getTroopTemplate(id);
+          return tmpl ? { ...tmpl, count: id === 'goblin_scavenger' ? 30 : id === 'goblin_slinger' ? 20 : 12, xp: 0 } : null;
+        }).filter(Boolean) as Troop[];
+      };
+      const mergedLocations = normalizedLocations.map(loc => {
+        const template = locationTemplates.get(loc.id);
+        const merged = template ? { ...template, ...loc } : loc;
+        const next = {
+          ...merged,
+          volunteers: Array.isArray(merged.volunteers) ? merged.volunteers : (template?.volunteers ?? []),
+          mercenaries: Array.isArray(merged.mercenaries) ? merged.mercenaries : (template?.mercenaries ?? []),
+          buildings: Array.isArray(merged.buildings) ? merged.buildings : (template?.buildings ?? []),
+          garrison: normalizeTroops(merged.garrison),
+          stayParties: normalizeStayParties(merged.stayParties)
+        };
+        if (!next.lord && template?.lord) next.lord = template.lord;
+        if (next.id.startsWith('village_goblin_')) {
+          const goblinOnly = next.garrison.filter(t => t.id.startsWith('goblin_'));
+          next.garrison = goblinOnly.length > 0 ? goblinOnly : normalizeTroops(template?.garrison ?? buildGoblinFallback());
+        }
+        return next;
+      });
+      const existingIds = new Set(mergedLocations.map(loc => loc.id));
+      const missingLocations = LOCATIONS.filter(loc => !existingIds.has(loc.id));
+      const finalLocations = ensureLocationLords(seedStayParties([...mergedLocations, ...missingLocations]));
       const finalLords = Array.isArray(nextLords) && nextLords.length > 0
         ? nextLords
-        : normalizedLocations.flatMap(loc => loc.lord ? [loc.lord] : []);
-      const syncedLocations = syncLordPresence(normalizedLocations, finalLords);
+        : finalLocations.flatMap(loc => loc.lord ? [loc.lord] : []);
+      const syncedLocations = syncLordPresence(finalLocations, finalLords);
       setLords(finalLords.length > 0 ? finalLords : lordsRef.current);
       setLocations(syncedLocations);
       const nextLogs = Array.isArray(save?.world?.logs)
