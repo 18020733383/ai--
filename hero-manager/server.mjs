@@ -8,12 +8,16 @@ const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const publicHeroRoot = path.join(rootDir, 'public', 'image', 'characters');
 const publicTroopRoot = path.join(rootDir, 'public', 'image', 'troops');
+const publicLocationRoot = path.join(rootDir, 'public', 'image', 'locations');
 const legacyHeroRoot = path.join(rootDir, 'image', 'characters');
 const legacyTroopRoot = path.join(rootDir, 'image', 'troops');
+const legacyLocationRoot = path.join(rootDir, 'image', 'locations');
 const heroRoots = [publicHeroRoot, legacyHeroRoot];
 const troopRoots = [publicTroopRoot, legacyTroopRoot];
+const locationRoots = [publicLocationRoot, legacyLocationRoot];
 const heroRoot = publicHeroRoot;
 const troopRoot = publicTroopRoot;
+const locationRoot = publicLocationRoot;
 const indexPath = path.join(__dirname, 'index.html');
 
 const sendJson = (res, status, data) => {
@@ -116,6 +120,184 @@ const listTroopsFromConstants = async () => {
   } catch {
     return [];
   }
+};
+
+const listLocationFiles = async (locationId) => {
+  try {
+    const lists = await Promise.all(locationRoots.map(async (root) => {
+      try {
+        const entries = await readdir(root, { withFileTypes: true });
+        return entries.filter(e => e.isFile() && e.name.startsWith(`${locationId}.`)).map(e => e.name);
+      } catch {
+        return [];
+      }
+    }));
+    return Array.from(new Set(lists.flat())).sort();
+  } catch {
+    return [];
+  }
+};
+
+const parseLocationsFromConstants = async () => {
+  try {
+    const constantsPath = path.join(rootDir, 'constants.ts');
+    const text = await readFile(constantsPath, 'utf8');
+    const startKey = 'export const LOCATIONS';
+    const startIndex = text.indexOf(startKey);
+    if (startIndex < 0) return [];
+    const listStart = text.indexOf('[', startIndex);
+    const listEnd = text.indexOf('];', listStart);
+    if (listStart < 0 || listEnd < 0) return [];
+    const block = text.slice(listStart + 1, listEnd);
+    const objects = extractTopLevelObjects(block);
+    const readString = (chunk, key) => {
+      const m = chunk.match(new RegExp(`^\\s*${key}\\s*:\\s*(['"])(.*?)\\1`, 'm'));
+      return m ? String(m[2] ?? '').trim() : '';
+    };
+    return objects.map(chunk => ({
+      id: readString(chunk, 'id'),
+      name: readString(chunk, 'name'),
+      type: readString(chunk, 'type'),
+      description: readString(chunk, 'description'),
+      terrain: readString(chunk, 'terrain'),
+      factionId: readString(chunk, 'factionId')
+    })).filter(x => x.id);
+  } catch {
+    return [];
+  }
+};
+
+const extractTopLevelObjects = (text) => {
+  const items = [];
+  let depth = 0;
+  let start = -1;
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (ch === '{') {
+      depth += 1;
+      if (depth === 1) start = i;
+    } else if (ch === '}') {
+      if (depth === 1 && start >= 0) {
+        items.push(text.slice(start, i + 1));
+        start = -1;
+      }
+      depth = Math.max(0, depth - 1);
+    }
+  }
+  return items;
+};
+
+const parseHeroRosterFromConstants = async () => {
+  try {
+    const constantsPath = path.join(rootDir, 'constants.ts');
+    const text = await readFile(constantsPath, 'utf8');
+    const startKey = 'export const INITIAL_HERO_ROSTER';
+    const startIndex = text.indexOf(startKey);
+    if (startIndex < 0) return [];
+    const listStart = text.indexOf('[', startIndex);
+    const listEnd = text.indexOf('];', listStart);
+    if (listStart < 0 || listEnd < 0) return [];
+    const block = text.slice(listStart + 1, listEnd);
+    const objects = extractTopLevelObjects(block);
+    const readString = (chunk, key) => {
+      const m = chunk.match(new RegExp(`${key}\\s*:\\s*(['"])(.*?)\\1`));
+      return m ? String(m[2] ?? '').trim() : '';
+    };
+    const readArray = (chunk, key) => {
+      const m = chunk.match(new RegExp(`${key}\\s*:\\s*\\[([\\s\\S]*?)\\]`));
+      if (!m) return [];
+      return Array.from(m[1].matchAll(/(['"])(.*?)\1/g)).map(x => String(x[2] ?? '').trim()).filter(Boolean);
+    };
+    return objects.map(chunk => ({
+      id: readString(chunk, 'id'),
+      name: readString(chunk, 'name'),
+      role: readString(chunk, 'role'),
+      title: readString(chunk, 'title'),
+      background: readString(chunk, 'background'),
+      traits: readArray(chunk, 'traits'),
+      portrait: readString(chunk, 'portrait'),
+      personality: readString(chunk, 'personality'),
+      quotes: readArray(chunk, 'quotes')
+    })).filter(x => x.id);
+  } catch {
+    return [];
+  }
+};
+
+const buildHeroStickerPromptForAI = (hero) => {
+  const safe = {
+    id: String(hero?.id ?? '').trim(),
+    name: String(hero?.name ?? '').trim(),
+    role: String(hero?.role ?? '').trim(),
+    title: String(hero?.title ?? '').trim(),
+    background: String(hero?.background ?? '').trim(),
+    traits: Array.isArray(hero?.traits) ? hero.traits : [],
+    portrait: String(hero?.portrait ?? '').trim(),
+    personality: String(hero?.personality ?? '').trim(),
+    quotes: Array.isArray(hero?.quotes) ? hero.quotes : []
+  };
+  const expressionOrder = ['IDLE', 'HAPPY', 'SAD', 'ANGRY', 'AFRAID', 'SURPRISED', 'AWKWARD', 'SILENT', 'DEAD'].join(', ');
+  return `
+你是一个游戏美术提示词撰写助手。请为“英雄九宫格表情包”生成最终生图 prompt。
+输出必须是 JSON，不要输出任何额外文字。
+
+要求：
+1) 画面为 1:1 正方形九宫格（3x3）。
+2) 每格为同一角色的 Q 版、LINE 风格、半身像表情包。
+3) 表情顺序从左上到右下依次为：${expressionOrder}。
+4) 禁止文字、logo、水印、UI。
+5) 线条干净、色彩柔和、背景统一；格子之间留出清晰间距。
+
+英雄信息：
+- ID: ${safe.id || '未知'}
+- 名称: ${safe.name || '未知'}
+- 职业: ${safe.role || '未知'}
+- 称号: ${safe.title || '未知'}
+- 背景: ${safe.background || '无'}
+- 性格: ${safe.personality || '无'}
+- 外貌关键词: ${safe.portrait || '无'}
+- 特长: ${(safe.traits ?? []).join('、') || '无'}
+- 台词风格: ${(safe.quotes ?? []).join('；') || '无'}
+
+请返回 JSON，格式如下：
+{
+  "imagePrompt": "最终 prompt（建议英文，包含风格与限制）"
+}
+  `.trim();
+};
+
+const buildLocationBackgroundPromptForAI = (loc) => {
+  const safe = {
+    id: String(loc?.id ?? '').trim(),
+    name: String(loc?.name ?? '').trim(),
+    type: String(loc?.type ?? '').trim(),
+    description: String(loc?.description ?? '').trim(),
+    terrain: String(loc?.terrain ?? '').trim(),
+    factionId: String(loc?.factionId ?? '').trim()
+  };
+  return `
+你是一个游戏美术提示词撰写助手。请为“据点背景图”生成最终生图 prompt。
+输出必须是 JSON，不要输出任何额外文字。
+
+要求：
+1) 风格参考《骑马与砍杀》游戏氛围。
+2) 画面带旧纸画风质感，边缘不要描边或相框感。
+3) 无文字、无数字、无 logo、无 UI、无水印。
+4) 画面干净且具有场景层次。
+
+据点信息：
+- ID: ${safe.id || '未知'}
+- 名称: ${safe.name || '未知'}
+- 类型: ${safe.type || '未知'}
+- 地形: ${safe.terrain || '未知'}
+- 阵营: ${safe.factionId || '未知'}
+- 描述: ${safe.description || '无'}
+
+请返回 JSON，格式如下：
+{
+  "imagePrompt": "最终 prompt（建议英文，包含风格与限制）"
+}
+  `.trim();
 };
 
 const listTroopFiles = async () => {
@@ -407,6 +589,93 @@ const fetchBinary = async (url, init, timeoutMs = 120000) => {
   }
 };
 
+const generateImageFromPrompt = async ({ baseUrl, apiKey, model, prompt, size = '1024x1024', endpointMode = 'AUTO' }) => {
+  const v1 = ensureV1(baseUrl);
+  const authHeaders = {
+    'Content-Type': 'application/json',
+    'Authorization': `Bearer ${apiKey}`
+  };
+
+  const tryImagesEndpoint = async () => {
+    const endpoint = joinUrl(v1, '/images/generations');
+    const json = await fetchJson(endpoint, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        model,
+        prompt,
+        size,
+        response_format: 'b64_json'
+      })
+    }, 240000);
+    const picked = extractBase64ImageFromJson(json);
+    if (!picked) throw new Error('No image data');
+    return picked;
+  };
+
+  const tryChatEndpoint = async () => {
+    const endpoint = joinUrl(v1, '/chat/completions');
+    const sys = `
+你是一个图片生成模型的代理。你要基于用户 prompt 生成一张 1:1 的头像图。
+你必须只返回 JSON，不要返回任何解释性文字，不要加“好啊我来生成”之类的内容。
+JSON 格式必须是：
+{"b64_png":"<base64 png 不带前缀>"}
+要求：画面内禁止任何文字、logo、水印、UI。
+    `.trim();
+    const raw = await fetchTextWithEarlyStop(endpoint, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({
+        model,
+        temperature: 0.6,
+        messages: [
+          { role: 'system', content: sys },
+          { role: 'user', content: prompt }
+        ]
+      })
+    }, 240000);
+    const parsedText = parseChatCompletionToText(raw);
+    const content = parsedText.content || raw;
+    const parsed = extractJson(content) ?? extractJson(parsedText.objects?.[parsedText.objects.length - 1] ?? null) ?? null;
+    const picked = extractBase64ImageFromJson(parsed) ?? extractBase64ImageFromJson(parsedText.objects?.[parsedText.objects.length - 1] ?? null);
+    if (picked?.url) {
+      const buf = await fetchBinary(picked.url, { method: 'GET' }, 240000);
+      return { ext: 'png', buffer: buf };
+    }
+    if (picked?.buffer) return picked;
+    const fromText = extractDataUrlFromText(content);
+    if (fromText) return fromText;
+    if (parsedText.urls.length > 0) {
+      const buf = await fetchBinary(parsedText.urls[0], { method: 'GET' }, 240000);
+      return { ext: 'png', buffer: buf };
+    }
+    throw new Error('No image data');
+  };
+
+  let result = null;
+  if (endpointMode === 'IMAGES') {
+    result = await tryImagesEndpoint();
+  } else if (endpointMode === 'CHAT') {
+    result = await tryChatEndpoint();
+  } else {
+    try {
+      result = await tryImagesEndpoint();
+    } catch (e) {
+      const msg = String(e?.message ?? '');
+      if (msg.includes('HTTP 404') || msg.includes('HTTP 405') || msg.includes('Not Found')) {
+        result = await tryChatEndpoint();
+      } else {
+        throw e;
+      }
+    }
+  }
+  if (!result || !result.buffer) throw new Error('No image data');
+  return {
+    buffer: result.buffer,
+    ext: result.ext === 'jpg' ? 'jpg' : result.ext === 'jpeg' ? 'jpeg' : 'png'
+  };
+};
+
 const buildTroopDescriptionPrompt = (troops) => {
   const list = (troops ?? []).map(t => `- ${t.name}（id: ${t.id}）`).join('\n');
   return `
@@ -458,6 +727,13 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { troops, existing: Array.from(new Set(existing)).sort() });
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/locations') {
+    const locations = await parseLocationsFromConstants();
+    const files = await readdir(publicLocationRoot, { withFileTypes: true }).catch(() => []);
+    const existing = files.filter(e => e.isFile()).map(e => e.name.replace(/\.(png|jpg|jpeg)$/i, ''));
+    return sendJson(res, 200, { locations, existing: Array.from(new Set(existing)).sort() });
+  }
+
   if (req.method === 'GET' && url.pathname.startsWith('/api/hero/')) {
     const parts = url.pathname.split('/').filter(Boolean);
     if (parts.length === 3 && parts[2]) {
@@ -473,6 +749,15 @@ const server = http.createServer(async (req, res) => {
       const troopId = decodeURIComponent(parts[2]);
       const files = await listTroopImageCandidates(troopId);
       return sendJson(res, 200, { troopId, files });
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/api/location/')) {
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length === 3 && parts[2]) {
+      const locationId = decodeURIComponent(parts[2]);
+      const files = await listLocationFiles(locationId);
+      return sendJson(res, 200, { locationId, files });
     }
   }
 
@@ -507,6 +792,30 @@ const server = http.createServer(async (req, res) => {
       const fileName = decodeURIComponent(parts[1]);
       try {
         const filePath = await findFirstExisting(troopRoots, fileName);
+        if (!filePath) return sendText(res, 404, 'Not found');
+        const ext = path.extname(filePath).toLowerCase();
+        const contentType = ext === '.png'
+          ? 'image/png'
+          : ext === '.jpg'
+            ? 'image/jpeg'
+            : ext === '.jpeg'
+              ? 'image/jpeg'
+              : 'application/octet-stream';
+        const buffer = await readFile(filePath);
+        res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
+        return res.end(buffer);
+      } catch {
+        return sendText(res, 404, 'Not found');
+      }
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/location-files/')) {
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length === 2) {
+      const fileName = decodeURIComponent(parts[1]);
+      try {
+        const filePath = await findFirstExisting(locationRoots, fileName);
         if (!filePath) return sendText(res, 404, 'Not found');
         const ext = path.extname(filePath).toLowerCase();
         const contentType = ext === '.png'
@@ -578,6 +887,31 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/location/upload') {
+    try {
+      const body = await readBody(req);
+      const locationId = String(body?.locationId ?? '').trim();
+      const dataUrl = String(body?.dataUrl ?? '').trim();
+      if (!locationId || !dataUrl) {
+        return sendJson(res, 400, { error: 'Missing fields' });
+      }
+      const parsed = parseDataUrl(dataUrl);
+      if (!parsed) return sendJson(res, 400, { error: 'Unsupported file type' });
+
+      await mkdir(locationRoot, { recursive: true });
+      const targets = ['png', 'jpg', 'jpeg'].map(ext => path.join(locationRoot, `${locationId}.${ext}`));
+      await Promise.all(targets.map(file => rm(file, { force: true })));
+
+      const fileName = `${locationId}.${parsed.ext}`;
+      const filePath = path.join(locationRoot, fileName);
+      await writeFile(filePath, parsed.buffer);
+
+      return sendJson(res, 200, { ok: true, locationId, fileName });
+    } catch {
+      return sendJson(res, 500, { error: 'Upload failed' });
+    }
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/ai/troop-descriptions') {
     try {
       const body = await readBody(req);
@@ -619,6 +953,80 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/ai/hero-sticker-prompt') {
+    try {
+      const body = await readBody(req);
+      const baseUrl = String(body?.baseUrl ?? '').trim();
+      const apiKey = String(body?.apiKey ?? '').trim();
+      const model = String(body?.model ?? '').trim();
+      const heroId = String(body?.heroId ?? '').trim();
+      if (!baseUrl || !apiKey || !model || !heroId) return sendJson(res, 400, { error: 'Missing fields' });
+      const heroes = await parseHeroRosterFromConstants();
+      const hero = heroes.find(h => h.id === heroId) ?? { id: heroId, name: heroId };
+      const prompt = buildHeroStickerPromptForAI(hero);
+      const endpoint = joinUrl(ensureV1(baseUrl), '/chat/completions');
+      const json = await fetchJson(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.7,
+          messages: [
+            { role: 'system', content: prompt },
+            { role: 'user', content: '只返回 JSON。' }
+          ]
+        })
+      }, 180000);
+      const content = json?.choices?.[0]?.message?.content ?? '';
+      const parsed = extractJson(content) ?? extractJson(json) ?? null;
+      const imagePrompt = String(parsed?.imagePrompt ?? '').trim();
+      if (!imagePrompt) return sendJson(res, 500, { error: 'Empty AI result' });
+      return sendJson(res, 200, { ok: true, heroId, imagePrompt });
+    } catch (e) {
+      return sendJson(res, 500, { error: String(e?.message ?? 'AI failed') });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/ai/location-prompt') {
+    try {
+      const body = await readBody(req);
+      const baseUrl = String(body?.baseUrl ?? '').trim();
+      const apiKey = String(body?.apiKey ?? '').trim();
+      const model = String(body?.model ?? '').trim();
+      const locationId = String(body?.locationId ?? '').trim();
+      if (!baseUrl || !apiKey || !model || !locationId) return sendJson(res, 400, { error: 'Missing fields' });
+      const locations = await parseLocationsFromConstants();
+      const loc = locations.find(l => l.id === locationId) ?? { id: locationId, name: locationId };
+      const prompt = buildLocationBackgroundPromptForAI(loc);
+      const endpoint = joinUrl(ensureV1(baseUrl), '/chat/completions');
+      const json = await fetchJson(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.7,
+          messages: [
+            { role: 'system', content: prompt },
+            { role: 'user', content: '只返回 JSON。' }
+          ]
+        })
+      }, 180000);
+      const content = json?.choices?.[0]?.message?.content ?? '';
+      const parsed = extractJson(content) ?? extractJson(json) ?? null;
+      const imagePrompt = String(parsed?.imagePrompt ?? '').trim();
+      if (!imagePrompt) return sendJson(res, 500, { error: 'Empty AI result' });
+      return sendJson(res, 200, { ok: true, locationId, imagePrompt });
+    } catch (e) {
+      return sendJson(res, 500, { error: String(e?.message ?? 'AI failed') });
+    }
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/ai/troop-image') {
     try {
       const body = await readBody(req);
@@ -631,93 +1039,9 @@ const server = http.createServer(async (req, res) => {
       const sendIntervalMs = Number(body?.sendIntervalMs ?? 0);
       const endpointMode = String(body?.endpointMode ?? 'AUTO').trim().toUpperCase();
       if (!baseUrl || !apiKey || !model || !troopId || !prompt) return sendJson(res, 400, { error: 'Missing fields' });
-      const v1 = ensureV1(baseUrl);
-      const authHeaders = {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      };
-
-      const tryImagesEndpoint = async () => {
-        const endpoint = joinUrl(v1, '/images/generations');
-        const json = await fetchJson(endpoint, {
-          method: 'POST',
-          headers: authHeaders,
-          body: JSON.stringify({
-            model,
-            prompt,
-            size,
-            response_format: 'b64_json'
-          })
-        }, 240000);
-        const picked = extractBase64ImageFromJson(json);
-        if (!picked) throw new Error('No image data');
-        return picked;
-      };
-
-      const tryChatEndpoint = async () => {
-        const endpoint = joinUrl(v1, '/chat/completions');
-        const sys = `
-你是一个图片生成模型的代理。你要基于用户 prompt 生成一张 1:1 的头像图。
-你必须只返回 JSON，不要返回任何解释性文字，不要加“好啊我来生成”之类的内容。
-JSON 格式必须是：
-{"b64_png":"<base64 png 不带前缀>"}
-要求：画面内禁止任何文字、logo、水印、UI。
-        `.trim();
-        const raw = await fetchTextWithEarlyStop(endpoint, {
-          method: 'POST',
-          headers: authHeaders,
-          body: JSON.stringify({
-            model,
-            temperature: 0.6,
-            messages: [
-              { role: 'system', content: sys },
-              { role: 'user', content: prompt }
-            ]
-          })
-        }, 240000);
-        console.log('[troop-image][chat] raw length', String(raw ?? '').length);
-        console.log('[troop-image][chat] raw head', String(raw ?? '').slice(0, 800));
-        console.log('[troop-image][chat] raw tail', String(raw ?? '').slice(-800));
-        const parsedText = parseChatCompletionToText(raw);
-        console.log('[troop-image][chat] extracted urls', parsedText.urls);
-        const content = parsedText.content || raw;
-        const parsed = extractJson(content) ?? extractJson(parsedText.objects?.[parsedText.objects.length - 1] ?? null) ?? null;
-        const picked = extractBase64ImageFromJson(parsed) ?? extractBase64ImageFromJson(parsedText.objects?.[parsedText.objects.length - 1] ?? null);
-        if (picked?.url) {
-          const buf = await fetchBinary(picked.url, { method: 'GET' }, 240000);
-          return { ext: 'png', buffer: buf };
-        }
-        if (picked?.buffer) return picked;
-        const fromText = extractDataUrlFromText(content);
-        if (fromText) return fromText;
-        if (parsedText.urls.length > 0) {
-          const buf = await fetchBinary(parsedText.urls[0], { method: 'GET' }, 240000);
-          return { ext: 'png', buffer: buf };
-        }
-        throw new Error('No image data');
-      };
-
-      let result = null;
-      if (endpointMode === 'IMAGES') {
-        result = await tryImagesEndpoint();
-      } else if (endpointMode === 'CHAT') {
-        result = await tryChatEndpoint();
-      } else {
-        try {
-          result = await tryImagesEndpoint();
-        } catch (e) {
-          const msg = String(e?.message ?? '');
-          if (msg.includes('HTTP 404') || msg.includes('HTTP 405') || msg.includes('Not Found')) {
-            result = await tryChatEndpoint();
-          } else {
-            throw e;
-          }
-        }
-      }
-
-      if (!result || !result.buffer) return sendJson(res, 500, { error: 'No image data' });
+      const result = await generateImageFromPrompt({ baseUrl, apiKey, model, prompt, size, endpointMode });
       const buffer = result.buffer;
-      const ext = result.ext === 'jpg' ? 'jpg' : result.ext === 'jpeg' ? 'jpeg' : 'png';
+      const ext = result.ext;
       await mkdir(troopRoot, { recursive: true });
       const targets = ['png', 'jpg', 'jpeg'].map(ext => path.join(troopRoot, `${troopId}.${ext}`));
       await Promise.all(targets.map(file => rm(file, { force: true })));
@@ -726,6 +1050,42 @@ JSON 格式必须是：
       await writeFile(filePath, buffer);
       if (sendIntervalMs > 0) await sleep(sendIntervalMs);
       return sendJson(res, 200, { ok: true, troopId, fileName });
+    } catch (e) {
+      return sendJson(res, 500, { error: String(e?.message ?? 'Image failed') });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/ai/hero-sticker') {
+    try {
+      const body = await readBody(req);
+      const baseUrl = String(body?.baseUrl ?? '').trim();
+      const apiKey = String(body?.apiKey ?? '').trim();
+      const model = String(body?.model ?? '').trim();
+      const prompt = String(body?.prompt ?? '').trim();
+      const size = String(body?.size ?? '1024x1024').trim() || '1024x1024';
+      const endpointMode = String(body?.endpointMode ?? 'AUTO').trim().toUpperCase();
+      if (!baseUrl || !apiKey || !model || !prompt) return sendJson(res, 400, { error: 'Missing fields' });
+      const result = await generateImageFromPrompt({ baseUrl, apiKey, model, prompt, size, endpointMode });
+      const dataUrl = `data:image/${result.ext};base64,${result.buffer.toString('base64')}`;
+      return sendJson(res, 200, { ok: true, dataUrl, ext: result.ext });
+    } catch (e) {
+      return sendJson(res, 500, { error: String(e?.message ?? 'Image failed') });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/ai/location-image') {
+    try {
+      const body = await readBody(req);
+      const baseUrl = String(body?.baseUrl ?? '').trim();
+      const apiKey = String(body?.apiKey ?? '').trim();
+      const model = String(body?.model ?? '').trim();
+      const prompt = String(body?.prompt ?? '').trim();
+      const size = String(body?.size ?? '1024x1024').trim() || '1024x1024';
+      const endpointMode = String(body?.endpointMode ?? 'AUTO').trim().toUpperCase();
+      if (!baseUrl || !apiKey || !model || !prompt) return sendJson(res, 400, { error: 'Missing fields' });
+      const result = await generateImageFromPrompt({ baseUrl, apiKey, model, prompt, size, endpointMode });
+      const dataUrl = `data:image/${result.ext};base64,${result.buffer.toString('base64')}`;
+      return sendJson(res, 200, { ok: true, dataUrl, ext: result.ext });
     } catch (e) {
       return sendJson(res, 500, { error: String(e?.message ?? 'Image failed') });
     }

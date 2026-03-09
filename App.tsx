@@ -5856,6 +5856,47 @@ export default function App() {
         });
       }
 
+      const findLocationById = (id: string) => newLocations.find(loc => loc.id === id);
+      const lordCampMap = new Map(
+        newLocations
+          .filter(loc => loc.type === 'FIELD_CAMP' && loc.camp?.kind === 'LORD_MARCH' && loc.camp.lordId)
+          .map(loc => [loc.camp?.lordId as string, loc])
+      );
+      const lordTravelers = nextLords.filter(lord => lord.travelDaysLeft && lord.targetLocationId);
+      const preservedLocations = newLocations.filter(loc => !(loc.type === 'FIELD_CAMP' && loc.camp?.kind === 'LORD_MARCH'));
+      const lordCamps = lordTravelers.map(lord => {
+        const from = findLocationById(lord.currentLocationId) ?? findLocationById(lord.fiefId);
+        const target = findLocationById(lord.targetLocationId ?? '');
+        if (!from || !target) return null;
+        const existing = lordCampMap.get(lord.id);
+        const totalDays = existing?.camp?.totalDays ?? Math.max(1, Math.floor(lord.travelDaysLeft ?? 1));
+        const daysLeft = Math.max(1, Math.floor(lord.travelDaysLeft ?? 1));
+        const campName = `${lord.title}${lord.name}的行军营地`;
+        return {
+          id: existing?.id ?? `lord_march_${lord.id}`,
+          name: campName,
+          type: 'FIELD_CAMP',
+          description: `向 ${target.name} 行军中（剩余 ${daysLeft} 天）`,
+          coordinates: existing?.coordinates ?? { ...from.coordinates },
+          terrain: from.terrain ?? target.terrain,
+          owner: 'ENEMY' as const,
+          garrison: lord.partyTroops.map(t => ({ ...t })),
+          camp: {
+            kind: 'LORD_MARCH',
+            lordId: lord.id,
+            sourceLocationId: from.id,
+            targetLocationId: target.id,
+            totalDays,
+            daysLeft,
+            attackerName: target.name,
+            leaderName: `${lord.title}${lord.name}`,
+            routeStart: existing?.camp?.routeStart ?? { ...from.coordinates },
+            routeEnd: existing?.camp?.routeEnd ?? { ...target.coordinates }
+          }
+        } as Location;
+      }).filter(Boolean) as Location[];
+      newLocations = [...preservedLocations, ...lordCamps];
+
       const activeBattleCount = newLocations.filter(loc => loc.activeSiege).length;
       if (nextBattleTimeline.length === 0 || nextBattleTimeline[nextBattleTimeline.length - 1].day !== nextDay) {
         nextBattleTimeline.push({ day: nextDay, count: activeBattleCount });

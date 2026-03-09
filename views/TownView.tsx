@@ -264,7 +264,7 @@ export const TownView = ({
     const type = currentLocation.type;
     const bgType = type === 'FIELD_CAMP' ? 'BANDIT_CAMP' : type === 'HIDEOUT' ? 'RUINS' : type;
     return {
-      backgroundImage: `url("/image/${bgType}.webp"), url("/image/${bgType}.png"), url("/image/${bgType}.jpg"), url("/image/${bgType}.jpeg")`,
+      backgroundImage: `url("/image/locations/${currentLocation.id}.png"), url("/image/locations/${currentLocation.id}.jpg"), url("/image/locations/${currentLocation.id}.jpeg"), url("/image/${bgType}.webp"), url("/image/${bgType}.png"), url("/image/${bgType}.jpg"), url("/image/${bgType}.jpeg")`,
       backgroundSize: 'cover',
       backgroundPosition: 'center'
     };

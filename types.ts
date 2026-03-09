@@ -491,6 +491,7 @@ export type FieldCampKind = 'FACTION_RAID' | 'IMPOSTER_RAID' | 'LORD_MARCH' | 'C
 
 export type FieldCampMeta = {
   kind: FieldCampKind;
+  lordId?: string;
   sourceLocationId: string;
   targetLocationId: string;
   totalDays: number;
