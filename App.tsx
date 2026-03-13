@@ -848,6 +848,18 @@ export default function App() {
     });
   };
 
+  const getPlayerReligion = (list: Location[] = locations) => {
+    const altars = (list ?? []).filter(l => l && l.type === 'ALTAR' && l.altar?.doctrine?.religionName);
+    if (altars.length === 0) return null;
+    const picked = altars.find(l => (l.altar?.troopIds ?? []).length > 0) ?? altars[0];
+    const doctrine = picked.altar?.doctrine;
+    if (!doctrine?.religionName) return null;
+    return {
+      religionName: doctrine.religionName,
+      troopIds: picked.altar?.troopIds ?? []
+    };
+  };
+
   const handleRecruitHeroRelation = (hero: Hero) => {
     const race = hero.race ?? 'HUMAN';
     if (race === 'HUMAN') return;
