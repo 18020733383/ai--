@@ -5,7 +5,7 @@ import { BUILDING_OPTIONS, ENCHANTMENT_RECIPES, FACTIONS, getBuildingName, getSi
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
 import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
-import { applyWorldDiplomacyDelta, buildInitialWorld, buildInitialWorldDiplomacy, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, getLocationRecruitId, getLocationRelationTarget, getRecruitmentPool, getRelationScale, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, isCastleLikeLocation, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, rollBinomial, seedStayParties, splitTroops, syncLordPresence } from './game/systems';
+import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, getLocationRecruitId, getLocationRelationTarget, getRecruitmentPool, getRelationScale, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, isCastleLikeLocation, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, randomInt, rollBinomial, seedStayParties, splitTroops, syncLordPresence } from './game/systems';
 import { calculatePower } from './game/systems/combatPower';
 import { calculateXpGain } from './game/systems/xpGain';
 import { calculateFleeChance, calculateRearGuardPlan } from './features/battle/model/battleEscape';
@@ -1645,8 +1645,6 @@ export default function App() {
     return soldiers.filter(s => !idSet.has(s.id));
   };
 
-  const randomInt = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
-
   const getBanditCampAge = (camp?: Location) => {
     const spawnDay = camp?.banditSpawnDay ?? camp?.lastRefreshDay ?? player.day;
     return Math.max(0, player.day - spawnDay);
@@ -2177,78 +2175,6 @@ export default function App() {
 
   const getLocationTroops = (loc: Location) => {
     return (loc.garrison && loc.garrison.length > 0 ? loc.garrison : buildGarrisonTroops(loc)).map(t => ({ ...t }));
-  };
-
-  const buildImposterTroops = (day: number) => {
-    const scale = 0.72 + Math.min(0.28, Math.max(0, day) / 2400);
-    const roster = [
-      // Tier 1
-      { id: 'void_larva', count: Math.max(1, Math.floor(randomInt(40, 60) * scale)) },
-      { id: 'glitch_pawn', count: Math.max(1, Math.floor(randomInt(40, 60) * scale)) },
-      { id: 'static_noise_walker', count: Math.max(1, Math.floor(randomInt(30, 50) * scale)) },
-      { id: 'imposter_light_infantry', count: Math.max(1, Math.floor(randomInt(40, 70) * scale)) },
-      { id: 'imposter_spearman', count: Math.max(1, Math.floor(randomInt(35, 60) * scale)) },
-      { id: 'imposter_short_bowman', count: Math.max(1, Math.floor(randomInt(30, 50) * scale)) },
-      // Tier 2
-      { id: 'entropy_acolyte', count: Math.max(1, Math.floor(randomInt(20, 30) * (scale * 0.92))) },
-      { id: 'pixel_shifter', count: Math.max(1, Math.floor(randomInt(15, 25) * (scale * 0.92))) },
-      { id: 'syntax_error_scout', count: Math.max(1, Math.floor(randomInt(15, 25) * (scale * 0.92))) },
-      { id: 'imposter_heavy_infantry', count: Math.max(1, Math.floor(randomInt(15, 25) * (scale * 0.92))) },
-      { id: 'imposter_longbowman', count: Math.max(1, Math.floor(randomInt(12, 20) * (scale * 0.92))) },
-      // Tier 3
-      { id: 'memory_leak_mage', count: Math.max(1, Math.floor(randomInt(5, 10) * (scale * 0.85))) },
-      { id: 'recursion_archer', count: Math.max(1, Math.floor(randomInt(8, 15) * (scale * 0.85))) },
-      { id: 'buffer_overflow_brute', count: Math.max(1, Math.floor(randomInt(5, 10) * (scale * 0.85))) },
-      { id: 'imposter_heavy_knight', count: Math.max(1, Math.floor(randomInt(2, 4) * (scale * 0.8))) },
-      // Tier 4
-      { id: 'kernel_panic_knight', count: Math.max(1, Math.floor(randomInt(2, 5) * (scale * 0.8))) },
-      { id: 'blue_screen_golem', count: Math.max(1, Math.floor(randomInt(1, 3) * (scale * 0.75))) }
-    ];
-    
-    return roster
-      .map(unit => {
-        const template = getTroopTemplate(unit.id);
-        return template ? { ...template, count: unit.count, xp: 0 } : null;
-      })
-      .filter(Boolean) as Troop[];
-  };
-
-  const pickImposterTarget = (portal: Location, pool: Location[]) => {
-    const candidates = pool.filter(loc => (
-      loc.id !== portal.id &&
-      (loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE') &&
-      loc.owner !== 'ENEMY' &&
-      !loc.activeSiege
-    ));
-    if (candidates.length === 0) return null;
-    const ranked = candidates
-      .map(loc => ({
-        loc,
-        dist: Math.hypot(loc.coordinates.x - portal.coordinates.x, loc.coordinates.y - portal.coordinates.y)
-      }))
-      .sort((a, b) => a.dist - b.dist);
-    const shortlist = ranked.slice(0, Math.min(4, ranked.length));
-    return shortlist[Math.floor(Math.random() * shortlist.length)].loc;
-  };
-
-  const applyGarrisonTraining = (troops: Troop[], xpGain: number) => {
-    const updated = troops.map(t => ({ ...t, xp: t.xp + (t.id.startsWith('roach_') ? 0 : xpGain) }));
-    for (let i = 0; i < updated.length; i++) {
-      let troop = updated[i];
-      while (troop.upgradeTargetId && troop.xp >= troop.maxXp && troop.count > 0) {
-        troop = { ...troop, xp: troop.xp - troop.maxXp, count: troop.count - 1 };
-        const targetTemplate = getTroopTemplate(troop.upgradeTargetId);
-        if (!targetTemplate) break;
-        const targetIndex = updated.findIndex(t => t.id === targetTemplate.id);
-        if (targetIndex >= 0) {
-          updated[targetIndex] = { ...updated[targetIndex], count: updated[targetIndex].count + 1 };
-        } else {
-          updated.push({ ...targetTemplate, count: 1, xp: 0 });
-        }
-      }
-      updated[i] = troop;
-    }
-    return updated.filter(t => t.count > 0);
   };
 
   const processDailyCycle = (location?: Location, rentCost: number = 0, days: number = 1, workIncomePerDay: number = 0, suppressEncounter: boolean = false) => {
@@ -3010,7 +2936,7 @@ export default function App() {
                   nextLayer.lastTrainingDay = nextDay;
                   if ((nextLayer.garrison ?? []).length > 0) {
                     const strength = Math.max(4, Math.min(10, 3 + campCount));
-                    nextLayer.garrison = applyGarrisonTraining(nextLayer.garrison ?? [], strength);
+                    nextLayer.garrison = applyGarrisonTraining(nextLayer.garrison ?? [], strength, getTroopTemplate);
                     logsToAdd.push(`【训练营】${updated.name}·${nextLayer.name} 的驻军获得了经验。`);
                   }
                 }
@@ -3129,7 +3055,7 @@ export default function App() {
             if (nextDay - lastTrainingDay >= 3) {
               updated.lastTrainingDay = nextDay;
               if ((updated.garrison ?? []).length > 0) {
-                updated.garrison = applyGarrisonTraining(updated.garrison ?? [], 4);
+                updated.garrison = applyGarrisonTraining(updated.garrison ?? [], 4, getTroopTemplate);
                 logsToAdd.push(`【训练营】${updated.name} 的驻军获得了经验。`);
               }
             }
@@ -3651,7 +3577,7 @@ export default function App() {
         const stationedArmies = portal.stationedArmies ?? [];
 
           if (nextDay - lastInvasionDay >= spawnCooldown && stationedArmies.length < 3) {
-            const newForces = buildImposterTroops(nextDay);
+            const newForces = buildImposterTroops(nextDay, getTroopTemplate);
             const newArmy: EnemyForce = {
                name: `伪人裂隙浪潮·${Math.floor(nextDay / spawnCooldown)}`,
                description: '从裂隙中涌出的攻击部队。',
@@ -3770,7 +3696,7 @@ export default function App() {
         newLocations = newLocations.map(loc => loc.id === camp.id ? nextCamp : loc);
         if (nextDaysLeft > 0) return;
         newLocations = newLocations.filter(loc => loc.id !== camp.id);
-        if (sourceIndex >= 0) {
+        if (sourceIndex >= 0 && meta.kind !== 'LORD_MARCH') {
           const sourceLoc = newLocations[sourceIndex];
           newLocations[sourceIndex] = meta.kind === 'IMPOSTER_RAID'
             ? { ...sourceLoc, imposterRaidTargetId: undefined, imposterRaidEtaDay: undefined }
@@ -3781,6 +3707,9 @@ export default function App() {
                 factionRaidAttackerName: undefined,
                 factionRaidFactionId: undefined
               };
+        }
+        if (meta.kind === 'LORD_MARCH') {
+          return;
         }
         if (target.activeSiege || target.isUnderSiege) {
           logsToAdd.push(`【行军营地】${meta.attackerName} 抵达 ${target.name} 时战场已被占据，选择撤回。`);
@@ -4427,7 +4356,7 @@ export default function App() {
             }
             const available = Math.max(0, Math.min(partyMax - partyCount, restLoc.type === 'CITY' ? 18 : restLoc.type === 'CASTLE' ? 12 : 8));
             const recruited = applyRecruitment(nextLord.partyTroops, restLoc, available);
-            const trained = applyGarrisonTraining(recruited, 3);
+            const trained = applyGarrisonTraining(recruited, 3, getTroopTemplate);
             nextLord = recordLordAction(nextLord, restLoc.id, `在${restLoc.name}休整补员`);
             return { ...nextLord, partyTroops: trained };
           }
@@ -4436,7 +4365,7 @@ export default function App() {
             if (gatherLoc.id !== nextLord.currentLocationId) {
               return moveTo(gatherLoc, reliefTarget ? `前往${gatherLoc.name}解围` : `前往${gatherLoc.name}集结待命`);
             }
-            const trained = applyGarrisonTraining(nextLord.partyTroops, 3);
+            const trained = applyGarrisonTraining(nextLord.partyTroops, 3, getTroopTemplate);
             nextLord = recordLordAction(nextLord, gatherLoc.id, reliefTarget ? `在${gatherLoc.name}参与解围` : `在${gatherLoc.name}集结待命`);
             return { ...nextLord, partyTroops: trained };
           }
@@ -4485,14 +4414,9 @@ export default function App() {
             logsToAdd.push(`【巡逻】${nextLord.title}${nextLord.name} 剿灭了 ${nearbyCamp.name}。`);
             nextLord = recordLordAction(nextLord, patrolBase.id, `率军清剿了 ${nearbyCamp.name}`);
           } else {
-            const patrolTargets = friendlyStrongholds(nextLord.factionId).filter(loc => loc.id !== nextLord.currentLocationId);
-            const patrolTarget = patrolTargets.length > 0 ? findNearestLocation(patrolBase, patrolTargets) : null;
-            if (patrolTarget) {
-              return moveTo(patrolTarget, `前往${patrolTarget.name}巡逻`);
-            }
             nextLord = recordLordAction(nextLord, patrolBase.id, `在${patrolBase.name}附近巡逻`);
           }
-          const trained = applyGarrisonTraining(nextLord.partyTroops, 2);
+          const trained = applyGarrisonTraining(nextLord.partyTroops, 2, getTroopTemplate);
           return { ...nextLord, partyTroops: trained };
         });
       }

@@ -1,3 +1,7 @@
+export function randomInt(min: number, max: number): number {
+  return Math.floor(Math.random() * (max - min + 1)) + min;
+}
+
 /**
  * Simulates a binomial random variable: number of successes in n trials with probability p.
  * Uses normal approximation for n > 80 to avoid expensive loops.

@@ -17,6 +17,8 @@
 - `game/systems/heroHelpers`: `getHeroRoleLabel`, `getHpRatio`, `getHeroPower`, `canHeroBattle`, `buildHeroAttributes`, `buildPlayerAttributes`, `buildHeroTroop`, `buildHeroAttributesFromTroop`, `buildEnemyLordHero`, `buildEnemyCommanderHero`, `pickBestTroop`, `ensureEnemyHeroTroops`, `buildPlayerTroop`, `getBattleTroops`。
 - `game/systems/mapMovement`: `findLocationAtPosition`。
 - `game/systems/garrisonHelpers`: `getGarrisonLimit`, `getGarrisonCount`, `mergeTroops`, `splitTroops`, `getFactionLocations`。
+- `game/systems/troopTraining`: `applyGarrisonTraining`。
+- `game/systems/imposterTroops`: `buildImposterTroops`, `pickImposterTarget`。
 - `game/data`: minerals、siegeEngines、buildings、heroes (HERO_EMOTIONS)。
 - `features/battle/model/resolveBattleProgrammatic`: 程序化战斗结算。
 - `app/providers/ai-settings`、`app/save-load`、`features/world-board/model`、`features/town`。
