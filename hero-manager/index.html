@@ -112,6 +112,26 @@
           </div>
         </div>
         <div class="row">
+          <div style="grid-column: 1 / -1;">
+            <label>表情包提示词</label>
+            <textarea id="heroStickerPrompt" rows="6" placeholder="点击生成提示词或自行编辑"></textarea>
+            <div class="btnRow" style="margin-top: 8px;">
+              <button id="heroStickerPromptBtn">生成提示词</button>
+              <button id="heroStickerCopyPromptBtn">复制提示词</button>
+            </div>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label>上传已生成九宫格（png/jpg/jpeg）</label>
+            <input id="heroStickerUploadInput" type="file" accept=".png,.jpg,.jpeg" />
+          </div>
+          <div>
+            <label>操作</label>
+            <button id="heroStickerUseUploadBtn" disabled>载入并切割</button>
+          </div>
+        </div>
+        <div class="row">
           <div>
             <label>切割偏移 X</label>
             <input id="heroStickerOffsetX" type="number" value="0" />
@@ -375,6 +395,26 @@
         </div>
       </div>
       <div class="row">
+        <div style="grid-column: 1 / -1;">
+          <label>据点提示词</label>
+          <textarea id="locationPrompt" rows="6" placeholder="点击生成提示词或自行编辑"></textarea>
+          <div class="btnRow" style="margin-top: 8px;">
+            <button id="locationPromptBtn">生成提示词</button>
+            <button id="locationCopyPromptBtn">复制提示词</button>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>上传据点背景（png/jpg/jpeg）</label>
+          <input id="locationUploadInput" type="file" accept=".png,.jpg,.jpeg" />
+        </div>
+        <div>
+          <label>操作</label>
+          <button id="locationUseUploadBtn" disabled>载入预览</button>
+        </div>
+      </div>
+      <div class="row">
         <div>
           <label>生成预览</label>
           <img id="locationPreview" style="width: 100%; height: 240px; object-fit: contain; background: #111; border-radius: 10px; border: 1px solid #2a2f3a;" />
@@ -415,12 +455,22 @@
       const heroStickerSource = document.getElementById('heroStickerSource');
       const heroStickerGrid = document.getElementById('heroStickerGrid');
       const heroStickerStatus = document.getElementById('heroStickerStatus');
+      const heroStickerPrompt = document.getElementById('heroStickerPrompt');
+      const heroStickerPromptBtn = document.getElementById('heroStickerPromptBtn');
+      const heroStickerCopyPromptBtn = document.getElementById('heroStickerCopyPromptBtn');
+      const heroStickerUploadInput = document.getElementById('heroStickerUploadInput');
+      const heroStickerUseUploadBtn = document.getElementById('heroStickerUseUploadBtn');
       const locationSelect = document.getElementById('locationSelect');
       const locationStatus = document.getElementById('locationStatus');
       const locationGenBtn = document.getElementById('locationGenBtn');
       const locationSaveBtn = document.getElementById('locationSaveBtn');
       const locationPreview = document.getElementById('locationPreview');
       const locationGrid = document.getElementById('locationGrid');
+      const locationPrompt = document.getElementById('locationPrompt');
+      const locationPromptBtn = document.getElementById('locationPromptBtn');
+      const locationCopyPromptBtn = document.getElementById('locationCopyPromptBtn');
+      const locationUploadInput = document.getElementById('locationUploadInput');
+      const locationUseUploadBtn = document.getElementById('locationUseUploadBtn');
 
       const troopSelect = document.getElementById('troopSelect');
       const troopFileInput = document.getElementById('troopFileInput');
@@ -474,6 +524,22 @@
       };
 
       const sleep = (ms) => new Promise(resolve => setTimeout(resolve, Math.max(0, Number(ms) || 0)));
+      const copyText = async (text) => {
+        if (!text) return false;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(text);
+          return true;
+        }
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(ta);
+        return ok;
+      };
 
       const heroStickerExpressions = ['IDLE', 'HAPPY', 'SAD', 'ANGRY', 'AFRAID', 'SURPRISED', 'AWKWARD', 'SILENT', 'DEAD'];
       let heroStickerDataUrl = '';
@@ -542,7 +608,8 @@
       const fetchHeroes = async () => {
         const res = await fetch('/api/heroes');
         const data = await res.json();
-        heroSelect.innerHTML = data.heroes.map(h => `<option value="${h}">${h}</option>`).join('');
+        const heroes = Array.isArray(data.heroes) ? data.heroes : [];
+        heroSelect.innerHTML = heroes.map(h => `<option value="${h.id}">${h.name || h.id}（${h.id}）</option>`).join('');
       };
 
       const fetchHeroFiles = async () => {
@@ -560,6 +627,9 @@
         renderHeroStickerGrid();
         heroStickerSliceBtn.disabled = true;
         setHeroStickerStatus('');
+        heroStickerPrompt.value = '';
+        heroStickerUploadInput.value = '';
+        heroStickerUseUploadBtn.disabled = true;
       };
 
       const renderFiles = (heroId, files) => {
@@ -613,9 +683,9 @@
       };
 
       const fetchLocationFiles = async () => {
-        const locationId = locationSelect.value;
-        if (!locationId) return;
-        const res = await fetch(`/api/location/${encodeURIComponent(locationId)}`);
+        const locationType = locationSelect.value;
+        if (!locationType) return;
+        const res = await fetch(`/api/location/${encodeURIComponent(locationType)}`);
         const data = await res.json();
         const files = data.files || [];
         renderLocationFiles(files);
@@ -623,14 +693,17 @@
         locationPreview.removeAttribute('src');
         locationSaveBtn.disabled = true;
         setLocationStatus('');
+        locationPrompt.value = '';
+        locationUploadInput.value = '';
+        locationUseUploadBtn.disabled = true;
       };
 
-      const requestLocationPrompt = async (locationId) => {
+      const requestLocationPrompt = async (locationType) => {
         const body = {
           baseUrl: txtBaseUrl.value.trim(),
           apiKey: txtKey.value,
           model: txtModel.value.trim(),
-          locationId
+          locationType
         };
         const res = await fetch('/api/ai/location-prompt', {
           method: 'POST',
@@ -661,13 +734,25 @@
         return data;
       };
 
-      const generateLocationBackground = async () => {
-        const locationId = locationSelect.value;
-        if (!locationId) return;
+      const generateLocationPrompt = async () => {
+        const locationType = locationSelect.value;
+        if (!locationType) return '';
         if (!txtBaseUrl.value.trim() || !txtModel.value.trim() || !txtKey.value) {
           setLocationStatus('文本模型配置不完整');
-          return;
+          return '';
         }
+        setLocationStatus('生成提示词中...');
+        const promptData = await requestLocationPrompt(locationType);
+        const prompt = String(promptData.imagePrompt || '').trim();
+        if (!prompt) throw new Error('提示词生成为空');
+        locationPrompt.value = prompt;
+        setLocationStatus('提示词已生成');
+        return prompt;
+      };
+
+      const generateLocationBackground = async () => {
+        const locationType = locationSelect.value;
+        if (!locationType) return;
         if (!imgBaseUrl.value.trim() || !imgModel.value.trim() || !imgKey.value) {
           setLocationStatus('生图模型配置不完整');
           return;
@@ -677,8 +762,8 @@
         locationGenBtn.disabled = true;
         locationSaveBtn.disabled = true;
         try {
-          const promptData = await requestLocationPrompt(locationId);
-          const prompt = String(promptData.imagePrompt || '').trim();
+          let prompt = String(locationPrompt.value || '').trim();
+          if (!prompt) prompt = await generateLocationPrompt();
           if (!prompt) throw new Error('提示词生成为空');
           const imageData = await requestLocationImage(prompt);
           locationPreviewDataUrl = String(imageData.dataUrl || '').trim();
@@ -694,15 +779,15 @@
       };
 
       const saveLocationBackground = async () => {
-        const locationId = locationSelect.value;
-        if (!locationId || !locationPreviewDataUrl) return;
+        const locationType = locationSelect.value;
+        if (!locationType || !locationPreviewDataUrl) return;
         setLocationStatus('保存中...');
         locationSaveBtn.disabled = true;
         try {
           const res = await fetch('/api/location/upload', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ locationId, dataUrl: locationPreviewDataUrl })
+            body: JSON.stringify({ locationType, dataUrl: locationPreviewDataUrl })
           });
           const data = await res.json().catch(() => ({}));
           if (!res.ok) throw new Error(data.error || '保存失败');
@@ -783,6 +868,13 @@
         renderHeroStickerGrid();
         heroStickerSliceBtn.disabled = heroStickerSlices.length !== heroStickerExpressions.length;
       };
+
+      const readFileAsDataUrl = (file) => new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
 
       const uploadFile = async () => {
         const heroId = heroSelect.value;
@@ -868,13 +960,25 @@
         return data;
       };
 
+      const generateHeroStickerPrompt = async () => {
+        const heroId = heroSelect.value;
+        if (!heroId) return '';
+        if (!txtBaseUrl.value.trim() || !txtModel.value.trim() || !txtKey.value) {
+          setHeroStickerStatus('文本模型配置不完整');
+          return '';
+        }
+        setHeroStickerStatus('生成提示词中...');
+        const promptData = await requestHeroStickerPrompt(heroId);
+        const prompt = String(promptData.imagePrompt || '').trim();
+        if (!prompt) throw new Error('提示词生成为空');
+        heroStickerPrompt.value = prompt;
+        setHeroStickerStatus('提示词已生成');
+        return prompt;
+      };
+
       const generateHeroSticker = async () => {
         const heroId = heroSelect.value;
         if (!heroId) return;
-        if (!txtBaseUrl.value.trim() || !txtModel.value.trim() || !txtKey.value) {
-          setHeroStickerStatus('文本模型配置不完整');
-          return;
-        }
         if (!imgBaseUrl.value.trim() || !imgModel.value.trim() || !imgKey.value) {
           setHeroStickerStatus('生图模型配置不完整');
           return;
@@ -885,8 +989,8 @@
         heroStickerSlices = [];
         renderHeroStickerGrid();
         try {
-          const promptData = await requestHeroStickerPrompt(heroId);
-          const prompt = String(promptData.imagePrompt || '').trim();
+          let prompt = String(heroStickerPrompt.value || '').trim();
+          if (!prompt) prompt = await generateHeroStickerPrompt();
           if (!prompt) throw new Error('提示词生成为空');
           const data = await requestHeroStickerImage(prompt);
           heroStickerDataUrl = String(data.dataUrl || '').trim();
@@ -1339,6 +1443,51 @@
       troopUploadBtn.addEventListener('click', uploadTroopFile);
       troopDeleteBtn.addEventListener('click', deleteTroopFile);
       heroStickerGenBtn.addEventListener('click', generateHeroSticker);
+      heroStickerPromptBtn.addEventListener('click', async () => {
+        try {
+          await generateHeroStickerPrompt();
+        } catch (e) {
+          setHeroStickerStatus(e.message || '提示词生成失败');
+        }
+      });
+      heroStickerCopyPromptBtn.addEventListener('click', async () => {
+        const text = String(heroStickerPrompt.value || '').trim();
+        if (!text) {
+          setHeroStickerStatus('提示词为空');
+          return;
+        }
+        try {
+          const ok = await copyText(text);
+          setHeroStickerStatus(ok ? '提示词已复制' : '复制失败');
+        } catch {
+          setHeroStickerStatus('复制失败');
+        }
+      });
+      heroStickerUploadInput.addEventListener('change', () => {
+        heroStickerUseUploadBtn.disabled = !heroStickerUploadInput.files.length;
+      });
+      heroStickerUseUploadBtn.addEventListener('click', async () => {
+        const file = heroStickerUploadInput.files[0];
+        if (!file) return;
+        setHeroStickerStatus('载入中...');
+        try {
+          const dataUrl = await readFileAsDataUrl(file);
+          heroStickerDataUrl = String(dataUrl || '').trim();
+          if (!heroStickerDataUrl) throw new Error('图片读取失败');
+          updateHeroStickerPreview();
+          await new Promise(resolve => {
+            if (heroStickerSource.complete && heroStickerSource.naturalWidth > 0) {
+              resolve();
+              return;
+            }
+            heroStickerSource.onload = () => resolve();
+          });
+          refreshHeroStickerSlices();
+          setHeroStickerStatus('已载入');
+        } catch (e) {
+          setHeroStickerStatus(e.message || '载入失败');
+        }
+      });
       heroStickerSliceBtn.addEventListener('click', saveHeroStickerSlices);
       heroStickerSource.addEventListener('load', refreshHeroStickerSlices);
       [heroStickerOffsetX, heroStickerOffsetY, heroStickerGap, heroStickerPadding].forEach(el => {
@@ -1346,6 +1495,44 @@
       });
       locationSelect.addEventListener('change', fetchLocationFiles);
       locationGenBtn.addEventListener('click', generateLocationBackground);
+      locationPromptBtn.addEventListener('click', async () => {
+        try {
+          await generateLocationPrompt();
+        } catch (e) {
+          setLocationStatus(e.message || '提示词生成失败');
+        }
+      });
+      locationCopyPromptBtn.addEventListener('click', async () => {
+        const text = String(locationPrompt.value || '').trim();
+        if (!text) {
+          setLocationStatus('提示词为空');
+          return;
+        }
+        try {
+          const ok = await copyText(text);
+          setLocationStatus(ok ? '提示词已复制' : '复制失败');
+        } catch {
+          setLocationStatus('复制失败');
+        }
+      });
+      locationUploadInput.addEventListener('change', () => {
+        locationUseUploadBtn.disabled = !locationUploadInput.files.length;
+      });
+      locationUseUploadBtn.addEventListener('click', async () => {
+        const file = locationUploadInput.files[0];
+        if (!file) return;
+        setLocationStatus('载入中...');
+        try {
+          const dataUrl = await readFileAsDataUrl(file);
+          locationPreviewDataUrl = String(dataUrl || '').trim();
+          if (!locationPreviewDataUrl) throw new Error('图片读取失败');
+          locationPreview.src = locationPreviewDataUrl;
+          locationSaveBtn.disabled = false;
+          setLocationStatus('已载入');
+        } catch (e) {
+          setLocationStatus(e.message || '载入失败');
+        }
+      });
       locationSaveBtn.addEventListener('click', saveLocationBackground);
       tabHero.addEventListener('click', () => setActiveTab('HERO'));
       tabTroop.addEventListener('click', () => setActiveTab('TROOP'));

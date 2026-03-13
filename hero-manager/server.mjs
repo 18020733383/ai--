@@ -122,17 +122,27 @@ const listTroopsFromConstants = async () => {
   }
 };
 
-const listLocationFiles = async (locationId) => {
+const listLocationFiles = async (locationType) => {
   try {
     const lists = await Promise.all(locationRoots.map(async (root) => {
       try {
         const entries = await readdir(root, { withFileTypes: true });
-        return entries.filter(e => e.isFile() && e.name.startsWith(`${locationId}.`)).map(e => e.name);
+        return entries.filter(e => e.isFile() && e.name.startsWith(`${locationType}.`)).map(e => e.name);
       } catch {
         return [];
       }
     }));
     return Array.from(new Set(lists.flat())).sort();
+  } catch {
+    return [];
+  }
+};
+
+const parseLocationTypesFromConstants = async () => {
+  try {
+    const locations = await parseLocationsFromConstants();
+    const types = Array.from(new Set(locations.map(loc => loc.type).filter(Boolean))).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    return types.map(type => ({ id: type, name: type }));
   } catch {
     return [];
   }
@@ -716,8 +726,12 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/heroes') {
+    const roster = await parseHeroRosterFromConstants();
+    if (roster.length > 0) {
+      return sendJson(res, 200, { heroes: roster });
+    }
     const heroes = await listHeroes();
-    return sendJson(res, 200, { heroes });
+    return sendJson(res, 200, { heroes: heroes.map(id => ({ id, name: id })) });
   }
 
   if (req.method === 'GET' && url.pathname === '/api/troops') {
@@ -728,7 +742,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/locations') {
-    const locations = await parseLocationsFromConstants();
+    const locations = await parseLocationTypesFromConstants();
     const files = await readdir(publicLocationRoot, { withFileTypes: true }).catch(() => []);
     const existing = files.filter(e => e.isFile()).map(e => e.name.replace(/\.(png|jpg|jpeg)$/i, ''));
     return sendJson(res, 200, { locations, existing: Array.from(new Set(existing)).sort() });
@@ -738,6 +752,8 @@ const server = http.createServer(async (req, res) => {
     const parts = url.pathname.split('/').filter(Boolean);
     if (parts.length === 3 && parts[2]) {
       const heroId = decodeURIComponent(parts[2]);
+      const heroDir = safeJoin(heroRoot, heroId);
+      await mkdir(heroDir, { recursive: true }).catch(() => {});
       const files = await listHeroFiles(heroId);
       return sendJson(res, 200, { heroId, files });
     }
@@ -890,23 +906,23 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'POST' && url.pathname === '/api/location/upload') {
     try {
       const body = await readBody(req);
-      const locationId = String(body?.locationId ?? '').trim();
+      const locationType = String(body?.locationType ?? '').trim();
       const dataUrl = String(body?.dataUrl ?? '').trim();
-      if (!locationId || !dataUrl) {
+      if (!locationType || !dataUrl) {
         return sendJson(res, 400, { error: 'Missing fields' });
       }
       const parsed = parseDataUrl(dataUrl);
       if (!parsed) return sendJson(res, 400, { error: 'Unsupported file type' });
 
       await mkdir(locationRoot, { recursive: true });
-      const targets = ['png', 'jpg', 'jpeg'].map(ext => path.join(locationRoot, `${locationId}.${ext}`));
+      const targets = ['png', 'jpg', 'jpeg'].map(ext => path.join(locationRoot, `${locationType}.${ext}`));
       await Promise.all(targets.map(file => rm(file, { force: true })));
 
-      const fileName = `${locationId}.${parsed.ext}`;
+      const fileName = `${locationType}.${parsed.ext}`;
       const filePath = path.join(locationRoot, fileName);
       await writeFile(filePath, parsed.buffer);
 
-      return sendJson(res, 200, { ok: true, locationId, fileName });
+      return sendJson(res, 200, { ok: true, locationType, fileName });
     } catch {
       return sendJson(res, 500, { error: 'Upload failed' });
     }
@@ -996,11 +1012,19 @@ const server = http.createServer(async (req, res) => {
       const baseUrl = String(body?.baseUrl ?? '').trim();
       const apiKey = String(body?.apiKey ?? '').trim();
       const model = String(body?.model ?? '').trim();
-      const locationId = String(body?.locationId ?? '').trim();
-      if (!baseUrl || !apiKey || !model || !locationId) return sendJson(res, 400, { error: 'Missing fields' });
+      const locationType = String(body?.locationType ?? '').trim();
+      if (!baseUrl || !apiKey || !model || !locationType) return sendJson(res, 400, { error: 'Missing fields' });
       const locations = await parseLocationsFromConstants();
-      const loc = locations.find(l => l.id === locationId) ?? { id: locationId, name: locationId };
-      const prompt = buildLocationBackgroundPromptForAI(loc);
+      const samples = locations.filter(l => l.type === locationType);
+      const sample = samples[0] ?? { id: locationType, name: locationType, type: locationType };
+      const prompt = buildLocationBackgroundPromptForAI({
+        id: locationType,
+        name: sample.name ?? locationType,
+        type: locationType,
+        description: sample.description,
+        terrain: sample.terrain,
+        factionId: sample.factionId
+      });
       const endpoint = joinUrl(ensureV1(baseUrl), '/chat/completions');
       const json = await fetchJson(endpoint, {
         method: 'POST',
@@ -1021,7 +1045,7 @@ const server = http.createServer(async (req, res) => {
       const parsed = extractJson(content) ?? extractJson(json) ?? null;
       const imagePrompt = String(parsed?.imagePrompt ?? '').trim();
       if (!imagePrompt) return sendJson(res, 500, { error: 'Empty AI result' });
-      return sendJson(res, 200, { ok: true, locationId, imagePrompt });
+      return sendJson(res, 200, { ok: true, locationType, imagePrompt });
     } catch (e) {
       return sendJson(res, 500, { error: String(e?.message ?? 'AI failed') });
     }

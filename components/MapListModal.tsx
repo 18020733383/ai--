@@ -91,7 +91,7 @@ export const MapListModal = ({
   const getLocationBgStyle = (loc: Location) => {
     const type = loc.type === 'HIDEOUT' ? 'RUINS' : loc.type;
     return {
-      backgroundImage: `url("/image/locations/${loc.id}.png"), url("/image/locations/${loc.id}.jpg"), url("/image/locations/${loc.id}.jpeg"), url("/image/${type}.webp"), url("/image/${type}.png"), url("/image/${type}.jpg"), url("/image/${type}.jpeg")`,
+      backgroundImage: `url("/image/locations/${type}.png"), url("/image/locations/${type}.jpg"), url("/image/locations/${type}.jpeg"), url("/image/${type}.webp"), url("/image/${type}.png"), url("/image/${type}.jpg"), url("/image/${type}.jpeg")`,
     backgroundSize: 'cover',
     backgroundPosition: 'center'
     };
