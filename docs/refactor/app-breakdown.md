@@ -15,6 +15,8 @@
 - `game/systems/recruitment`: `getRecruitmentPool`。
 - `game/systems/relationHelpers`: `getLocationRace`, `getLocationRelationTarget`, `getLocationRecruitId`, `getRelationScale`, `getEncounterChance`, `getEnemyRace`, `buildSupportTroops`, `getCityReligionTierCap`, `computePreachPlan`, `normalizeRelationMatrix`, `getRelationValue`。
 - `game/systems/heroHelpers`: `getHeroRoleLabel`, `getHpRatio`, `getHeroPower`, `canHeroBattle`, `buildHeroAttributes`, `buildPlayerAttributes`, `buildHeroTroop`, `buildHeroAttributesFromTroop`, `buildEnemyLordHero`, `buildEnemyCommanderHero`, `pickBestTroop`, `ensureEnemyHeroTroops`, `buildPlayerTroop`, `getBattleTroops`。
+- `game/systems/mapMovement`: `findLocationAtPosition`。
+- `game/systems/garrisonHelpers`: `getGarrisonLimit`, `getGarrisonCount`, `mergeTroops`, `splitTroops`, `getFactionLocations`。
 - `game/data`: minerals、siegeEngines、buildings、heroes (HERO_EMOTIONS)。
 - `features/battle/model/resolveBattleProgrammatic`: 程序化战斗结算。
 - `app/providers/ai-settings`、`app/save-load`、`features/world-board/model`、`features/town`。
@@ -28,7 +30,7 @@
 | 3 | ~~`getRecruitmentPool`~~ | ~~~150~~ | ✅ 已迁至 `game/systems/recruitment` |
 | 4 | ~~关系/外交 helpers~~ | ~~~200~~ | ✅ 已迁至 `game/systems/relationHelpers` |
 | 5 | ~~Hero 相关逻辑~~ | ~~~150~~ | ✅ 已迁至 `game/systems/heroHelpers` |
-| 6 | 地图/移动逻辑 | ~100 | 中 |
+| 6 | ~~地图/移动逻辑~~ | ~~~100~~ | ✅ 已迁至 `game/systems/mapMovement`、`garrisonHelpers` |
 | 7 | ~~parrotChatter/parrotMischiefEvents~~ | ~~~65~~ | ✅ 已迁至 `game/data/flavor.ts` |
 
 ## 拆分约束

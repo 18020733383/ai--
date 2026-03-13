@@ -2,6 +2,7 @@ import React from 'react';
 import { MessageCircle, Scroll } from 'lucide-react';
 import { Location, PlayerState, RecruitOffer, Troop } from '../types';
 import { Button } from '../components/Button';
+import { ThinkingBubble } from '../components/ThinkingBubble';
 import { TroopCard } from '../components/TroopCard';
 import { ShaperDecision } from '../services/geminiService';
 
@@ -123,6 +124,7 @@ export const MysteriousCaveView = ({
                   </div>
                 </div>
               ))}
+              {isShaperLoading && <ThinkingBubble label="歪嘴裁缝正在思考..." />}
             </div>
 
             <div className="mt-4 flex gap-2">

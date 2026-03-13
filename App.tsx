@@ -5,7 +5,7 @@ import { BUILDING_OPTIONS, ENCHANTMENT_RECIPES, FACTIONS, getBuildingName, getSi
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
 import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
-import { applyWorldDiplomacyDelta, buildInitialWorld, buildInitialWorldDiplomacy, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, getLocationRecruitId, getLocationRelationTarget, getRecruitmentPool, getRelationScale, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, isCastleLikeLocation, isUndeadFortressLocation, normalizeRelationMatrix, normalizeWorldDiplomacy, rollBinomial, seedStayParties, syncLordPresence } from './game/systems';
+import { applyWorldDiplomacyDelta, buildInitialWorld, buildInitialWorldDiplomacy, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, getLocationRecruitId, getLocationRelationTarget, getRecruitmentPool, getRelationScale, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, isCastleLikeLocation, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, rollBinomial, seedStayParties, splitTroops, syncLordPresence } from './game/systems';
 import { calculatePower } from './game/systems/combatPower';
 import { calculateXpGain } from './game/systems/xpGain';
 import { calculateFleeChance, calculateRearGuardPlan } from './features/battle/model/battleEscape';
@@ -2160,12 +2160,7 @@ export default function App() {
     if (processedTravelTokenRef.current === travelToken) return;
     processedTravelTokenRef.current = travelToken;
     
-    // Find if we hit a location using the explicit arrival position
-    const hitLocation = locations.find(l => {
-       const dx = l.coordinates.x - arrivalPos.x;
-       const dy = l.coordinates.y - arrivalPos.y;
-       return Math.sqrt(dx*dx + dy*dy) < 2;
-    });
+    const hitLocation = findLocationAtPosition(arrivalPos, locations);
 
     if (hitLocation?.type === 'FIELD_CAMP') {
       setPlayer(prev => ({ ...prev, position: arrivalPos }));
@@ -2180,51 +2175,6 @@ export default function App() {
   const siegeEngineCombatStats = SIEGE_ENGINE_COMBAT_STATS;
   const buildingOptions = BUILDING_OPTIONS;
 
-  const getGarrisonLimit = (location: Location) => {
-    const base = location.type === 'CITY'
-      ? 8000
-      : isCastleLikeLocation(location)
-        ? 5000
-        : location.type === 'ROACH_NEST'
-          ? 15000
-          : 2000;
-    const hasBarracks = (location.buildings ?? []).includes('BARRACKS');
-    return hasBarracks ? Math.floor(base * 1.5) : base;
-  };
-
-  const getGarrisonCount = (troops: Troop[]) => troops.reduce((sum, t) => sum + t.count, 0);
-  const mergeTroops = (base: Troop[], extra: Troop[]) => {
-    const map = new Map<string, Troop>();
-    base.forEach(t => map.set(t.id, { ...t }));
-    extra.forEach(t => {
-      if (t.count <= 0) return;
-      const current = map.get(t.id);
-      if (current) {
-        current.count += t.count;
-      } else {
-        map.set(t.id, { ...t });
-      }
-    });
-    return Array.from(map.values()).filter(t => t.count > 0);
-  };
-  const splitTroops = (troops: Troop[], ratio: number) => {
-    const attackers: Troop[] = [];
-    const remaining: Troop[] = [];
-    troops.forEach(t => {
-      const splitCount = Math.max(0, Math.floor(t.count * ratio));
-      const remainCount = t.count - splitCount;
-      if (splitCount > 0) attackers.push({ ...t, count: splitCount });
-      if (remainCount > 0) remaining.push({ ...t, count: remainCount });
-    });
-    return { attackers, remaining };
-  };
-  const getFactionLocations = (factionId: string, pool: Location[]) => {
-    return pool.filter(loc => (
-      loc.factionId === factionId &&
-      loc.owner !== 'PLAYER' &&
-      (loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE')
-    ));
-  };
   const getLocationTroops = (loc: Location) => {
     return (loc.garrison && loc.garrison.length > 0 ? loc.garrison : buildGarrisonTroops(loc)).map(t => ({ ...t }));
   };

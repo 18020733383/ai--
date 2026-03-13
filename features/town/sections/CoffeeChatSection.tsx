@@ -1,5 +1,6 @@
 import React from 'react';
 import { Button } from '../../../components/Button';
+import { ThinkingBubble } from '../../../components/ThinkingBubble';
 import { Hero } from '../../../types';
 
 type CoffeeGiftItem = {
@@ -131,6 +132,7 @@ export const CoffeeChatSection = ({
             </div>
           </div>
         ))}
+        {isUndeadChatLoading && <ThinkingBubble label="亡灵正在思考..." />}
       </div>
 
       <div className="bg-stone-900/40 p-3 rounded border border-stone-800">

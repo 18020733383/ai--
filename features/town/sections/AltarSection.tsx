@@ -1,5 +1,6 @@
 import React from 'react';
 import { Button } from '../../../components/Button';
+import { ThinkingBubble } from '../../../components/ThinkingBubble';
 import { chatWithAltar } from '../../../services/geminiService';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, PlayerState } from '../../../types';
 import { AltarRadar, formatAltarAttributes } from './AltarShared';
@@ -193,6 +194,7 @@ export const AltarSection = ({
                 </div>
               </div>
             ))}
+            {isAltarLoading && <ThinkingBubble label="神秘人正在思考..." />}
           </div>
 
           <div className="bg-stone-950/40 border border-stone-800 rounded p-3 text-sm text-stone-400 space-y-1">

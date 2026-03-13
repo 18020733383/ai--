@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Hero, HeroChatLine, PartyDiaryEntry } from './types';
 import { Button } from './components/Button';
+import { ThinkingBubble } from './components/ThinkingBubble';
 import { MessageCircle, Plus, Heart, Zap, Copy, Flag } from 'lucide-react';
 import { HERO_EMOTIONS } from './game/data/heroes';
 
@@ -119,10 +120,11 @@ export default function Character({
               ref={listRef}
               className="bg-gradient-to-b from-stone-950/40 to-stone-900/40 p-4 rounded border border-stone-800 max-h-[60vh] overflow-y-auto scrollbar-hide space-y-2"
             >
-              {chatMemory.length === 0 ? (
+              {chatMemory.length === 0 && !isLoading ? (
                 <div className="text-stone-500 text-sm text-center py-10">还没有开始聊天。</div>
               ) : (
-                chatMemory.map((line, index) => (
+                <>
+                {chatMemory.map((line, index) => (
                   <div key={index} className={`flex ${line.role === 'PLAYER' ? 'justify-end' : 'justify-start'} log-slide-in`}>
                     <div
                       className={[
@@ -135,7 +137,9 @@ export default function Character({
                       {renderWithActions(line.text, line.role)}
                     </div>
                   </div>
-                ))
+                ))}
+                {isLoading && <ThinkingBubble label={`${hero.name} 正在思考...`} />}
+                </>
               )}
             </div>
             <div className="flex gap-2">

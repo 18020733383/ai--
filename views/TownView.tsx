@@ -1,6 +1,7 @@
 import React from 'react';
 import { AlertTriangle, Beer, Brain, Coins, Ghost, Hammer, History, Home, MapPin, MessageCircle, Mountain, Plus, Scroll, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, Zap } from 'lucide-react';
 import { Button } from '../components/Button';
+import { ThinkingBubble } from '../components/ThinkingBubble';
 import { TroopCard } from '../components/TroopCard';
 import { AltarRecruitSection, AltarSection, CoffeeChatSection, ForgeSection, GarrisonSection, HabitatSection, MagicianLibrarySection, MiningSection, RecompilerSection, RecruitSection, RoachLureSection, TavernSection, WorkSection } from '../features/town';
 import { chatWithCampLeader, chatWithLord } from '../services/geminiService';
@@ -3959,16 +3960,19 @@ export const TownView = ({
             <div className="bg-stone-900/60 p-4 rounded border border-stone-800 space-y-3">
               <div className="text-stone-300 font-bold">来访记录</div>
               <div className="max-h-56 overflow-y-auto space-y-2 text-sm">
-                {lordDialogue.length === 0 ? (
+                {lordDialogue.length === 0 && !isLordChatLoading ? (
                   <div className="text-stone-500">领主暂未表态。</div>
                 ) : (
-                  lordDialogue.map((line, idx) => (
+                  <>
+                  {lordDialogue.map((line, idx) => (
                     <div key={idx} className={`flex ${line.role === 'PLAYER' ? 'justify-end' : 'justify-start'}`}>
                       <div className={`px-3 py-2 rounded border text-sm ${line.role === 'PLAYER' ? 'bg-amber-900/30 border-amber-800/60 text-amber-200' : 'bg-stone-950/40 border-stone-800 text-stone-200'}`}>
                         {line.text}
                       </div>
                     </div>
-                  ))
+                  ))}
+                  {isLordChatLoading && <ThinkingBubble label="领主正在思考..." />}
+                  </>
                 )}
               </div>
             </div>
