@@ -10,3 +10,6 @@ export { HabitatSection } from './sections/HabitatSection';
 export { CoffeeChatSection } from './sections/CoffeeChatSection';
 export { MagicianLibrarySection } from './sections/MagicianLibrarySection';
 export { GarrisonSection } from './sections/GarrisonSection';
+export { RecompilerSection } from './sections/RecompilerSection';
+export { AltarSection } from './sections/AltarSection';
+export { AltarRecruitSection } from './sections/AltarRecruitSection';

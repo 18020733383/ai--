@@ -50,7 +50,7 @@ type WorldBoardScreenProps = {
   worldBattleReports: WorldBattleReport[];
   worldDiplomacy: WorldDiplomacyState;
   battleTimeline: Array<{ day: number; count: number }>;
-  customTroopTemplates: Record<string, Troop>;
+  customTroopTemplates: Record<string, Omit<Troop, 'count' | 'xp'>>;
   siegeEngineOptions: SiegeEngineOption[];
   siegeEngineCombatStats: Record<SiegeEngineType, SiegeEngineCombatStats>;
   calculatePower: (troops: Troop[]) => number;

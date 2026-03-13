@@ -1,15 +1,22 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, SoldierInstance, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
-import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
-import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
+import { BUILDING_OPTIONS, ENCHANTMENT_RECIPES, FACTIONS, getBuildingName, getSiegeEngineName, HERO_EMOTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, SIEGE_ENGINE_COMBAT_STATS, SIEGE_ENGINE_OPTIONS, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, MINE_CONFIGS, MINERAL_META, MINERAL_PURITY_LABELS, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
+import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
 import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
-import { applyWorldDiplomacyDelta, buildInitialWorldDiplomacy, clampRelation, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, normalizeWorldDiplomacy } from './game/systems/diplomacy';
+import { applyWorldDiplomacyDelta, buildInitialWorld, buildInitialWorldDiplomacy, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, getLocationRecruitId, getLocationRelationTarget, getRecruitmentPool, getRelationScale, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, isCastleLikeLocation, isUndeadFortressLocation, normalizeRelationMatrix, normalizeWorldDiplomacy, rollBinomial, seedStayParties, syncLordPresence } from './game/systems';
+import { calculatePower } from './game/systems/combatPower';
+import { calculateXpGain } from './game/systems/xpGain';
+import { calculateFleeChance, calculateRearGuardPlan } from './features/battle/model/battleEscape';
+import { DEFAULT_BATTLE_LAYERS } from './features/battle/model/battleLayers';
 import { collectWorldTroops as collectWorldTroopsFromWorld, getBelieverStats as getBelieverStatsFromWorld } from './features/world-board/model/worldStats';
+import { runBattlePipeline } from './features/battle/model/battlePipeline';
+import { calculateLocalBattleRewards, computeBattleSettlement, computeTrainingXpRewards } from './features/battle/model/battleSettlement';
+import { appendDefenseAidTroops, BattleEngagementMeta, describeBattleLocationText } from './features/battle/model/battleRuntime';
+import { resolveBattleProgrammatic as resolveBattleProgrammaticFn } from './features/battle/model/resolveBattleProgrammatic';
 import type { AltarRecruitState, HideoutStayState, MiningState, RoachLureState, TownTab, WorkState } from './features/town/model/types';
 import { Button } from './components/Button';
-import { BigMapView } from './features/world-map';
 import { BattleView, BattleResultView } from './features/battle';
 import { ChangelogModal } from './components/ChangelogModal';
 import { SettingsModal } from './components/SettingsModal';
@@ -17,12 +24,14 @@ import { MapListModal } from './components/MapListModal';
 import { WorldTroopStatsModal } from './components/WorldTroopStatsModal';
 import { CHANGELOG } from './data/changelog';
 import { AppHeader } from './app/ui/AppHeader';
+import { AppMainContent } from './app/ui/AppMainContent';
+import { BattleSimulationOverlay } from './app/ui/BattleSimulationOverlay';
+import { DecisionOverlay } from './app/ui/DecisionOverlay';
+import { LogConsole } from './app/ui/LogConsole';
 import { WorldBoardScreen } from './features/world-board';
 import { RelationsView } from './features/relations';
 import { TroopArchiveView } from './views/TroopArchiveView';
 import { PartyView } from './views/PartyView';
-import { TownView } from './features/town';
-import { HideoutInspectView } from './views/HideoutInspectView';
 import { AsylumView } from './views/AsylumView';
 import { MarketView } from './views/MarketView';
 import { MysteriousCaveView } from './views/MysteriousCaveView';
@@ -31,598 +40,20 @@ import { CharacterView } from './views/CharacterView';
 import { BanditEncounterView } from './views/BanditEncounterView';
 import { HeroChatView } from './views/HeroChatView';
 import { GameOverView } from './views/GameOverView';
-import { IntroCinematicView } from './views/IntroCinematicView';
-import { EndingCinematicView } from './views/EndingCinematicView';
-import { MainMenuView } from './views/MainMenuView';
-import { BillsView } from './views/BillsView';
 import { 
   Map as MapIcon, MapPin, Coins, Trophy, Users, ShieldAlert, Skull, ArrowRight, Home, Swords, 
   Trees, Mountain, Snowflake, Sun, Tent, Shield, Ghost, Crosshair, Zap, 
   Flame, Flag, Scroll, User, Heart, Plus, Sword, Anchor, Trash2,
-  Syringe, Brain, Beer, Bird, ShoppingBag, MessageCircle, ChevronUp, ChevronDown, Utensils, EyeOff, Bomb, Info, Settings, Hammer, AlertTriangle, RefreshCw, Coffee, Star, History, Lock, Activity
+  Syringe, Brain, Beer, Bird, ShoppingBag, MessageCircle, Utensils, EyeOff, Bomb, Info, Settings, Hammer, Coffee, Star, History, Lock, Activity
 } from 'lucide-react';
 
 // Helper for XP calculation to avoid duplication and state race conditions
-const calculateXpGain = (currentXp: number, currentLevel: number, currentPoints: number, currentMaxXp: number, amount: number) => {
-  let xp = currentXp + amount;
-  let level = currentLevel;
-  let points = currentPoints;
-  let maxXp = currentMaxXp;
-  const logs: string[] = [];
-  
-  while (xp >= maxXp) {
-    xp -= maxXp;
-    level++;
-    points += 2; 
-    maxXp = Math.floor(maxXp * 1.5);
-    logs.push(`升级了！当前等级：${level}，获得属性点！`);
-  }
-  return { xp, level, attributePoints: points, maxXp, logs };
-};
-
-const DEFAULT_BATTLE_LAYERS = [
-  { id: 'layer-1', name: '先锋', hint: '承受正面冲击，适合盾兵与重装近战。' },
-  { id: 'layer-2', name: '前锋', hint: '主力突击与机动部队，短兵相接。' },
-  { id: 'layer-3', name: '中坚', hint: '稳定战线，承担主力输出与支援。' },
-  { id: 'layer-4', name: '后卫', hint: '远程火力与施法单位，保持安全距离。' },
-  { id: 'layer-5', name: '预备', hint: '保留机动与护卫，随时补位。' }
-];
-
-const HERO_EMOTIONS: Hero['currentExpression'][] = ['ANGRY', 'IDLE', 'SILENT', 'AWKWARD', 'HAPPY', 'SAD', 'AFRAID', 'SURPRISED', 'DEAD'];
 type NegotiationState = {
   status: 'idle' | 'loading' | 'result';
   result: NegotiationResult | null;
   locked: boolean;
 };
 type NegotiationLine = { role: 'PLAYER' | 'ENEMY'; text: string };
-
-const MINERAL_PURITY_LABELS: Record<MineralPurity, string> = {
-  1: '裂纹',
-  2: '粗炼',
-  3: '稳定',
-  4: '高纯',
-  5: '完美'
-};
-
-const MINERAL_META: Record<MineralId, { name: string; effect: string }> = {
-  NULL_CRYSTAL: { name: '空指针结晶', effect: '无视防御、闪避、隐匿' },
-  STACK_OVERFLOW: { name: '溢出堆栈', effect: '攻速加成、多重打击、冷却缩减' },
-  DEADLOCK_SHARD: { name: '死循环碎片', effect: '反伤、永动续航、控制免疫' },
-  HERO_CRYSTAL: { name: '英雄水晶', effect: '将士兵重构为英雄的灵魂载体（纯度=位阶）' }
-};
-
-const STAY_PARTY_LOCATION_TYPES: Location['type'][] = ['CITY', 'CASTLE', 'ROACH_NEST', 'IMPOSTER_PORTAL'];
-
-const isUndeadFortressLocation = (location: Location) => location.type === 'GRAVEYARD' && location.id.startsWith('death_');
-const isCastleLikeLocation = (location: Location) => location.type === 'CASTLE' || isUndeadFortressLocation(location);
-
-const buildStayPartyTroops = (location: Location, seed: number, entries: Array<{ id: string; count: number }>) => {
-  const heavyOptions = location.type === 'ROACH_NEST'
-    ? ['roach_egg_thrower']
-    : location.type === 'IMPOSTER_PORTAL'
-      ? ['imposter_flux_mortar']
-      : (location.type === 'CITY' || location.type === 'CASTLE')
-        ? ['heavy_ballista', 'heavy_fire_cannon', 'heavy_catapult', 'heavy_light_tank']
-        : [];
-  const airOptions = (location.type === 'CITY' || location.type === 'CASTLE')
-    ? ['arcane_glider', 'arcane_biplane', 'arcane_airship']
-    : [];
-  const baseTroops = entries
-    .map(entry => {
-      const template = TROOP_TEMPLATES[entry.id];
-      return template ? { ...template, count: entry.count, xp: 0 } : null;
-    })
-    .filter(Boolean) as Troop[];
-  const totalCount = baseTroops.reduce((sum, t) => sum + t.count, 0);
-  const next = [...baseTroops];
-  if (heavyOptions.length > 0) {
-    const desiredHeavy = Math.max(1, Math.min(3, 1 + Math.floor(totalCount / 280)));
-    const existingHeavy = baseTroops
-      .filter(t => t.category === 'HEAVY')
-      .reduce((sum, t) => sum + t.count, 0);
-    const remainingHeavy = Math.max(0, desiredHeavy - existingHeavy);
-    for (let i = 0; i < remainingHeavy; i++) {
-      const heavyId = heavyOptions[(seed + i) % heavyOptions.length];
-      const template = TROOP_TEMPLATES[heavyId];
-      if (!template) continue;
-      const existing = next.find(t => t.id === heavyId);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        next.push({ ...template, count: 1, xp: 0 });
-      }
-    }
-  }
-  if (airOptions.length > 0) {
-    const desiredAir = Math.max(1, Math.min(3, 1 + Math.floor(totalCount / 360)));
-    const existingAir = baseTroops
-      .filter(t => (t.combatDomain ?? 'GROUND') !== 'GROUND')
-      .reduce((sum, t) => sum + t.count, 0);
-    const remainingAir = Math.max(0, desiredAir - existingAir);
-    for (let i = 0; i < remainingAir; i++) {
-      const airId = airOptions[(seed + 31 + i) % airOptions.length];
-      const template = TROOP_TEMPLATES[airId];
-      if (!template) continue;
-      const existing = next.find(t => t.id === airId);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        next.push({ ...template, count: 1, xp: 0 });
-      }
-    }
-  }
-  return next;
-};
-
-const buildStayPartiesForLocation = (location: Location): StayParty[] => {
-  const seed = location.id.split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-  const firstIndex = (seed % 90) + 1;
-  const secondIndex = ((seed + 17) % 90) + 1;
-  const faction = FACTIONS.find(f => f.id === location.factionId);
-  const factionLabel = faction?.shortName ?? '帝国';
-  const cityTitles = ['城卫团', '巡防团', '商路护卫团', '苍弦弓团', '长街守军'];
-  const cityMobileTitles = ['机动旅', '斥候营', '巡猎队', '游击团', '轻骑团'];
-  const castleTitles = ['要塞守备团', '铁壁卫队', '壁垒军', '山脊卫团'];
-  const roachTitles = ['啃噬虫群', '裂甲虫潮', '腐蚀虫巢', '黑潮虫群'];
-  const imposterTitles = ['裂隙先锋群', '故障行军群', '镜像突袭群', '扭曲军势'];
-  const pickTitle = (titles: string[], index: number) => titles[index % titles.length];
-  if (location.type === 'CITY') {
-    const titleA = pickTitle(cityTitles, firstIndex);
-    const titleB = pickTitle(cityMobileTitles, secondIndex);
-    return [
-      {
-        id: `${location.id}_legion_${firstIndex}`,
-        name: `${factionLabel}·${location.name}${titleA}`,
-        troops: buildStayPartyTroops(location, seed + firstIndex, [
-          { id: 'imperial_swordsman', count: 240 },
-          { id: 'imperial_shieldbearer', count: 180 },
-          { id: 'imperial_crossbowman', count: 140 },
-          { id: 'knight', count: 60 }
-        ]),
-        owner: 'NEUTRAL'
-      },
-      {
-        id: `${location.id}_legion_${secondIndex}`,
-        name: `${factionLabel}·${location.name}${titleB}`,
-        troops: buildStayPartyTroops(location, seed + secondIndex, [
-          { id: 'footman', count: 200 },
-          { id: 'imperial_shieldbearer', count: 160 },
-          { id: 'imperial_crossbowman', count: 120 },
-          { id: 'knight', count: 50 }
-        ]),
-        owner: 'NEUTRAL'
-      }
-    ];
-  }
-  if (location.type === 'CASTLE') {
-    const title = pickTitle(castleTitles, firstIndex);
-    return [
-      {
-        id: `${location.id}_legion_${firstIndex}`,
-        name: `${factionLabel}·${location.name}${title}`,
-        troops: buildStayPartyTroops(location, seed + firstIndex, [
-          { id: 'footman', count: 160 },
-          { id: 'imperial_shieldbearer', count: 120 },
-          { id: 'imperial_crossbowman', count: 90 },
-          { id: 'knight', count: 35 }
-        ]),
-        owner: 'NEUTRAL'
-      }
-    ];
-  }
-  if (location.type === 'ROACH_NEST') {
-    const titleA = pickTitle(roachTitles, firstIndex);
-    const titleB = pickTitle(roachTitles, secondIndex + 3);
-    return [
-      {
-        id: `${location.id}_swarm_${firstIndex}`,
-        name: `蟑螂${titleA}`,
-        troops: buildStayPartyTroops(location, seed + firstIndex, [
-          { id: 'roach_brawler', count: 260 },
-          { id: 'roach_pikeman', count: 260 },
-          { id: 'roach_slinger', count: 180 },
-          { id: 'roach_shieldling', count: 180 },
-          { id: 'roach_aerial_duelist', count: 60 }
-        ]),
-        owner: 'ENEMY'
-      },
-      {
-        id: `${location.id}_swarm_${secondIndex}`,
-        name: `蟑螂${titleB}`,
-        troops: buildStayPartyTroops(location, seed + secondIndex, [
-          { id: 'roach_aerial_lancer', count: 80 },
-          { id: 'roach_aerial_harrier', count: 80 },
-          { id: 'roach_aerial_guard', count: 80 },
-          { id: 'roach_chitin_commander', count: 30 },
-          { id: 'roach_giant_halberdier', count: 40 }
-        ]),
-        owner: 'ENEMY'
-      }
-    ];
-  }
-  if (location.type === 'IMPOSTER_PORTAL') {
-    const titleA = pickTitle(imposterTitles, firstIndex);
-    const titleB = pickTitle(imposterTitles, secondIndex + 2);
-    return [
-      {
-        id: `${location.id}_legion_${firstIndex}`,
-        name: `伪人${titleA}`,
-        troops: buildStayPartyTroops(location, seed + firstIndex, [
-          { id: 'void_larva', count: 380 },
-          { id: 'glitch_pawn', count: 380 },
-          { id: 'static_noise_walker', count: 260 },
-          { id: 'null_fragment', count: 260 },
-          { id: 'imposter_light_infantry', count: 220 },
-          { id: 'imposter_short_bowman', count: 140 }
-        ]),
-        owner: 'ENEMY'
-      },
-      {
-        id: `${location.id}_legion_${secondIndex}`,
-        name: `伪人${titleB}`,
-        troops: buildStayPartyTroops(location, seed + secondIndex, [
-          { id: 'imposter_spearman', count: 260 },
-          { id: 'imposter_slinger', count: 240 },
-          { id: 'entropy_acolyte', count: 140 },
-          { id: 'pixel_shifter', count: 120 },
-          { id: 'syntax_error_scout', count: 120 },
-          { id: 'imposter_heavy_infantry', count: 80 },
-          { id: 'imposter_longbowman', count: 80 }
-        ]),
-        owner: 'ENEMY'
-      }
-    ];
-  }
-  return [];
-};
-
-const seedStayParties = (locations: Location[]) =>
-  locations.map(location => {
-    if (!STAY_PARTY_LOCATION_TYPES.includes(location.type)) return location;
-    if (location.stayParties && location.stayParties.length > 0) return location;
-    return { ...location, stayParties: buildStayPartiesForLocation(location) };
-  });
-
-const MINE_CONFIGS: Partial<Record<Location['type'], { mineralId: MineralId; crystalName: string; effect: string }>> = {
-  VOID_BUFFER_MINE: { mineralId: 'NULL_CRYSTAL', crystalName: '空指针结晶', effect: '无视防御、闪避、隐匿' },
-  MEMORY_OVERFLOW_MINE: { mineralId: 'STACK_OVERFLOW', crystalName: '溢出堆栈', effect: '攻速加成、多重打击、冷却缩减' },
-  LOGIC_PARADOX_MINE: { mineralId: 'DEADLOCK_SHARD', crystalName: '死循环碎片', effect: '反伤、永动续航、控制免疫' },
-  HERO_CRYSTAL_MINE: { mineralId: 'HERO_CRYSTAL', crystalName: '英雄水晶', effect: '灵魂位阶，决定重塑英雄的强度与谈吐' }
-};
-
-const ENCHANTMENT_RECIPES: Array<{ enchantment: Enchantment; costs: { mineralId: MineralId; purityMin: MineralPurity; amount: number }[] }> = [
-  {
-    enchantment: {
-      id: 'null_pointer',
-      name: '空指针异常',
-      category: '空间逻辑类',
-      description: '每次攻击有25%概率无视护甲，造成130%伤害。战力+10%。',
-      powerBonus: 0.1
-    },
-    costs: [{ mineralId: 'NULL_CRYSTAL', purityMin: 2, amount: 1 }]
-  },
-  {
-    enchantment: {
-      id: 'stealth_process',
-      name: '隐匿进程',
-      category: '空间逻辑类',
-      description: '战斗前2回合远程命中率-25%，近战命中率-10%。战力+8%。',
-      powerBonus: 0.08
-    },
-    costs: [{ mineralId: 'NULL_CRYSTAL', purityMin: 2, amount: 1 }]
-  },
-  {
-    enchantment: {
-      id: 'coordinate_offset',
-      name: '坐标偏移',
-      category: '空间逻辑类',
-      description: '被远程攻击时有30%概率完全闪避。战力+7%。',
-      powerBonus: 0.07
-    },
-    costs: [{ mineralId: 'NULL_CRYSTAL', purityMin: 1, amount: 1 }]
-  },
-  {
-    enchantment: {
-      id: 'phase_cut',
-      name: '相位切割',
-      category: '空间逻辑类',
-      description: '攻击有20%概率穿透格挡并追加20%伤害。战力+11%。',
-      powerBonus: 0.11
-    },
-    costs: [{ mineralId: 'NULL_CRYSTAL', purityMin: 3, amount: 1 }]
-  },
-  {
-    enchantment: {
-      id: 'recursive_strike',
-      name: '递归打击',
-      category: '运算过载类',
-      description: '每次普攻追加2次命中（总3段），追加段为45%伤害。战力+12%。',
-      powerBonus: 0.12
-    },
-    costs: [{ mineralId: 'STACK_OVERFLOW', purityMin: 2, amount: 1 }]
-  },
-  {
-    enchantment: {
-      id: 'multi_threading',
-      name: '多线程并行',
-      category: '运算过载类',
-      description: '攻速+20%，控制持续时间-20%。战力+9%。',
-      powerBonus: 0.09
-    },
-    costs: [{ mineralId: 'STACK_OVERFLOW', purityMin: 2, amount: 1 }]
-  },
-  {
-    enchantment: {
-      id: 'cache_boost',
-      name: '高速缓冲区',
-      category: '运算过载类',
-      description: '技能冷却-25%，每3回合额外获得1次行动。战力+13%。',
-      powerBonus: 0.13
-    },
-    costs: [{ mineralId: 'STACK_OVERFLOW', purityMin: 3, amount: 1 }]
-  },
-  {
-    enchantment: {
-      id: 'instruction_reorder',
-      name: '指令乱序',
-      category: '运算过载类',
-      description: '命中后有25%概率令目标下回合失去行动。战力+10%。',
-      powerBonus: 0.1
-    },
-    costs: [{ mineralId: 'STACK_OVERFLOW', purityMin: 1, amount: 1 }]
-  },
-  {
-    enchantment: {
-      id: 'infinite_loop',
-      name: '死循环护盾',
-      category: '逻辑锁死类',
-      description: '受到的35%伤害延迟到下一回合结算。战力+12%。',
-      powerBonus: 0.12
-    },
-    costs: [{ mineralId: 'DEADLOCK_SHARD', purityMin: 2, amount: 1 }]
-  },
-  {
-    enchantment: {
-      id: 'read_only',
-      name: '只读模式',
-      category: '逻辑锁死类',
-      description: '每5回合触发1回合免疫控制与负面状态，但该回合无法被治疗。战力+10%。',
-      powerBonus: 0.1
-    },
-    costs: [{ mineralId: 'DEADLOCK_SHARD', purityMin: 2, amount: 1 }]
-  },
-  {
-    enchantment: {
-      id: 'boolean_not',
-      name: '逻辑反转',
-      category: '逻辑锁死类',
-      description: '25%概率将受到的直接伤害转为等量治疗，25%概率将治疗转为伤害。战力+14%。',
-      powerBonus: 0.14
-    },
-    costs: [{ mineralId: 'DEADLOCK_SHARD', purityMin: 3, amount: 1 }]
-  },
-  {
-    enchantment: {
-      id: 'state_freeze',
-      name: '状态冻结',
-      category: '逻辑锁死类',
-      description: '被控制时持续时间减半（向上取整），硬直-40%。战力+11%。',
-      powerBonus: 0.11
-    },
-    costs: [{ mineralId: 'DEADLOCK_SHARD', purityMin: 1, amount: 1 }]
-  },
-  {
-    enchantment: {
-      id: 'root_access',
-      name: '权限提升',
-      category: '系统底层类',
-      description: '攻击有30%概率打断施法或蓄力，并使目标下回合伤害-20%。战力+16%。',
-      powerBonus: 0.16
-    },
-    costs: [
-      { mineralId: 'NULL_CRYSTAL', purityMin: 3, amount: 1 },
-      { mineralId: 'STACK_OVERFLOW', purityMin: 3, amount: 1 }
-    ]
-  },
-  {
-    enchantment: {
-      id: 'rollback',
-      name: '回滚机制',
-      category: '系统底层类',
-      description: '生命低于30%时触发一次，回复最大生命40%并清除负面状态（每战1次）。战力+20%。',
-      powerBonus: 0.2
-    },
-    costs: [
-      { mineralId: 'STACK_OVERFLOW', purityMin: 4, amount: 1 },
-      { mineralId: 'DEADLOCK_SHARD', purityMin: 4, amount: 1 }
-    ]
-  },
-  {
-    enchantment: {
-      id: 'junk_code',
-      name: '乱码污染',
-      category: '系统底层类',
-      description: '命中后使目标命中率-25%、防御-15%，持续2回合。战力+15%。',
-      powerBonus: 0.15
-    },
-    costs: [
-      { mineralId: 'NULL_CRYSTAL', purityMin: 3, amount: 1 },
-      { mineralId: 'DEADLOCK_SHARD', purityMin: 3, amount: 1 }
-    ]
-  },
-  {
-    enchantment: {
-      id: 'kernel_fault',
-      name: '内核错断',
-      category: '系统底层类',
-      description: '战斗前2回合敌军速度-20%、命中-15%。战力+17%。',
-      powerBonus: 0.17
-    },
-    costs: [
-      { mineralId: 'NULL_CRYSTAL', purityMin: 4, amount: 1 },
-      { mineralId: 'STACK_OVERFLOW', purityMin: 4, amount: 1 }
-    ]
-  }
-];
-
-const lordFamilyNames = ['洛', '伊', '雷', '凯', '萨', '赫', '沃', '格', '塞', '艾', '菲', '卡'];
-const lordGivenNames = ['兰', '维恩', '赫尔', '赛恩', '米娅', '罗莎', '阿什', '卡尔', '诺亚', '艾琳', '里昂', '希尔'];
-const lordTemperaments = ['强硬', '稳重', '多疑', '豪爽', '谨慎', '冷峻', '宽厚', '冷静'];
-const lordTraits = ['好战', '务实', '忠诚', '谨慎', '野心', '仁慈', '狡黠', '守旧', '热情', '冷静'];
-const lordFocuses: LordFocus[] = ['WAR', 'TRADE', 'DEFENSE', 'DIPLOMACY'];
-const lordTitleByType = (type: Location['type']) => type === 'CITY' ? '城主' : type === 'CASTLE' ? '堡主' : type === 'GRAVEYARD' ? '墓主' : type === 'ROACH_NEST' ? '巢主' : '领主';
-const getLordSeed = (id: string) => id.split('').reduce((sum, ch) => sum + ch.charCodeAt(0), 0);
-const pickLordValue = <T,>(list: T[], seed: number, offset: number = 0) => list[(seed + offset) % list.length];
-const roachLordNames = ['甲壳母', '壳鸣者', '孵化主', '触须王', '蜕壳者', '螯刃统领', '脉囊司巢'];
-const undeadLordNames = ['黯焰守陵者', '骨律祀官', '腐棺司主', '冥火执令', '遗誓看守者', '黑纱侯影', '亡钟聆者'];
-const getDefaultGarrisonBaseLimit = (location: Location) => {
-  const existingCount = (location.garrison ?? []).reduce((sum, t) => sum + t.count, 0);
-  if (existingCount > 0) return existingCount;
-  if (location.type === 'CITY') return 1940;
-  if (location.type === 'CASTLE') return 600;
-  if (location.type === 'VILLAGE') return 67;
-  return 0;
-};
-const buildLordPartyTroops = (location: Location) => {
-  const pickTroop = (id: string, count: number) => {
-    const template = TROOP_TEMPLATES[id];
-    return template ? { ...template, count, xp: 0 } : null;
-  };
-  if (location.factionId === 'ARCANE_CONCORD') {
-    if (location.type === 'CITY') {
-      const base = [
-        pickTroop('stellar_acolyte', 70),
-        pickTroop('lumen_disciple', 60),
-        pickTroop('rift_acolyte', 50),
-        pickTroop('aether_disciple', 50),
-        pickTroop('stellar_magus', 20),
-        pickTroop('aether_scholar', 15)
-      ].filter(Boolean) as Troop[];
-      return base;
-    }
-    if (location.type === 'CASTLE') {
-      const base = [
-        pickTroop('lumen_disciple', 40),
-        pickTroop('rift_sentinel', 30),
-        pickTroop('aether_scholar', 25),
-        pickTroop('stellar_magus', 20)
-      ].filter(Boolean) as Troop[];
-      return base;
-    }
-    if (location.type === 'VILLAGE') {
-      const base = [
-        pickTroop('stellar_initiate', 35),
-        pickTroop('lumen_initiate', 25),
-        pickTroop('rift_initiate', 20),
-        pickTroop('aether_initiate', 20)
-      ].filter(Boolean) as Troop[];
-      return base;
-    }
-  }
-  if (location.type === 'CITY') {
-    const base = [pickTroop('militia', 120), pickTroop('footman', 80), pickTroop('hunter', 50), pickTroop('heavy_fire_cannon', 1), pickTroop('arcane_glider', 1)].filter(Boolean) as Troop[];
-    return base;
-  }
-  if (location.type === 'CASTLE') {
-    const base = [pickTroop('footman', 60), pickTroop('hunter', 30), pickTroop('heavy_ballista', 1), pickTroop('arcane_glider', 1)].filter(Boolean) as Troop[];
-    return base;
-  }
-  if (location.type === 'GRAVEYARD') {
-    return [
-      pickTroop('skeleton_warrior', 80),
-      pickTroop('undead_bone_javelin', 70),
-      pickTroop('undead_grave_arbalist', 60),
-      pickTroop('specter', 40),
-      pickTroop('undead_musician', 30),
-      pickTroop('undead_soul_obelisk', 1),
-      pickTroop('undead_gargoyle', 1)
-    ].filter(Boolean) as Troop[];
-  }
-  if (location.type === 'VILLAGE') {
-    const base = [pickTroop('peasant', 30), pickTroop('hunter', 15), pickTroop('heavy_ballista', 1)].filter(Boolean) as Troop[];
-    return base;
-  }
-  if (location.type === 'ROACH_NEST') {
-    return [
-      pickTroop('roach_brawler', 80),
-      pickTroop('roach_pikeman', 70),
-      pickTroop('roach_slinger', 60),
-      pickTroop('roach_shieldling', 50),
-      pickTroop('roach_egg_thrower', 1)
-    ].filter(Boolean) as Troop[];
-  }
-  return [];
-};
-const getTroopCount = (troops: Troop[]) => troops.reduce((sum, t) => sum + t.count, 0);
-const buildLordStayParty = (locationId: string, lord: Lord) => ({
-  id: `lord_party_${lord.id}`,
-  name: `${lord.name}的部队`,
-  troops: lord.partyTroops,
-  owner: 'NEUTRAL' as const,
-  lordId: lord.id
-});
-const buildLocationLord = (location: Location): Lord | null => {
-  const isUndeadFortress = isUndeadFortressLocation(location);
-  if (location.type !== 'CITY' && location.type !== 'CASTLE' && location.type !== 'VILLAGE' && location.type !== 'ROACH_NEST' && !isUndeadFortress) return null;
-  const seed = getLordSeed(location.id);
-  const traitA = pickLordValue(lordTraits, seed, 5);
-  const traitB = pickLordValue(lordTraits, seed, 9);
-  const traits = traitA === traitB ? [traitA] : [traitA, traitB];
-  const focus = pickLordValue(lordFocuses, seed, 7);
-  const faction = FACTIONS.find(f => f.id === location.factionId);
-  const roachName = roachLordNames[seed % roachLordNames.length];
-  const undeadName = undeadLordNames[seed % undeadLordNames.length];
-  const partyTroops = buildLordPartyTroops(location);
-  const partyMaxCount = getTroopCount(partyTroops);
-  return {
-    id: `lord_${location.id}`,
-    name: location.type === 'ROACH_NEST' ? roachName : location.type === 'GRAVEYARD' ? undeadName : `${pickLordValue(lordFamilyNames, seed)}${pickLordValue(lordGivenNames, seed, 3)}`,
-    title: lordTitleByType(location.type),
-    factionId: faction?.id ?? location.factionId,
-    fiefId: location.id,
-    traits,
-    temperament: pickLordValue(lordTemperaments, seed, 12),
-    focus,
-    relation: 0,
-    currentLocationId: location.id,
-    state: 'RESTING',
-    stateSinceDay: 1,
-    partyTroops,
-    partyMaxCount
-  } as Lord;
-};
-const ensureLocationLords = (list: Location[]) => {
-  return list.map(loc => {
-    const isUndeadFortress = isUndeadFortressLocation(loc);
-    if (loc.type !== 'CITY' && loc.type !== 'CASTLE' && loc.type !== 'VILLAGE' && loc.type !== 'ROACH_NEST' && !isUndeadFortress) return loc;
-    const currentLord = loc.lord && loc.lord.factionId === loc.factionId && loc.lord.fiefId === loc.id ? loc.lord : null;
-    const lord = currentLord ?? buildLocationLord(loc);
-    if (!lord) return loc;
-    const baseLimit = loc.garrisonBaseLimit ?? getDefaultGarrisonBaseLimit(loc);
-    return { ...loc, lord, garrisonBaseLimit: baseLimit };
-  });
-};
-const syncLordPresence = (list: Location[], lords: Lord[]) => {
-  const lordsById = new Map(lords.map(lord => [lord.id, lord]));
-  return list.map(loc => {
-    const owner = loc.lord ? lordsById.get(loc.lord.id) ?? loc.lord : loc.lord;
-    const preservedParties = (loc.stayParties ?? []).filter(party => !party.lordId || !lordsById.has(party.lordId));
-    const visitingLords = lords.filter(lord => lord.currentLocationId === loc.id && !lord.travelDaysLeft);
-    const lordParties = visitingLords.map(lord => buildLordStayParty(loc.id, lord));
-    return { ...loc, lord: owner, stayParties: [...preservedParties, ...lordParties] };
-  });
-};
-const buildInitialWorld = () => {
-  const seeded = seedStayParties(LOCATIONS);
-  const withLords = ensureLocationLords(seeded);
-  const lords = withLords.flatMap(loc => (loc.lord ? [{ ...loc.lord }] : []));
-  const syncedLocations = syncLordPresence(withLords, lords).map(loc => {
-    if (loc.claimFactionId) return loc;
-    if (loc.factionId) return { ...loc, claimFactionId: loc.factionId };
-    return loc;
-  });
-  return { locations: syncedLocations, lords };
-};
 
 export default function App() {
   const initialWorld = React.useMemo(() => buildInitialWorld(), []);
@@ -634,43 +65,6 @@ export default function App() {
       const stayDays = Math.floor(Math.random() * 4) + 2;
       return { ...hero, locationId: cityId, stayDays };
     });
-  };
-  const buildWorkContractsForCity = (loc: Location, day: number): WorkContract[] => {
-    const pools: { tier: number; titles: string[]; daysRange: [number, number]; payRange: [number, number] }[] = [
-      { tier: 1, titles: ['搬运货箱', '跑腿送信', '码头清点', '修补栅栏', '护送学徒'], daysRange: [2, 2], payRange: [70, 120] },
-      { tier: 2, titles: ['城门巡逻', '商队随行', '仓库盘点', '清剿鼠患', '押送囚犯'], daysRange: [3, 4], payRange: [160, 260] },
-      { tier: 3, titles: ['护送贵客', '处理纠纷', '围剿盗匪', '护卫货队', '追缴欠款'], daysRange: [4, 5], payRange: [320, 520] },
-      { tier: 4, titles: ['暗线侦查', '断粮破坏', '护送密使', '追捕逃犯', '封存物证'], daysRange: [6, 7], payRange: [620, 980] },
-      { tier: 5, titles: ['裂隙巡查', '异常清剿', '秘密护送', '高危镇压', '禁区采样'], daysRange: [8, 10], payRange: [1100, 1650] }
-    ];
-    const pick = <T,>(arr: T[]) => arr[Math.floor(Math.random() * arr.length)];
-    const rollInt = (min: number, max: number) => Math.floor(min + Math.random() * (max - min + 1));
-    const rollTier = () => {
-      const r = Math.random();
-      if (r < 0.48) return 1;
-      if (r < 0.78) return 2;
-      if (r < 0.93) return 3;
-      if (r < 0.985) return 4;
-      return 5;
-    };
-    const count = 4;
-    const used = new Set<string>();
-    const result: WorkContract[] = [];
-    for (let i = 0; i < count; i++) {
-      const tier = rollTier();
-      const pool = pools.find(p => p.tier === tier) ?? pools[0];
-      let title = pick(pool.titles);
-      let guard = 0;
-      while (used.has(title) && guard < 10) {
-        title = pick(pool.titles);
-        guard++;
-      }
-      used.add(title);
-      const days = rollInt(pool.daysRange[0], pool.daysRange[1]);
-      const pay = rollInt(pool.payRange[0], pool.payRange[1]);
-      result.push({ id: `WORK_${loc.id}_${day}_${i}_${Math.floor(Math.random() * 10000)}`, title, tier, days, pay });
-    }
-    return result;
   };
   const [player, setPlayer] = useState<PlayerState>(INITIAL_PLAYER_STATE);
   const [heroes, setHeroes] = useState<Hero[]>(() => buildRandomizedHeroes());
@@ -817,8 +211,8 @@ export default function App() {
   const [saveDataNotice, setSaveDataNotice] = useState<string | null>(null);
   const [manualSaveName, setManualSaveName] = useState('');
   const [battleError, setBattleError] = useState<string | null>(null);
-  const [battleMeta, setBattleMeta] = useState<{ mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; siegeContext?: string; supportTroops?: Troop[]; supportLabel?: string } | null>(null);
-  const [pendingBattleMeta, setPendingBattleMeta] = useState<{ mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; siegeContext?: string; supportTroops?: Troop[]; supportLabel?: string } | null>(null);
+  const [battleMeta, setBattleMeta] = useState<BattleEngagementMeta | null>(null);
+  const [pendingBattleMeta, setPendingBattleMeta] = useState<BattleEngagementMeta | null>(null);
   const [pendingBattleIsTraining, setPendingBattleIsTraining] = useState(false);
   const [isBattleStreaming, setIsBattleStreaming] = useState(false);
   const [isBattleResultFinal, setIsBattleResultFinal] = useState(true);
@@ -1418,188 +812,6 @@ export default function App() {
       const nextLogs = [{ day, text: safe }, ...existing].slice(0, 30);
       return { ...prev, localLogs: nextLogs };
     });
-  };
-
-  const normalizeRelationMatrix = (matrix?: PlayerState['relationMatrix']) => ({
-    factions: {
-      VERDANT_COVENANT: matrix?.factions?.VERDANT_COVENANT ?? INITIAL_PLAYER_STATE.relationMatrix.factions.VERDANT_COVENANT,
-      FROST_OATH: matrix?.factions?.FROST_OATH ?? INITIAL_PLAYER_STATE.relationMatrix.factions.FROST_OATH,
-      RED_DUNE: matrix?.factions?.RED_DUNE ?? INITIAL_PLAYER_STATE.relationMatrix.factions.RED_DUNE,
-      AUREATE_LEAGUE: (matrix as any)?.factions?.AUREATE_LEAGUE ?? (INITIAL_PLAYER_STATE as any).relationMatrix.factions.AUREATE_LEAGUE ?? 0,
-      ARCANE_CONCORD: (matrix as any)?.factions?.ARCANE_CONCORD ?? (INITIAL_PLAYER_STATE as any).relationMatrix.factions.ARCANE_CONCORD ?? 0
-    },
-    races: {
-      HUMAN: matrix?.races?.HUMAN ?? INITIAL_PLAYER_STATE.relationMatrix.races.HUMAN,
-      ROACH: matrix?.races?.ROACH ?? INITIAL_PLAYER_STATE.relationMatrix.races.ROACH,
-      UNDEAD: matrix?.races?.UNDEAD ?? INITIAL_PLAYER_STATE.relationMatrix.races.UNDEAD,
-      IMPOSTER: matrix?.races?.IMPOSTER ?? INITIAL_PLAYER_STATE.relationMatrix.races.IMPOSTER,
-      BANDIT: matrix?.races?.BANDIT ?? INITIAL_PLAYER_STATE.relationMatrix.races.BANDIT,
-      AUTOMATON: matrix?.races?.AUTOMATON ?? INITIAL_PLAYER_STATE.relationMatrix.races.AUTOMATON,
-      VOID: matrix?.races?.VOID ?? INITIAL_PLAYER_STATE.relationMatrix.races.VOID,
-      MADNESS: matrix?.races?.MADNESS ?? INITIAL_PLAYER_STATE.relationMatrix.races.MADNESS,
-      BEAST: (matrix as any)?.races?.BEAST ?? (INITIAL_PLAYER_STATE as any).relationMatrix.races.BEAST ?? -10,
-      GOBLIN: (matrix as any)?.races?.GOBLIN ?? (INITIAL_PLAYER_STATE as any).relationMatrix.races.GOBLIN ?? -20
-    }
-  });
-
-  const getLocationRace = (location?: Location | null): RaceId | null => {
-    if (!location) return null;
-    if (location.type === 'ROACH_NEST') return 'ROACH';
-    if (location.type === 'GRAVEYARD' || location.type === 'COFFEE') return 'UNDEAD';
-    if (location.type === 'IMPOSTER_PORTAL') return 'IMPOSTER';
-    if (location.type === 'BANDIT_CAMP') return location.id.startsWith('goblin_camp_') ? 'GOBLIN' : 'BANDIT';
-    if (location.id.startsWith('village_goblin_')) return 'GOBLIN';
-    if (location.type === 'MYSTERIOUS_CAVE') return 'VOID';
-    if (location.type === 'ASYLUM') return 'MADNESS';
-    return null;
-  };
-  const getLocationRecruitId = (location: Location) => {
-    const race = getLocationRace(location);
-    if (race === 'GOBLIN') return 'goblin_scavenger';
-    if (location.type === 'CITY') return 'militia';
-    if (isUndeadFortressLocation(location)) return 'zombie';
-    if (isCastleLikeLocation(location)) return 'footman';
-    return 'peasant';
-  };
-
-  const getLocationRelationTarget = (location?: Location | null) => {
-    if (!location) return null;
-    if (location.factionId) return { type: 'FACTION' as const, id: location.factionId };
-    const race = getLocationRace(location);
-    return race ? { type: 'RACE' as const, id: race } : null;
-  };
-
-  const getPlayerReligion = (list: Location[] = locations) => {
-    const altars = (list ?? []).filter(l => l && l.type === 'ALTAR' && l.altar?.doctrine?.religionName);
-    if (altars.length === 0) return null;
-    const picked = altars.find(l => (l.altar?.troopIds ?? []).length > 0) ?? altars[0];
-    const doctrine = picked.altar?.doctrine;
-    if (!doctrine?.religionName) return null;
-    return {
-      religionName: doctrine.religionName,
-      troopIds: picked.altar?.troopIds ?? []
-    };
-  };
-
-  const getCityReligionTierCap = (faith: number) => {
-    const f = Math.max(0, Math.min(100, Math.floor(faith)));
-    if (f >= 80) return 4;
-    if (f >= 60) return 3;
-    if (f >= 40) return 2;
-    if (f >= 20) return 1;
-    return 0;
-  };
-
-  const computePreachPlan = (loc: Location, relationValue: number) => {
-    const faith = Math.max(0, Math.min(100, Math.floor(loc.religion?.faith ?? 0)));
-    const rel = Math.max(-100, Math.min(100, Math.floor(relationValue ?? 0)));
-    const costBase = 60 + Math.floor(faith * 0.9);
-    const relFactor = rel >= 0 ? (1 - Math.min(0.35, rel * 0.005)) : (1 + Math.min(0.6, Math.abs(rel) * 0.008));
-    const hasChapel = (loc.buildings ?? []).includes('CHAPEL');
-    const cost = Math.max(20, Math.min(800, Math.floor(costBase * relFactor * (hasChapel ? 0.9 : 1))));
-    const gainBase = 6 + Math.round(rel / 30);
-    const damp = Math.max(0.15, 1 - faith / 115);
-    const gain = Math.max(1, Math.min(14, Math.floor(gainBase * damp) + (hasChapel ? 2 : 0)));
-    return { cost, gain, faith };
-  };
-
-  const preachInCity = (locationId: string) => {
-    const id = String(locationId ?? '');
-    if (!id) return;
-    const religion = getPlayerReligion();
-    if (!religion) {
-      addLog('你还没有确立宗教。先去祭坛创建宗教。');
-      return;
-    }
-    const target = locations.find(l => l.id === id) ?? null;
-    if (!target || target.type !== 'CITY') return;
-    const relationValue = playerRef.current.locationRelations?.[id] ?? 0;
-    const plan = computePreachPlan(target, relationValue);
-    if (playerRef.current.gold < plan.cost) {
-      addLog('资金不足，无法传教。');
-      return;
-    }
-    const day = playerRef.current.day;
-    const rollInt = (min: number, max: number) => Math.floor(min + Math.random() * (max - min + 1));
-    const nextEventDay = (() => {
-      const current = target.religion?.nextEventDay;
-      if (typeof current === 'number' && current > day) return current;
-      return day + rollInt(7, 14);
-    })();
-    const nextFaith = Math.max(0, Math.min(100, plan.faith + plan.gain));
-    setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - plan.cost) }));
-    setLocations(prev => prev.map(l => {
-      if (l.id !== id) return l;
-      const currentFaith = Math.max(0, Math.min(100, Math.floor(l.religion?.faith ?? 0)));
-      const faithAfter = Math.max(0, Math.min(100, currentFaith + plan.gain));
-      return {
-        ...l,
-        religion: {
-          faith: faithAfter,
-          started: true,
-          lastEventDay: l.religion?.lastEventDay,
-          nextEventDay
-        }
-      };
-    }));
-    setCurrentLocation(prev => {
-      if (!prev || prev.id !== id) return prev;
-      const currentFaith = Math.max(0, Math.min(100, Math.floor(prev.religion?.faith ?? 0)));
-      const faithAfter = Math.max(0, Math.min(100, currentFaith + plan.gain));
-      return { ...prev, religion: { faith: faithAfter, started: true, lastEventDay: prev.religion?.lastEventDay, nextEventDay } };
-    });
-    addLog(`【传教】${target.name}：宣讲“${religion.religionName}”，+${plan.gain}%（花费 ${plan.cost}）。`);
-    addLocationLog(id, `传教活动推进：信教比例 +${plan.gain}%（现 ${nextFaith}%）。`, day);
-  };
-
-  const getEncounterChance = (baseChance: number, relationValue: number) => {
-    if (relationValue >= 60) return Math.min(baseChance, 0.06);
-    if (relationValue >= 40) return Math.min(baseChance, 0.1);
-    if (relationValue >= 20) return Math.min(baseChance, 0.14);
-    if (relationValue <= -70) return Math.max(baseChance, 0.45);
-    if (relationValue <= -50) return Math.max(baseChance, 0.35);
-    if (relationValue <= -30) return Math.max(baseChance, 0.28);
-    return baseChance;
-  };
-
-  const getRelationScale = (relationValue: number) => {
-    if (relationValue <= -70) return 1.45;
-    if (relationValue <= -55) return 1.3;
-    if (relationValue <= -35) return 1.2;
-    if (relationValue >= 50) return 0.75;
-    if (relationValue >= 30) return 0.85;
-    return 1;
-  };
-
-  const buildSupportTroops = (location: Location, ratio: number) => {
-    const garrison = location.garrison ?? [];
-    return garrison
-      .map(t => ({ ...t, count: Math.max(0, Math.ceil(t.count * ratio)) }))
-      .filter(t => t.count > 0);
-  };
-
-  const getEnemyRace = (enemy?: EnemyForce | null): RaceId | null => {
-    if (!enemy) return null;
-    const baseId = String(enemy.baseTroopId ?? '').trim();
-    if (IMPOSTER_TROOP_IDS.has(baseId)) return 'IMPOSTER';
-    if (baseId.startsWith('roach_')) return 'ROACH';
-    if (baseId.startsWith('undead_') || baseId.startsWith('skeleton') || baseId.startsWith('zombie') || baseId.startsWith('specter')) return 'UNDEAD';
-    if (baseId.startsWith('automaton') || baseId.startsWith('ai_')) return 'AUTOMATON';
-    if (baseId.startsWith('void_')) return 'VOID';
-    if (baseId.startsWith('mad_') || baseId.includes('patient')) return 'MADNESS';
-    if (baseId.startsWith('goblin_')) return 'GOBLIN';
-    const name = String(enemy.name ?? '');
-    if (name.includes('匪') || name.includes('盗') || name.includes('强盗') || name.includes('劫匪')) return 'BANDIT';
-    return null;
-  };
-
-
-  const getRelationValue = (state: PlayerState, targetType: 'FACTION' | 'RACE', targetId: string) => {
-    const matrix = normalizeRelationMatrix(state.relationMatrix);
-    if (targetType === 'FACTION') {
-      return matrix.factions[targetId as keyof typeof matrix.factions] ?? 0;
-    }
-    return matrix.races[targetId as keyof typeof matrix.races] ?? 0;
   };
 
   const updateRelation = (targetType: 'FACTION' | 'RACE', targetId: string, delta: number, text: string) => {
@@ -2453,184 +1665,7 @@ export default function App() {
     return troops;
   };
 
-  const getHeroRoleLabel = (role: Hero['role']) => {
-    if (role === 'MAGE') return '法师';
-    if (role === 'SWORDSMAN') return '近战剑士';
-    if (role === 'ARCHER') return '弓箭手';
-    if (role === 'SHIELD') return '近战盾兵';
-    return '吟游诗人';
-  };
-
   const clampValue = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-
-  const getHpRatio = (current: number, max: number) => {
-    if (max <= 0) return 0;
-    return clampValue(current / max, 0.2, 1);
-  };
-
-  const HERO_BASE_MULTIPLIER = 0.075;
-
-  const getHeroPower = (hero: Hero) => {
-    const attackScore = hero.attributes.attack * 6;
-    const agilityScore = hero.attributes.agility * 4;
-    const hpScore = hero.attributes.hp * 0.4;
-    const roleBonus = hero.role === 'BARD' ? 8 : hero.role === 'SHIELD' ? 12 : 15;
-    const rawPower = attackScore + agilityScore + hpScore + roleBonus;
-    const hpRatio = getHpRatio(hero.currentHp, hero.maxHp);
-    return Math.max(1, Math.round(rawPower * hpRatio * HERO_BASE_MULTIPLIER * 0.833));
-  };
-
-  const canHeroBattle = (hero: Hero) => {
-    if (!hero.recruited) return false;
-    if (hero.maxHp <= 0) return false;
-    return hero.currentHp / hero.maxHp >= 0.8 && hero.status === 'ACTIVE';
-  };
-
-  const clampTroopAttr = (value: number, min: number = 1, max: number = 10) => Math.max(min, Math.min(max, Math.round(value)));
-
-  const buildHeroAttributes = (hero: Hero) => {
-    const attack = clampTroopAttr(hero.attributes.attack / 2);
-    const agility = clampTroopAttr(hero.attributes.agility / 2);
-    const defense = clampTroopAttr(hero.attributes.agility / 2);
-    const hp = clampTroopAttr(hero.attributes.hp / 10);
-    const range = hero.role === 'ARCHER' || hero.role === 'MAGE' || hero.role === 'BARD' ? 7 : 2;
-    const morale = 7;
-    return { attack, defense, agility, hp, range, morale };
-  };
-
-  const buildPlayerAttributes = (current: PlayerState) => {
-    const attack = clampTroopAttr(current.attributes.attack / 2);
-    const defense = clampTroopAttr(current.attributes.defense / 2);
-    const agility = clampTroopAttr((current.attributes.escape ?? 0) + 3);
-    const hp = clampTroopAttr(current.maxHp / 12);
-    const range = 2;
-    const morale = clampTroopAttr(6 + Math.floor(current.level / 8));
-    return { attack, defense, agility, hp, range, morale };
-  };
-
-  const buildHeroTroop = (hero: Hero): Troop => ({
-    id: `hero_${hero.id}`,
-    name: hero.name,
-    tier: TroopTier.TIER_1,
-    count: 1,
-    xp: hero.xp,
-    maxXp: hero.maxXp,
-    basePower: getHeroPower(hero),
-    cost: 0,
-    upgradeCost: 0,
-    description: `${hero.personality}。${hero.background}`,
-    equipment: [getHeroRoleLabel(hero.role), hero.portrait],
-    attributes: buildHeroAttributes(hero)
-  });
-
-  const buildHeroAttributesFromTroop = (troop: Troop) => {
-    if (!troop.attributes) {
-      return { attack: 12, hp: 90, agility: 12, leadership: 0 };
-    }
-    return {
-      attack: clampValue(Math.round(troop.attributes.attack / 5), 8, 30),
-      hp: clampValue(Math.round(troop.attributes.hp * 1.4), 60, 220),
-      agility: clampValue(Math.round(troop.attributes.agility / 5), 8, 30),
-      leadership: 0
-    };
-  };
-
-  const buildEnemyLordHero = (lord: Lord, locationId: string): Hero => ({
-    id: `enemy_lord_${locationId}`,
-    name: lord.name,
-    title: lord.title,
-    role: 'SWORDSMAN',
-    background: `${lord.title}，${lord.temperament}`,
-    personality: lord.temperament,
-    portrait: `${lord.title}`,
-    level: 2,
-    xp: 0,
-    maxXp: 200,
-    attributePoints: 0,
-    attributes: { attack: 14, hp: 100, agility: 12, leadership: 0 },
-    currentHp: 100,
-    maxHp: 100,
-    status: 'ACTIVE',
-    recruited: false,
-    traits: lord.traits ?? [],
-    quotes: [],
-    chatMemory: [],
-    permanentMemory: [],
-    chatRounds: 0,
-    currentExpression: 'IDLE'
-  });
-
-  const buildEnemyCommanderHero = (troop: Troop): Hero => {
-    const attributes = buildHeroAttributesFromTroop(troop);
-    return {
-      id: `enemy_commander_${troop.id}`,
-      name: troop.name,
-      title: '战力最高单位',
-      role: 'SWORDSMAN',
-      background: troop.description ?? '由战力最高的单位临时担任指挥。',
-      personality: '冷静',
-      portrait: troop.name,
-      level: 2,
-      xp: 0,
-      maxXp: 200,
-      attributePoints: 0,
-      attributes,
-      currentHp: attributes.hp,
-      maxHp: attributes.hp,
-      status: 'ACTIVE',
-      recruited: false,
-      traits: [],
-      quotes: [],
-      chatMemory: [],
-      permanentMemory: [],
-      chatRounds: 0,
-      currentExpression: 'IDLE'
-    };
-  };
-
-  const pickBestTroop = (troops: Troop[]) => {
-    let best: Troop | null = null;
-    let bestPower = -Infinity;
-    troops.forEach(troop => {
-      const unitPower = troop.basePower ?? troop.tier * 10;
-      if (unitPower > bestPower) {
-        best = troop;
-        bestPower = unitPower;
-      }
-    });
-    return best;
-  };
-
-  const ensureEnemyHeroTroops = (troops: Troop[], lord?: Lord | null, locationId?: string) => {
-    if (troops.some(t => t.id.startsWith('hero_'))) return troops;
-    if (lord) {
-      return [buildHeroTroop(buildEnemyLordHero(lord, locationId ?? lord.fiefId)), ...troops];
-    }
-    const bestTroop = pickBestTroop(troops);
-    if (!bestTroop) return troops;
-    return [buildHeroTroop(buildEnemyCommanderHero(bestTroop)), ...troops];
-  };
-
-  const buildPlayerTroop = (current: PlayerState): Troop => ({
-    id: 'player_main',
-    name: current.name,
-    tier: TroopTier.TIER_1,
-    count: 1,
-    xp: current.xp,
-    maxXp: current.maxXp,
-    basePower: Math.max(1, Math.round((current.attributes.attack * 6 + current.attributes.defense * 5 + current.attributes.hp * 0.5) * getHpRatio(current.currentHp, current.maxHp) * HERO_BASE_MULTIPLIER * 0.833)),
-    cost: 0,
-    upgradeCost: 0,
-    description: `指挥官单位（与普通单位同档强度），等级 ${current.level}。`,
-    equipment: ['指挥官', '披风'],
-    attributes: buildPlayerAttributes(current)
-  });
-
-  const getBattleTroops = (currentPlayer: PlayerState, currentHeroes: Hero[]) => {
-    const heroTroops = currentHeroes.filter(canHeroBattle).map(buildHeroTroop);
-    const playerTroops = currentPlayer.status === 'ACTIVE' ? [buildPlayerTroop(currentPlayer)] : [];
-    return [...currentPlayer.troops, ...heroTroops, ...playerTroops];
-  };
 
   const getTroopLayerDescriptor = (troop: Troop) => {
     const template = getTroopTemplate(troop.id);
@@ -2662,71 +1697,7 @@ export default function App() {
     return layers[1]?.id ?? layers[0]?.id;
   };
 
-  const parrotChatter: Record<Parrot['personality'], string[]> = {
-    'SARCASTIC': [
-      "你的指挥真是...独具一格。", 
-      "刚才那个农民本来可以活下来的。", 
-      "嘎！笨蛋！嘎！",
-      "看那个贡丸，它滚得比你跑得快。",
-      "我打赌这次又要亏本了。",
-      "你这走位像在找坟位。",
-      "要不要我替你当指挥？至少我会飞。",
-      "我见过更聪明的石头。",
-      "你现在看起来就像个被收税的英雄。",
-      "再这样下去，我要申请换主人。"
-    ],
-    'GLOOMY': [
-      "我们都会死在这里...", 
-      "天空是灰色的，像我的心情。", 
-      "今天的风里有血腥味。",
-      "那个亡灵唢呐手吹得我抑郁症都犯了。",
-      "毫无希望...",
-      "我梦见我们明天还是欠债。",
-      "别挣扎了，命运已经写好结局。",
-      "你笑什么？那是崩溃前的征兆。",
-      "我数过了，坏事比好事多三倍。",
-      "活着只是暂时的。"
-    ],
-    'MANIC': [
-      "杀！杀！杀！还要更多瓜子！", 
-      "颜色！好多颜色！嘎哈哈哈哈！", 
-      "我要飞到太阳上去！",
-      "火锅！好烫！好香！再来点！",
-      "那是敌人的眼珠子吗？看起来很好吃！",
-      "我要把你的头盔当窝！",
-      "快！把地图撕了！我们靠直觉！",
-      "我听见金币在哭！嘎哈哈！",
-      "冲！去跟那只熊抱一下！",
-      "今天适合干点违法的事！"
-    ],
-    'WISE': [
-      "星象显示今日不宜出行。", 
-      "命运的齿轮开始转动了...", 
-      "嘎，如果你给我吃的，我就告诉你宇宙的终极答案。",
-      "注意那个红油法师，他看谁的眼神都像在看食材。",
-      "战争没有赢家，只有活下来的鸟。",
-      "当你凝视深渊时，深渊也在数你的钱。",
-      "失误不可怕，可怕的是你觉得那是风格。",
-      "谨记：士气比面包更贵。",
-      "你若不改战略，历史会改写你。",
-      "一只鸟的沉默，胜过十个将军的嘴硬。"
-    ]
-  };
-
-  const parrotMischiefEvents: { action: string; cost: number; taunt: string }[] = [
-    { action: "啃坏了你的旗杆支架，临时找木匠修补", cost: 2, taunt: "你那旗杆松得像你的意志。我替你测试了强度，结果你看到了。" },
-    { action: "在你的地图上拉了一坨，只能重新买一份地图", cost: 5, taunt: "这叫标记领地。你不懂战略——你只懂折叠。" },
-    { action: "把帐篷角啄出个洞，夜里漏风漏雨", cost: 3, taunt: "你睡得太香了，我给你加点现实的寒意。" },
-    { action: "啄穿了粮袋，顺手把几把麦子撒给路人", cost: 2, taunt: "别这么小气，社会需要流动性。你的粮食也需要。" },
-    { action: "把罗盘指针叼走当玩具，只能换一个新的", cost: 4, taunt: "方向？你又不用。你靠‘感觉’迷路。" },
-    { action: "把你的笔记啄得满是洞，重新誊写买纸买墨", cost: 3, taunt: "你那战术写得像遗书，我帮你做了删改。" },
-    { action: "偷喝了酒馆桌上的麦酒，被迫赔礼道歉", cost: 2, taunt: "我只是替你社交。你连赔钱都不会赔得体面。" },
-    { action: "把马缰绳咬出毛边，换了条新缰", cost: 4, taunt: "你骑马的技术配不上完整的缰绳。" },
-    { action: "把你珍藏的干果叼去‘投资’，投资回报为零", cost: 2, taunt: "别看我，我这是替你体验创业失败。" },
-    { action: "把炊具踢翻烫坏了锅底，重新打了一口小锅", cost: 3, taunt: "你指挥打仗不行，煮饭也不行。至少我让你知道锅会反抗。" }
-  ];
-
-  const rollMineralPurity = (): MineralPurity => {
+    const rollMineralPurity = (): MineralPurity => {
     const roll = Math.random();
     if (roll < 0.35) return 1;
     if (roll < 0.65) return 2;
@@ -3144,66 +2115,9 @@ export default function App() {
     processDailyCycle(hitLocation);
   };
 
-  const siegeEngineOptions: { type: SiegeEngineType; name: string; cost: number; days: number; description: string }[] = [
-    { type: 'RAM', name: '攻城锤', cost: 400, days: 2, description: '破门专用，短时间内撕开城门。' },
-    { type: 'TOWER', name: '攻城塔', cost: 700, days: 3, description: '掩护士兵登墙，减少远程伤亡。' },
-    { type: 'CATAPULT', name: '投石机', cost: 900, days: 4, description: '远程轰击，摧毁防御器械。' },
-    { type: 'SIMPLE_LADDER', name: '简易攻城梯', cost: 0, days: 0, description: '无需建造，直接攻城（高伤亡风险）。' },
-    { type: 'CHAINBREAKER_CANNON', name: '断链者火炮', cost: 1200, days: 5, description: '镶嵌火水晶的重炮，远程粉碎敌方法阵阵地。' },
-    { type: 'ARCANE_MISSILE', name: '魔法导弹', cost: 1500, days: 6, description: '法师引导的魔法导弹，精准摧毁关键据点。' }
-  ];
-  const siegeEngineCombatStats: Record<SiegeEngineType, { hp: number; wallDamage: number; attackerRangedHit: number; attackerRangedDamage: number; attackerMeleeHit: number; attackerMeleeDamage: number; defenderRangedHitPenalty: number; defenderRangedDamagePenalty: number }> = {
-    RAM: { hp: 520, wallDamage: 160, attackerRangedHit: 0, attackerRangedDamage: 0, attackerMeleeHit: 0.08, attackerMeleeDamage: 0.12, defenderRangedHitPenalty: 0.03, defenderRangedDamagePenalty: 0 },
-    TOWER: { hp: 480, wallDamage: 70, attackerRangedHit: 0.05, attackerRangedDamage: 0.06, attackerMeleeHit: 0.04, attackerMeleeDamage: 0.04, defenderRangedHitPenalty: 0.08, defenderRangedDamagePenalty: 0.05 },
-    CATAPULT: { hp: 380, wallDamage: 210, attackerRangedHit: 0.02, attackerRangedDamage: 0.03, attackerMeleeHit: 0, attackerMeleeDamage: 0, defenderRangedHitPenalty: 0.06, defenderRangedDamagePenalty: 0.08 },
-    SIMPLE_LADDER: { hp: 160, wallDamage: 35, attackerRangedHit: -0.02, attackerRangedDamage: 0, attackerMeleeHit: 0.06, attackerMeleeDamage: 0.08, defenderRangedHitPenalty: 0, defenderRangedDamagePenalty: 0 },
-    CHAINBREAKER_CANNON: { hp: 420, wallDamage: 260, attackerRangedHit: 0.04, attackerRangedDamage: 0.08, attackerMeleeHit: 0, attackerMeleeDamage: 0, defenderRangedHitPenalty: 0.1, defenderRangedDamagePenalty: 0.12 },
-    ARCANE_MISSILE: { hp: 260, wallDamage: 300, attackerRangedHit: 0.06, attackerRangedDamage: 0.1, attackerMeleeHit: -0.01, attackerMeleeDamage: 0, defenderRangedHitPenalty: 0.12, defenderRangedDamagePenalty: 0.1 }
-  };
-
-  const buildingOptions: { type: BuildingType; name: string; cost: number; days: number; description: string }[] = [
-    { type: 'FACTORY', name: '工厂', cost: 600, days: 3, description: '每隔数天带来稳定收益。' },
-    { type: 'HOUSING', name: '民居', cost: 260, days: 2, description: '提供税收来源，也会提高据点的存在感。' },
-    { type: 'HOUSING_II', name: '民居·II', cost: 520, days: 3, description: '扩建居所与附属设施，提高税收与稳定预期。' },
-    { type: 'HOUSING_III', name: '民居·III', cost: 980, days: 4, description: '成熟社区与配套体系，显著提升税收与民心。' },
-    { type: 'UNDERGROUND_PLAZA', name: '地下广场', cost: 760, days: 4, description: '地下层的集会空间，提升稳定与和谐。' },
-    { type: 'CANTEEN', name: '餐厅', cost: 540, days: 3, description: '提供稳定餐食，改善士气与和谐。' },
-    { type: 'TAVERN', name: '酒馆', cost: 640, days: 3, description: '放松与消息交换场所，提升繁荣。' },
-    { type: 'THEATER', name: '剧场', cost: 920, days: 4, description: '娱乐演出提升繁荣与和谐。' },
-    { type: 'ARENA', name: '斗技场', cost: 980, days: 4, description: '训练与竞技并行，提升稳定与生产力。' },
-    { type: 'TRAINING_CAMP', name: '训练营', cost: 500, days: 3, description: '驻军获得经验并自动晋升。' },
-    { type: 'BARRACKS', name: '兵营', cost: 800, days: 4, description: '驻军容量提升 50%。' },
-    { type: 'DEFENSE', name: '防御建筑', cost: 700, days: 4, description: '增强据点防御强度。' },
-    { type: 'FIRE_CRYSTAL_MINE', name: '火水晶地雷', cost: 520, days: 3, description: '埋设魔法地雷，冲锋时爆燃。' },
-    { type: 'MAGIC_CIRCLE_AMPLIFY', name: '增幅法阵', cost: 680, days: 4, description: '放大术式火力，提升远程压制。' },
-    { type: 'MAGIC_CIRCLE_WARD', name: '护盾法阵', cost: 680, days: 4, description: '护盾覆盖防线，削弱近战冲击。' },
-    { type: 'MAGIC_CIRCLE_RESTORE', name: '恢复法阵', cost: 780, days: 5, description: '修复受损工事，延长防线维持。' },
-    { type: 'ARCANE_CRYSTAL_ARRAY', name: '魔法水晶阵列', cost: 620, days: 3, description: '稳定供能，提高防御效率。' },
-    { type: 'ANTI_MAGIC_PYLON', name: '反魔法尖塔', cost: 980, days: 5, description: '干扰敌方法阵与空袭。' },
-    { type: 'RECRUITER', name: '征兵官', cost: 650, days: 3, description: '定期招募新兵加入驻军。' },
-    { type: 'CHAPEL', name: '小教堂', cost: 720, days: 4, description: '提高传教效率，缓冲信教比例的负面波动。' },
-    { type: 'SHRINE', name: '神殿', cost: 720, days: 4, description: '若你已确立宗教，会周期性招募信徒守卫此层。' },
-    { type: 'ORE_REFINERY', name: '矿石精炼厂', cost: 780, days: 4, description: '花钱与时间将低纯度矿石熔炼为更高纯度。' },
-    { type: 'HOSPITAL_I', name: '地下医院·I', cost: 520, days: 3, description: '简易诊疗与担架通道，能更快让伤兵恢复。' },
-    { type: 'HOSPITAL_II', name: '地下医院·II', cost: 920, days: 4, description: '更完善的隔离区与药剂储备，显著缩短伤兵恢复。' },
-    { type: 'HOSPITAL_III', name: '地下医院·III', cost: 1450, days: 5, description: '完整的地下医馆体系，把死亡率压到最低水平。' },
-    { type: 'CAMOUFLAGE_STRUCTURE', name: '伪装结构', cost: 680, days: 4, description: '降低隐匿点暴露程度（冷却），仅限地面层。' },
-    { type: 'CAMOUFLAGE_STRUCTURE_II', name: '伪装结构·II', cost: 1080, days: 5, description: '强化伪装与暗道网络，降低暴露幅度并缩短冷却。' },
-    { type: 'CAMOUFLAGE_STRUCTURE_III', name: '伪装结构·III', cost: 1580, days: 6, description: '完整的伪装体系与误导网络，大幅降低暴露并减少冷却。' },
-    { type: 'AA_TOWER_I', name: '防空箭塔·I', cost: 420, days: 2, description: '对空火力覆盖，提升守方防空强度。' },
-    { type: 'AA_TOWER_II', name: '防空箭塔·II', cost: 760, days: 3, description: '更密集的对空火力与瞄准体系。' },
-    { type: 'AA_TOWER_III', name: '防空箭塔·III', cost: 1200, days: 4, description: '成体系的防空火网，压制空袭与制空渗透。' },
-    { type: 'AA_NET_I', name: '防空幕网·I', cost: 520, days: 2, description: '在关键区域布置幕网与诱饵，降低空袭杀伤。' },
-    { type: 'AA_NET_II', name: '防空幕网·II', cost: 880, days: 3, description: '更高密度的幕网与诱饵阵列。' },
-    { type: 'AA_RADAR_I', name: '预警瞭望链·I', cost: 460, days: 2, description: '改良岗哨与信号传递，提高对空发现与远程命中。' },
-    { type: 'AA_RADAR_II', name: '预警瞭望链·II', cost: 820, days: 3, description: '更完整的预警与引导，显著提升对空命中。' },
-    { type: 'MAZE_I', name: '迷宫·I', cost: 520, days: 2, description: '入口迷阵与岔路陷阱，让敌军在黑暗中迷失。' },
-    { type: 'MAZE_II', name: '迷宫·II', cost: 920, days: 3, description: '更复杂的回廊与诱导路标，将敌军拖入无意义的绕行。' },
-    { type: 'MAZE_III', name: '迷宫·III', cost: 1450, days: 4, description: '成体系的迷宫网络与封闭门闩，把时间榨干。' }
-  ];
-
-  const getBuildingName = (type: BuildingType) => buildingOptions.find(b => b.type === type)?.name ?? type;
-  const getSiegeEngineName = (type: SiegeEngineType) => siegeEngineOptions.find(s => s.type === type)?.name ?? type;
+  const siegeEngineOptions = SIEGE_ENGINE_OPTIONS;
+  const siegeEngineCombatStats = SIEGE_ENGINE_COMBAT_STATS;
+  const buildingOptions = BUILDING_OPTIONS;
 
   const getGarrisonLimit = (location: Location) => {
     const base = location.type === 'CITY'
@@ -3354,27 +2268,6 @@ export default function App() {
       const imposter = troops.reduce((sum, t) => sum + (IMPOSTER_TROOP_IDS.has(t.id) ? (t.count ?? 0) : 0), 0);
       return imposter / total >= 0.6;
     };
-    const rollBinomial = (n: number, p: number) => {
-      if (n <= 0) return 0;
-      if (p <= 0) return 0;
-      if (p >= 1) return n;
-      if (n <= 80) {
-        let k = 0;
-        for (let i = 0; i < n; i++) if (Math.random() < p) k++;
-        return k;
-      }
-      const mean = n * p;
-      const variance = n * p * (1 - p);
-      const std = Math.sqrt(Math.max(0, variance));
-      let u = 0;
-      let v = 0;
-      while (u === 0) u = Math.random();
-      while (v === 0) v = Math.random();
-      const z = Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
-      const approx = Math.round(mean + z * std);
-      return Math.max(0, Math.min(n, approx));
-    };
-
     for (let dayIndex = 0; dayIndex < days; dayIndex++) {
       const caravanCamps = newLocations.filter(l => l.type === 'FIELD_CAMP' && l.owner === 'ENEMY' && l.camp?.kind === 'CARAVAN');
       if (caravanCamps.length > 0) {
@@ -6125,324 +5018,7 @@ export default function App() {
     ];
   };
 
-  const getLocationDefenseDetails = (location: Location) => {
-    const details = {
-      wallLevel: 0,
-      wallName: "无",
-      wallDesc: "没有任何防御工事。",
-      mechanisms: [] as { name: string; description: string }[],
-      flavorText: "这里毫无设防。",
-      wallHp: 0,
-      mechanismHp: 0,
-      rangedHitBonus: 0,
-      rangedDamageBonus: 0,
-      meleeDamageReduction: 0,
-      antiAirPowerBonus: 0,
-      airstrikeDamageReduction: 0
-    };
-
-    if (location.type === 'CITY') {
-      details.wallLevel = 3;
-      details.wallName = "巨石城墙";
-      details.wallDesc = "坚不可摧的防御体系，足以抵御长时间围攻。";
-      details.mechanisms = [
-        { name: "重型投石机", description: "投掷巨大的石块，对攻城塔和密集步兵造成毁灭性打击。" },
-        { name: "燃烧油锅", description: "向城墙下倾倒滚烫的热油，主要用于防御云梯攀爬者。" },
-        { name: "多重箭塔", description: "提供交叉火力覆盖，没有任何死角。" },
-        { name: "护城沟", description: "充满尖刺和污水的壕沟，阻碍攻城器械靠近。" }
-      ];
-      details.flavorText = "这座城市的防御固若金汤，是敌人的噩梦。";
-    } else if (location.type === 'CASTLE') {
-      details.wallLevel = 2;
-      details.wallName = "加固石墙";
-      details.wallDesc = "坚固的石墙，配合地形易守难攻。";
-      details.mechanisms = [
-        { name: "床弩", description: "发射巨大的弩箭，可以贯穿攻城锤的护板。" },
-        { name: "滚石", description: "从城头推下的巨石，简单但致命。" },
-        { name: "拒马木桩", description: "布置在城门前的障碍物，防止骑兵直接冲击城门。" }
-      ];
-      details.flavorText = "扼守要道的堡垒，每一块石头都浸透了鲜血。";
-    } else if (location.type === 'VILLAGE') {
-      details.wallLevel = 1;
-      details.wallName = "木栅栏";
-      details.wallDesc = "提供远程防御加成，阻挡骑兵冲锋。";
-      details.mechanisms = [
-        { name: "瞭望塔", description: "提供早期预警，增加弓箭手的射程。" },
-        { name: "简易壕沟", description: "挖出的浅坑，用来绊倒马匹。" }
-      ];
-      details.flavorText = "这座据点的防御工事看起来聊胜于无。";
-    } else if (location.type === 'HOTPOT_RESTAURANT') {
-        details.wallLevel = 1;
-        details.wallName = "蒸汽管道";
-        details.wallDesc = "迷宫般的后厨和高温蒸汽管道。";
-        details.mechanisms = [
-          { name: "火油陷阱", description: "伪装成地滑的油污，点火后会引发大火。" },
-          { name: "高压蒸汽喷口", description: "突然喷出的高温蒸汽，能瞬间煮熟铠甲里的肉。" }
-        ];
-        details.flavorText = "想要攻下这里，先得问问厨师长答不答应。";
-    } else if (location.type === 'GRAVEYARD') {
-        if (isUndeadFortressLocation(location)) {
-          details.wallLevel = 3;
-          details.wallName = "冥火城墙";
-          details.wallDesc = "由白骨与冥火凝成的堡垒外壳，攻城器械靠近会被灼烧。";
-          details.mechanisms = [
-            { name: "冥火箭塔", description: "燃着幽焰的箭塔，火力稳定且不知疲倦。" },
-            { name: "骨爆地雷", description: "埋在泥土里的骨爆装置，能撕裂密集冲锋队列。" },
-            { name: "灵魂枷锁", description: "看不见的幽灵触手，会减缓敌人的移动速度。" }
-          ];
-          details.flavorText = "这里像一座活着的坟墓。";
-        } else {
-          details.wallLevel = 2;
-          details.wallName = "白骨围栏";
-          details.wallDesc = "由不知名生物的骸骨堆砌而成的围墙。";
-          details.mechanisms = [
-            { name: "亡灵哨塔", description: "由骷髅弓箭手驻守的哨塔，永不疲倦。" },
-            { name: "灵魂枷锁", description: "看不见的幽灵触手，会减缓敌人的移动速度。" }
-          ];
-          details.flavorText = "生者勿进。";
-        }
-    } else if (location.type === 'RUINS') {
-        details.wallLevel = 1;
-        details.wallName = "残垣断壁";
-        details.wallDesc = "曾经辉煌的建筑如今只剩下危险的废墟。";
-        details.mechanisms = [
-          { name: "碎石迷阵", description: "不稳定的地形，容易导致攻城器械损坏。" },
-          { name: "陷坑机关", description: "古代遗留的陷阱，至今依然有效。" }
-        ];
-        details.flavorText = "在这里，地形本身就是致命的武器。";
-    } else if (location.type === 'BANDIT_CAMP') {
-        details.wallLevel = 1;
-        details.wallName = "简陋木墙";
-        details.wallDesc = "甚至漏风的木板墙。";
-        details.mechanisms = [
-          { name: "陷阱网", description: "从树上落下的捕兽网，用于捕捉活口。" },
-          { name: "警铃", description: "挂满空罐头的绳子，一碰就响。" }
-        ];
-        details.flavorText = "一群乌合之众的窝点。";
-    } else if (location.type === 'FIELD_CAMP') {
-        details.wallLevel = 1;
-        details.wallName = "木栅与拒马";
-        details.wallDesc = "临时搭建的木栅与拒马，能提供有限的掩护。";
-        details.mechanisms = [
-          { name: "简易壕沟", description: "浅沟与土堆，能拖慢冲锋并提供掩体。" },
-          { name: "岗哨旗台", description: "升起旗帜、传递信号，便于组织防御。" }
-        ];
-        details.flavorText = "行军中的部队在此扎营，警戒森严。";
-    } else if (location.type === 'HIDEOUT') {
-        const layerIndexRaw = (location.activeSiege as any)?.hideoutLayerIndex ?? location.hideout?.selectedLayer ?? 0;
-        const layers = location.hideout?.layers ?? [];
-        const layerIndex = Math.max(0, Math.min(layers.length - 1, Math.floor(layerIndexRaw)));
-        const layer = layers[layerIndex];
-        const depth = layer?.depth ?? layerIndex;
-        details.wallLevel = Math.min(6, 1 + depth);
-        details.wallName = depth === 0 ? "地表入口工事" : `地下防线·第${depth}层`;
-        details.wallDesc = "地表与地层之间的狭窄通道，易守难攻。";
-        details.mechanisms = [
-          { name: "暗道闸门", description: "通道狭窄且多处可封闭，敌军难以展开。" },
-          { name: "陷阱回廊", description: "地刺、落石与爆燃装置布在转角处。" }
-        ];
-        details.flavorText = "向下，是层层叠叠的黑暗与工事。";
-    } else if (location.type === 'ASYLUM') {
-        details.wallLevel = 4;
-        details.wallName = "高压电网";
-        details.wallDesc = "通了高压电的加固围墙，防止病人逃跑（或入侵）。";
-        details.mechanisms = [
-          { name: "镇静剂喷雾", description: "全覆盖的喷淋系统，能让狂暴的战士变得温顺。" },
-          { name: "电击陷阱", description: "踩中地板会释放高压电流，不仅麻痹身体，还治疗网瘾。" },
-          { name: "拘束网发射器", description: "自动发射拘束衣的炮台，命中率惊人。" }
-        ];
-        details.flavorText = "即使是苍蝇飞进去，也要穿上拘束衣。";
-    } else if (location.type === 'MARKET') {
-        details.wallLevel = 1;
-        details.wallName = "鸟笼阵列";
-        details.wallDesc = "无数的鸟笼构成了独特的防御迷宫。";
-        details.mechanisms = [
-          { name: "声波攻击(鸟叫)", description: "数万只鸟同时尖叫，对耳膜造成物理伤害。" },
-          { name: "高空坠物", description: "不仅是鸟粪，还有花盆和鸟食罐。" }
-        ];
-        details.flavorText = "在这里作战，你需要一把好伞。";
-    } else if (location.type === 'TRAINING_GROUNDS') {
-        details.wallLevel = 2;
-        details.wallName = "演习护栏";
-        details.wallDesc = "用于模拟攻城战的训练设施。";
-        details.mechanisms = [
-          { name: "训练假人", description: "看起来像真人，会吸引敌人的火力。" },
-          { name: "钝头弩炮", description: "发射钝头弩箭，虽然不会死人，但会被打飞很远。" }
-        ];
-        details.flavorText = "虽然是演习，但打在身上还是很疼。";
-    } else if (location.type === 'ROACH_NEST') {
-        details.wallLevel = 3;
-        details.wallName = "纸箱堡垒";
-        details.wallDesc = "用纸箱、胶带和发霉木板堆出来的“工事”，看起来很敷衍，但数量多到你绕不过去。";
-        details.mechanisms = [
-          { name: "快递纸盒城墙", description: "层层叠叠的纸盒吸收冲击，冲车撞上去像撞进一堆“缓冲区”。" },
-          { name: "胶带拒马", description: "黏到鞋底的那种，跑得越快摔得越惨。" },
-          { name: "瓶盖地雷阵", description: "踩上去会‘啪’一声响，伤害不大，但羞辱性极强。" },
-          { name: "方便面蒸汽烟幕", description: "热气与怪味形成烟幕，弓弩手命中率下降，指挥官心态也下降。" },
-          { name: "家具脚轮滚桶", description: "看似垃圾桶，其实能顺坡滚下来，把阵型直接撞成‘散列表’。" }
-        ];
-        details.flavorText = "你听见了很多‘嗡——’，以及某个角落里在认真开会的声音。";
-    } else if (location.type === 'IMPOSTER_PORTAL') {
-        details.wallLevel = 6;
-        details.wallName = "维度防火墙";
-        details.wallDesc = "由扭曲的现实、错误代码和绝望构成的不可视之墙。物理攻击经常会被判定为无效。";
-        details.mechanisms = [
-          // 基础防御 (Tier 1-2 Link)
-          { name: "空指针陷阱 (Null Pointer Trap)", description: "踏入其中的单位会因为找不到自身坐标而瞬间消失。" },
-          { name: "无限循环护城河 (Infinite Loop Moat)", description: "掉进去的人会永远在同一个动作中循环，直到饿死。" },
-          { name: "堆栈溢出屏障 (Stack Overflow Barrier)", description: "试图翻越的敌人会被过量的数据流冲垮，大脑过载。" },
-          { name: "静电噪音发生器", description: "持续播放白噪音，干扰指挥官的命令传递。" },
-          { name: "像素迷彩网", description: "防御设施在视觉上是马赛克，难以瞄准。" },
-          { name: "乱码投掷机", description: "投掷出的不是石块，而是实体化的乱码字符，锋利无比。" },
-          { name: "语法错误地雷", description: "触发后会修改周围的物理规则，比如重力反转。" },
-          { name: "逻辑死锁门 (Deadlock Gate)", description: "两扇门互相等待对方开启，导致永远无法打开，坚不可摧。" },
-          { name: "资源耗尽力场", description: "在这个范围内，体力和魔法值恢复速度归零。" },
-          { name: "内存泄漏池 (Memory Leak Pool)", description: "站在上面的单位会随着时间推移逐渐失去生命上限。" },
-          // 进阶防御 (Tier 3-4 Link)
-          { name: "递归箭塔 (Recursive Turret)", description: "射出一支箭，这支箭会分裂成两支，然后继续分裂..." },
-          { name: "分形护盾发生器", description: "护盾由无数个小护盾组成，每一个都拥有整体的强度。" },
-          { name: "蓝屏冲击波 (BSOD Blast)", description: "周期性释放蓝色光波，强制敌方机械单位重启。" },
-          { name: "内核恐慌诱发装置", description: "让周围的生物感到莫名的、源自灵魂深处的恐慌。" },
-          { name: "段错误切割网 (Segfault Mesh)", description: "接触到的物体会被判定为“非法访问”而被直接切断。" },
-          { name: "404 虚空投射器", description: "将被击中的区域标记为“未找到”，该区域内的任何东西都会坠入虚空。" },
-          { name: "非法操作拦截网", description: "拦截所有飞行道具，并将其标记为非法操作而删除。" },
-          { name: "数据包丢弃区", description: "进入该区域的单位有50%的概率“丢包”，即动作无法执行。" },
-          { name: "延迟尖刺陷阱 (Lag Spike)", description: "当你以为安全通过时，尖刺会在3秒后突然判定命中你。" },
-          { name: "丢包率干扰器", description: "让远程攻击的命中率大幅下降。" },
-          { name: "强制垃圾回收站 (GC Station)", description: "周期性清除战场上的尸体和虚弱单位（斩杀低血量）。" },
-          { name: "并发冲突雷区", description: "多人同时踩踏会引发巨大的爆炸。" },
-          { name: "野指针触手阵", description: "从地下伸出的触手，胡乱攻击周围的一切。" },
-          { name: "浮点误差力场", description: "所有的伤害计算都会产生微小的误差，积少成多导致护甲失效。" },
-          { name: "类型不匹配屏障", description: "只有特定类型的兵种才能通过，其他类型会被弹开。" },
-          { name: "未捕获异常发射井", description: "发射不稳定的能量球，爆炸效果完全随机。" },
-          { name: "死循环漩涡", description: "将附近的敌人吸入中心，无法逃脱。" },
-          { name: "版本回退时光机", description: "将小范围内的敌人状态回退到受伤前...或者更糟的状态。" },
-          // 核心/Boss防御 (Tier 5 Link)
-          { name: "祖传代码屎山 (Legacy Code Mountain)", description: "看起来摇摇欲坠，但没人敢动它。任何攻击都会引发不可预知的连锁反应。" },
-          { name: "系统崩溃核心 (System Crash Core)", description: "一旦防御被突破，核心会自爆，试图拉着整个世界一起崩溃。" },
-          { name: "全服回档按钮", description: "极低概率触发，让战斗时间倒流。" },
-          { name: "停机维护倒计时", description: "给攻城方施加巨大的心理压力，时间耗尽则判负。" },
-          { name: "数据抹除光束", description: "被击中的单位不仅会死亡，还会被从历史上抹去（无法复活）。" },
-          { name: "账号封禁法阵", description: "踏入法阵的英雄会被暂时“封号”，无法使用技能。" },
-          { name: "防沉迷结界", description: "战斗时间越长，攻城方属性越低。" },
-          { name: "氪金验证通道", description: "只有消耗大量第纳尔才能通过的快速通道（其实是陷阱）。" },
-          { name: "外挂检测哨塔", description: "对属性异常高的单位（如玩家）造成额外伤害。" },
-          { name: "DDOS 洪流炮", description: "发射高密度的垃圾数据流，瘫痪敌人的行动。" },
-          { name: "服务器熔断器", description: "当受到过量伤害时，暂时免疫一切伤害。" },
-          { name: "热更新补丁网", description: "受损的城墙会在战斗中自动修复。" },
-          { name: "维度防火墙 (Firewall)", description: "字面意义上的火墙，燃烧着绿色的代码之火。" }
-        ];
-        details.flavorText = "这里是世界的伤口，任何靠近的人都会被存在本身排斥。在这里，物理法则只是建议，不是铁律。";
-    }
-
-    const hideoutLayerIndexRaw = (location.activeSiege as any)?.hideoutLayerIndex ?? location.hideout?.selectedLayer ?? 0;
-    const hideoutLayers = location.hideout?.layers ?? [];
-    const hideoutLayerIndex = Math.max(0, Math.min(hideoutLayers.length - 1, Math.floor(hideoutLayerIndexRaw)));
-    const normalizeSlots = (slots: any[] | undefined) => (Array.isArray(slots) ? slots : [])
-      .map(s => ({ type: (s as any)?.type as BuildingType | null, daysLeft: (s as any)?.daysLeft as number | undefined }))
-      .filter(s => !!s.type && !(typeof s.daysLeft === 'number' && s.daysLeft > 0))
-      .map(s => s.type as BuildingType);
-    const built = location.type === 'HIDEOUT'
-      ? normalizeSlots(hideoutLayers[hideoutLayerIndex]?.defenseSlots as any)
-      : (location.buildings ?? []);
-    const countOf = (t: BuildingType) => built.reduce((acc, x) => acc + (x === t ? 1 : 0), 0);
-    const hasDefenseBuilding = countOf('DEFENSE') > 0;
-    const pushMechanism = (name: string, description: string, count: number) => {
-      if (count <= 0) return;
-      details.mechanisms.push({ name: count > 1 ? `${name} x${count}` : name, description });
-    };
-    let extraMechanismHp = 0;
-    let extraRangedHit = 0;
-    let extraRangedDamage = 0;
-    let extraMeleeReduction = 0;
-    const aaTower1 = countOf('AA_TOWER_I');
-    const aaTower2 = countOf('AA_TOWER_II');
-    const aaTower3 = countOf('AA_TOWER_III');
-    const aaNet1 = countOf('AA_NET_I');
-    const aaNet2 = countOf('AA_NET_II');
-    const aaRadar1 = countOf('AA_RADAR_I');
-    const aaRadar2 = countOf('AA_RADAR_II');
-    const camouflage1 = countOf('CAMOUFLAGE_STRUCTURE');
-    const camouflage2 = countOf('CAMOUFLAGE_STRUCTURE_II');
-    const camouflage3 = countOf('CAMOUFLAGE_STRUCTURE_III');
-    const maze1 = countOf('MAZE_I');
-    const maze2 = countOf('MAZE_II');
-    const maze3 = countOf('MAZE_III');
-    const fireCrystalMine = countOf('FIRE_CRYSTAL_MINE');
-    const magicAmplify = countOf('MAGIC_CIRCLE_AMPLIFY');
-    const magicWard = countOf('MAGIC_CIRCLE_WARD');
-    const magicRestore = countOf('MAGIC_CIRCLE_RESTORE');
-    const crystalArray = countOf('ARCANE_CRYSTAL_ARRAY');
-    const antiMagicPylon = countOf('ANTI_MAGIC_PYLON');
-    pushMechanism("防空箭塔·I", "加固箭塔与集束瞄具，可稳定压制低空目标。", aaTower1);
-    details.antiAirPowerBonus += 0.12 * aaTower1;
-    extraMechanismHp += 120 * aaTower1;
-    extraRangedHit += 0.02 * aaTower1;
-    pushMechanism("防空箭塔·II", "加装连弩与导引标尺，对空火力密度显著提升。", aaTower2);
-    details.antiAirPowerBonus += 0.22 * aaTower2;
-    extraMechanismHp += 220 * aaTower2;
-    extraRangedHit += 0.03 * aaTower2;
-    pushMechanism("防空箭塔·III", "分区火网与齐射号令，对空压制可持续维持。", aaTower3);
-    details.antiAirPowerBonus += 0.35 * aaTower3;
-    extraMechanismHp += 320 * aaTower3;
-    extraRangedHit += 0.04 * aaTower3;
-    extraRangedDamage += 0.02 * aaTower3;
-    pushMechanism("防空幕网·I", "在城防关键点布置幕网与诱饵，降低空袭穿透效率。", aaNet1);
-    details.airstrikeDamageReduction += 0.12 * aaNet1;
-    extraMechanismHp += 160 * aaNet1;
-    extraMeleeReduction += 0.01 * aaNet1;
-    pushMechanism("防空幕网·II", "更高密度的幕网与诱饵阵列，显著削弱空对地打击。", aaNet2);
-    details.airstrikeDamageReduction += 0.22 * aaNet2;
-    extraMechanismHp += 260 * aaNet2;
-    extraMeleeReduction += 0.02 * aaNet2;
-    pushMechanism("预警瞭望链·I", "岗哨与信号点连成体系，提高提前发现与对空引导。", aaRadar1);
-    details.antiAirPowerBonus += 0.08 * aaRadar1;
-    extraMechanismHp += 120 * aaRadar1;
-    extraRangedHit += 0.03 * aaRadar1;
-    pushMechanism("预警瞭望链·II", "更完整的预警与引导网络，对空射击命中显著提升。", aaRadar2);
-    details.antiAirPowerBonus += 0.14 * aaRadar2;
-    extraMechanismHp += 200 * aaRadar2;
-    extraRangedHit += 0.05 * aaRadar2;
-    pushMechanism("伪装结构", "用伪装与隔离降低暴露程度。", camouflage1);
-    pushMechanism("伪装结构·II", "暗道与误导节点成网，进一步降低暴露。", camouflage2);
-    pushMechanism("伪装结构·III", "完整伪装体系与隔离链路，大幅降低暴露。", camouflage3);
-    pushMechanism("迷宫·I", "迷阵与岔路将敌军拖慢。", maze1);
-    pushMechanism("迷宫·II", "更复杂的回廊网络，将敌军拖慢更久。", maze2);
-    pushMechanism("迷宫·III", "成体系的迷宫网络，把时间榨干。", maze3);
-    pushMechanism("火水晶地雷", "埋设火水晶引爆点，冲锋时爆燃。", fireCrystalMine);
-    extraMechanismHp += 180 * fireCrystalMine;
-    extraMeleeReduction += 0.02 * fireCrystalMine;
-    extraRangedDamage += 0.01 * fireCrystalMine;
-    pushMechanism("增幅法阵", "强化术式输出，远程火力更密集。", magicAmplify);
-    extraMechanismHp += 140 * magicAmplify;
-    extraRangedHit += 0.02 * magicAmplify;
-    extraRangedDamage += 0.03 * magicAmplify;
-    pushMechanism("护盾法阵", "护盾阵列覆盖城防，近战冲击被削弱。", magicWard);
-    extraMechanismHp += 160 * magicWard;
-    extraMeleeReduction += 0.03 * magicWard;
-    pushMechanism("恢复法阵", "战斗中自我修复，提升防御持续力。", magicRestore);
-    extraMechanismHp += 220 * magicRestore;
-    details.wallHp += 120 * magicRestore;
-    pushMechanism("魔法水晶阵列", "稳定输出法力，强化防御火力。", crystalArray);
-    extraMechanismHp += 150 * crystalArray;
-    extraRangedDamage += 0.02 * crystalArray;
-    pushMechanism("反魔法尖塔", "扰动敌方法阵，削弱空袭与远程。", antiMagicPylon);
-    extraMechanismHp += 260 * antiMagicPylon;
-    details.airstrikeDamageReduction += 0.18 * antiMagicPylon;
-    extraRangedHit += 0.02 * antiMagicPylon;
-
-    const mechanismCount = details.mechanisms.length;
-    details.wallHp = Math.max(0, details.wallLevel) * 650 + (hasDefenseBuilding ? 260 : 0);
-    details.mechanismHp = mechanismCount * 140 + extraMechanismHp;
-    details.rangedHitBonus = clampValue(0.02 + details.wallLevel * 0.05 + mechanismCount * 0.007 + (hasDefenseBuilding ? 0.02 : 0) + extraRangedHit, 0, 0.55);
-    details.rangedDamageBonus = clampValue(details.wallLevel * 0.05 + mechanismCount * 0.007 + (hasDefenseBuilding ? 0.03 : 0) + extraRangedDamage, 0, 0.45);
-    details.meleeDamageReduction = clampValue(details.wallLevel * 0.04 + mechanismCount * 0.008 + (hasDefenseBuilding ? 0.02 : 0) + extraMeleeReduction, 0, 0.45);
-    details.antiAirPowerBonus = clampValue(details.antiAirPowerBonus, 0, 0.85);
-    details.airstrikeDamageReduction = clampValue(details.airstrikeDamageReduction, 0, 0.65);
-    return details;
-  };
-
-  const buildGarrisonTroops = (location: Location) => {
+    const buildGarrisonTroops = (location: Location) => {
     return getLocationGarrison(location)
       .map(unit => {
         const troop = getTroopTemplate(unit.troopId);
@@ -6696,145 +5272,6 @@ export default function App() {
      addLog(`抵达了 ${location.name}。`);
   };
 
-  const getRecruitmentPool = (location: Location, mode: 'VOLUNTEER' | 'MERCENARY'): string[] => {
-    const type = location.type;
-    const factionId = location.factionId;
-    const factionMercs = factionId === 'VERDANT_COVENANT'
-      ? ['verdant_scout_archer', 'verdant_skybow']
-      : factionId === 'FROST_OATH'
-        ? ['frost_oath_halberdier', 'frost_oath_bladeguard']
-        : factionId === 'RED_DUNE'
-          ? ['red_dune_lancer', 'red_dune_cataphract']
-          : factionId === 'ARCANE_CONCORD'
-            ? ['stellar_magus', 'lumen_savant', 'rift_sentinel', 'aether_scholar']
-            : [];
-    if (location.id.startsWith('village_goblin_')) {
-      return mode === 'VOLUNTEER'
-        ? ['goblin_scavenger', 'goblin_slinger', 'goblin_spear_urchin', 'goblin_sneak']
-        : ['goblin_scrap_shield', 'goblin_bomber', 'goblin_wolf_pup_rider'];
-    }
-    if (factionId === 'ARCANE_CONCORD') {
-      if (mode === 'VOLUNTEER') {
-        return ['stellar_initiate', 'lumen_initiate', 'rift_initiate', 'aether_initiate'];
-      }
-      return [
-        'stellar_acolyte',
-        'lumen_disciple',
-        'rift_acolyte',
-        'aether_disciple',
-        ...factionMercs
-      ];
-    }
-    if (type === 'HEAVY_TRIAL_GROUNDS') {
-      if (mode === 'VOLUNTEER') return [];
-      return [
-        'heavy_ballista',
-        'heavy_catapult',
-        'heavy_bulwark_carriage',
-        'heavy_fire_cannon',
-        'heavy_light_tank',
-        'heavy_arcane_radar',
-        'roach_egg_thrower',
-        'imposter_flux_mortar',
-        'undead_soul_obelisk',
-        'hotpot_broth_howler'
-      ];
-    }
-     if (type === 'GRAVEYARD') {
-        if (mode === 'VOLUNTEER') return ['zombie', 'undead_grave_thrall', 'undead_rot_scout', 'undead_mire_digger', 'undead_bone_crawler', 'undead_ashen_runner', 'undead_coffin_bearer'];
-        return [
-          'skeleton_warrior',
-          'specter',
-          'skeleton_archer',
-          'undead_musician',
-          'undead_bone_javelin',
-          'undead_grave_arbalist',
-          'undead_bone_slinger',
-          'undead_tomb_guard',
-          'undead_plague_bearer',
-          'undead_bone_rider',
-          'undead_bone_hussar',
-          'undead_wight_knight',
-          'undead_grave_alchemist',
-          'undead_plague_doctor',
-          'undead_pestilence_lord',
-          'undead_gargoyle',
-          'undead_gargoyle_ancient',
-          'undead_bone_mortar',
-          'undead_grave_bastion'
-        ];
-     }
-     if (type === 'HOTPOT_RESTAURANT') {
-        // Special Hotpot Units
-        return ['meatball_soldier', 'tofu_shield', 'spicy_soup_mage'];
-     }
-    if (type === 'COFFEE') {
-       if (mode === 'VOLUNTEER') return ['zombie', 'undead_grave_thrall', 'undead_ashen_runner', 'skeleton_warrior'];
-       return [];
-    }
-    if (type === 'HABITAT') {
-      if (mode === 'VOLUNTEER') {
-        return [
-          'beast_roc_hatchling',
-          'beast_primate_juvenile_chimp',
-          'beast_rhino_calf',
-          'beast_hippo_calf',
-          'beast_elephant_calf',
-          'beast_lion_cub',
-          'beast_tiger_cub',
-          'beast_bear_cub',
-          'beast_wolf_grey',
-          'beast_croc_nile_juvenile',
-          'beast_bison_calf'
-        ];
-      }
-      return [
-        'beast_roc',
-        'beast_roc_alpha',
-        'beast_primate_adult_gorilla',
-        'beast_rhino_black_subadult',
-        'beast_hippo_swamp',
-        'beast_elephant_bush',
-        'beast_lion_wanderer',
-        'beast_tiger_jungle_hunter',
-        'beast_bear_grizzly',
-        'beast_wolf_king',
-        'beast_croc_wetland_giant',
-        'beast_bison_african_buffalo'
-      ];
-    }
-    if (type === 'MARKET') return [];
-    if (type === 'IMPOSTER_PORTAL') return [];
-     if (type === 'MYSTERIOUS_CAVE') return [];
-    if (type === 'ROACH_NEST') return [];
-     
-     // General locations
-     if (mode === 'VOLUNTEER') {
-        return [
-          'peasant',
-          'militia',
-          'hunter',
-          'zealot',
-          'imperial_shield_conscript',
-          'imperial_recruit_archer',
-          'imperial_recruit_crossbow',
-          'imperial_light_attendant',
-          'imperial_spear_initiate',
-          'imperial_squire_cavalry',
-          'imperial_rider_trainee'
-        ];
-     } else {
-        const basePool = ['footman', 'archer', 'wolf_rider', 'alchemist', 'flagellant', 'arcane_apprentice'];
-        if (location.type === 'CITY' || location.type === 'CASTLE' || location.type === 'VILLAGE') {
-          const airPool = location.type === 'CITY' || location.type === 'CASTLE'
-            ? ['arcane_glider', 'arcane_biplane', 'arcane_airship']
-            : [];
-          return [...basePool, ...factionMercs, ...airPool];
-        }
-        return basePool;
-     }
-  };
-
   const triggerRandomEncounter = (terrain: TerrainType, atLocation?: Location) => {
     const enemyType = ENEMY_TYPES[Math.floor(Math.random() * ENEMY_TYPES.length)];
     const baseTroopTemplate = TROOP_TEMPLATES[enemyType.baseTroopId];
@@ -6900,12 +5337,6 @@ export default function App() {
 
   // --- Battle Logic ---
 
-  const calculatePower = (troops: Troop[]) => troops.reduce((acc, t) => {
-    const bonusRatio = (t.enchantments ?? []).reduce((sum, e) => sum + e.powerBonus, 0);
-    if (t.id === 'player_main' || t.id.startsWith('hero_')) return acc + t.basePower * (1 + bonusRatio);
-    return acc + t.count * t.tier * 10 * (1 + bonusRatio);
-  }, 0);
-
   const buildRaceComposition = (troops: Troop[]) => {
     const counts: Partial<Record<TroopRace, number>> = {};
     let total = 0;
@@ -6924,49 +5355,6 @@ export default function App() {
         return `${label}${count}(${ratio}%)`;
       })
       .join('，');
-  };
-
-  const calculateLocalBattleRewards = (enemy: EnemyForce, playerLevel: number, trainingLevel: number, outcome: BattleResult['outcome']) => {
-    if (outcome !== 'A') return { gold: 0, renown: 0, xp: 0 };
-    const enemyCount = enemy.troops.reduce((sum, t) => sum + (t.count ?? 0), 0);
-    const weightedTier = enemy.troops.reduce((sum, t) => sum + (t.tier ?? 1) * (t.count ?? 0), 0);
-    const avgTier = enemyCount > 0 ? weightedTier / enemyCount : 1;
-    const sizeFactor = Math.max(1, Math.sqrt(Math.max(1, enemyCount)));
-    const levelBracket = Math.min(5, 1 + Math.floor(Math.max(0, playerLevel - 1) / 6));
-    const tierDelta = Math.max(-4, Math.min(4, avgTier - levelBracket));
-    const diffFactor = Math.max(0.6, Math.min(2.0, 1 + tierDelta * 0.25));
-    const trainingFactor = 1 + Math.max(0, trainingLevel) * 0.05;
-    const baseXp = sizeFactor * Math.max(1, avgTier) * 21;
-    const caravanBonus = enemy.difficulty === 'CARAVAN' || enemy.baseTroopId === 'caravan' ? 3.5 : 1;
-    const baseGold = sizeFactor * Math.max(1, avgTier) * 14 * Math.max(0.5, enemy.lootPotential ?? 1) * caravanBonus;
-    const baseRenown = Math.max(1, Math.round(Math.max(1, avgTier) * Math.log2(enemyCount + 1)));
-    return {
-      xp: Math.max(10, Math.round(baseXp * diffFactor * trainingFactor)),
-      gold: Math.max(0, Math.round(baseGold * diffFactor)),
-      renown: Math.max(0, Math.round(baseRenown * (1 + Math.max(0, tierDelta) * 0.08)))
-    };
-  };
-
-  const calculateFleeChance = (pTroops: Troop[], eTroops: Troop[], escapeLevel: number) => {
-      const pPower = calculatePower(pTroops);
-      const ePower = calculatePower(eTroops);
-      const totalPower = pPower + ePower;
-      const diffRatio = totalPower > 0 ? (pPower - ePower) / totalPower : 0;
-      const escapeBonus = (escapeLevel ?? 0) * 0.02;
-      return Math.min(0.9, Math.max(0.1, 0.5 + diffRatio + escapeBonus));
-  };
-
-  const calculateRearGuardPlan = (pTroops: Troop[], eTroops: Troop[], escapeLevel: number) => {
-    const pPower = calculatePower(pTroops);
-    const ePower = calculatePower(eTroops);
-    const totalPower = pPower + ePower;
-    const ratioBase = totalPower > 0 ? (ePower / totalPower) * 0.6 : 0.5;
-    const ratio = Math.min(0.8, Math.max(0.1, ratioBase));
-    const lost = pTroops.reduce((sum, t) => sum + Math.ceil(t.count * ratio), 0);
-    const diffRatio = totalPower > 0 ? (pPower - ePower) / totalPower : -0.2;
-    const escapeBonus = (escapeLevel ?? 0) * 0.015;
-    const successChance = Math.min(0.9, Math.max(0.2, 0.55 + diffRatio + escapeBonus));
-    return { ratio, lost, successChance };
   };
 
   const getBattleRelationValue = () => {
@@ -7141,401 +5529,16 @@ export default function App() {
     enemyForce: EnemyForce,
     terrain: TerrainType,
     currentPlayer: PlayerState,
-    battleInfo?: { mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; supportTroops?: Troop[] }
-  ): BattleResult => {
-    const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
-    const isLegacyAttributes = (attrs: Troop['attributes']) => {
-      const values = [attrs.attack, attrs.defense, attrs.agility, attrs.hp, attrs.range, attrs.morale];
-      return values.every(v => v >= 0 && v <= 10);
-    };
-    const scaleAttributes = (attrs: Troop['attributes']) => {
-      if (!attrs) return attrs;
-      const scale = isLegacyAttributes(attrs) ? 12 : 1;
-      return {
-        attack: attrs.attack * scale,
-        defense: attrs.defense * scale,
-        agility: attrs.agility * scale,
-        hp: attrs.hp * scale,
-        range: attrs.range * scale,
-        morale: attrs.morale * scale
-      };
-    };
-    const fallbackAttributes = (tier: TroopTier) => {
-      const base = tier === TroopTier.TIER_1 ? 35 : tier === TroopTier.TIER_2 ? 55 : tier === TroopTier.TIER_3 ? 80 : tier === TroopTier.TIER_4 ? 110 : 140;
-      return { attack: base, defense: base, agility: base * 0.75, hp: base * 0.9, range: base * 0.2, morale: base * 0.8 };
-    };
-    const normalizeTroop = (troop: Troop): Troop => {
-      const template = getTroopTemplate(troop.id);
-      const source = template ? ({ ...template, count: troop.count, xp: troop.xp ?? 0 } as Troop) : troop;
-      const rawAttrs = source.attributes ?? fallbackAttributes((source.tier ?? TroopTier.TIER_1) as TroopTier);
-      return {
-        ...source,
-        name: source.name ?? troop.name ?? troop.id,
-        tier: (source.tier ?? troop.tier ?? TroopTier.TIER_1) as TroopTier,
-        attributes: scaleAttributes(rawAttrs),
-        category: source.category ?? troop.category,
-        supportRole: (source as any).supportRole ?? troop.supportRole
-      };
-    };
-    const getLayerIndex = (troop: Troop, side: 'A' | 'B') => {
-      if (side === 'A') {
-        const layerIds = battlePlan.layers.map(l => l.id);
-        const assigned = battlePlan.assignments[troop.id];
-        const fallback = getDefaultLayerId(troop, battlePlan.layers);
-        const target = assigned && layerIds.includes(assigned) ? assigned : fallback;
-        const idx = layerIds.indexOf(target);
-        return idx >= 0 ? idx : 0;
-      }
-      const enemyLayers = DEFAULT_BATTLE_LAYERS;
-      const target = getDefaultLayerId(troop, enemyLayers);
-      const idx = enemyLayers.findIndex(l => l.id === target);
-      return idx >= 0 ? idx : 0;
-    };
-    const getTerrainMods = (value: TerrainType) => {
-      if (value === 'FOREST') return { rangedHit: -0.12, meleeHit: 0.03, damage: -0.02, defense: 0.05 };
-      if (value === 'MOUNTAIN') return { rangedHit: -0.05, meleeHit: -0.02, damage: 0.0, defense: 0.08 };
-      if (value === 'SNOW') return { rangedHit: -0.03, meleeHit: -0.03, damage: -0.02, defense: 0.05 };
-      if (value === 'DESERT') return { rangedHit: -0.06, meleeHit: -0.02, damage: -0.03, defense: 0.0 };
-      if (value === 'RUINS' || value === 'GRAVEYARD') return { rangedHit: -0.04, meleeHit: 0.02, damage: 0.02, defense: 0.04 };
-      if (value === 'CAVE') return { rangedHit: -0.15, meleeHit: 0.04, damage: 0.02, defense: 0.05 };
-      return { rangedHit: 0.04, meleeHit: 0.0, damage: 0.03, defense: 0.0 };
-    };
-    const countTroops = (troops: Troop[]) => troops.reduce((sum, t) => sum + (t.count ?? 0), 0);
-    const sumAttrs = (troops: Troop[]) => {
-      return troops.reduce(
-        (acc, t) => {
-          const attrs = t.attributes ?? fallbackAttributes((t.tier ?? TroopTier.TIER_1) as TroopTier);
-          const count = t.count ?? 0;
-          acc.attack += attrs.attack * count;
-          acc.defense += attrs.defense * count;
-          acc.agility += attrs.agility * count;
-          acc.hp += attrs.hp * count;
-          acc.range += attrs.range * count;
-          acc.morale += attrs.morale * count;
-          return acc;
-        },
-        { attack: 0, defense: 0, agility: 0, hp: 0, range: 0, morale: 0 }
-      );
-    };
-    const avgAttrs = (troops: Troop[]) => {
-      const count = Math.max(1, countTroops(troops));
-      const total = sumAttrs(troops);
-      return {
-        attack: total.attack / count,
-        defense: total.defense / count,
-        agility: total.agility / count,
-        hp: total.hp / count,
-        range: total.range / count,
-        morale: total.morale / count
-      };
-    };
-    const getPhaseCause = (phase: string) => {
-      const table: Record<string, string[]> = {
-        ranged: ['被乱箭射倒', '被劲弩贯穿', '被箭雨覆盖'],
-        heavy: ['被重型火力撕裂', '被巨型投石砸中', '被爆裂炮火吞没'],
-        melee: ['在白刃战中倒下', '被长枪贯穿', '被乱刃砍倒'],
-        pursuit: ['溃退中被斩杀', '被骑兵追杀', '惊慌踩踏而亡'],
-        morale: ['士气崩溃', '阵线溃散', '混乱踩踏']
-      };
-      const pool = table[phase] ?? table.melee;
-      return pool[Math.floor(Math.random() * pool.length)];
-    };
-    const applyLosses = (troops: Troop[], totalLoss: number, phase: string, sideLabel: 'A' | 'B') => {
-      const ordered = [...troops].filter(t => t.count > 0).sort((a, b) => {
-        const layerA = getLayerIndex(a, sideLabel);
-        const layerB = getLayerIndex(b, sideLabel);
-        if (phase === 'ranged' || phase === 'pursuit') return layerB - layerA;
-        return layerA - layerB;
-      });
-      let remaining = totalLoss;
-      const casualties: Array<{ name: string; count: number; cause: string }> = [];
-      for (const troop of ordered) {
-        if (remaining <= 0) break;
-        const lost = Math.min(troop.count, remaining);
-        if (lost > 0) {
-          troop.count -= lost;
-          casualties.push({ name: troop.name, count: lost, cause: getPhaseCause(phase) });
-          remaining -= lost;
-        }
-      }
-      return casualties;
-    };
-    const isHeavyUnit = (troop: Troop) => (troop.category ?? (getTroopTemplate(troop.id)?.category)) === 'HEAVY' || troop.id.startsWith('heavy_');
-    const isRangedUnit = (troop: Troop) => {
-      const attrs = troop.attributes ?? fallbackAttributes((troop.tier ?? TroopTier.TIER_1) as TroopTier);
-      return attrs.range >= 60;
-    };
-    const getActionPhase = (troop: Troop) => {
-      if (isRangedUnit(troop)) return 'ranged';
-      if (isHeavyUnit(troop)) return 'heavy';
-      return 'melee';
-    };
-    const isCavalryUnit = (troop: Troop) => {
-      const text = `${troop.id} ${troop.name}`.toLowerCase();
-      return /cavalry|knight|horse|rider|骑|马/.test(text);
-    };
-    const rollBinomial = (n: number, p: number) => {
-      if (n <= 0) return 0;
-      if (p <= 0) return 0;
-      if (p >= 1) return n;
-      let k = 0;
-      for (let i = 0; i < n; i++) if (Math.random() < p) k++;
-      return k;
-    };
-    const buildActionQueue = (side: 'A' | 'B', troops: Troop[], width: number) => {
-      const result: Array<{
-        side: 'A' | 'B';
-        troop: Troop;
-        groupCount: number;
-        nextAct: number;
-        interval: number;
-        rangedFirst: boolean;
-        agility: number;
-        range: number;
-      }> = [];
-      troops.filter(t => t.count > 0).forEach(troop => {
-        const attrs = troop.attributes ?? fallbackAttributes((troop.tier ?? TroopTier.TIER_1) as TroopTier);
-        const agility = Math.max(20, attrs.agility);
-        const range = attrs.range ?? 0;
-        const rangedFirst = isRangedUnit(troop);
-        const speed = clamp(agility / 100, 0.5, 2.4);
-        const interval = 100 / speed;
-        const initBoost = (rangedFirst ? 18 : 0) + Math.min(12, range / 20);
-        const groups = Math.max(1, Math.min(60, Math.ceil(Math.max(1, troop.count) / Math.max(1, width))));
-        for (let i = 0; i < groups; i++) {
-          const jitter = Math.random() * 10 + i * 1.5;
-          result.push({
-            side,
-            troop,
-            groupCount: Math.max(1, Math.min(width, troop.count)),
-            nextAct: Math.max(1, interval - initBoost + jitter),
-            interval,
-            rangedFirst,
-            agility,
-            range
-          });
-        }
-      });
-      return result;
-    };
-    const computeLoss = (attacker: Troop, attackerCount: number, defender: Troop[], phase: string, mods: { hit: number; damage: number }, cap: number) => {
-      const defCount = countTroops(defender);
-      if (attackerCount <= 0 || defCount <= 0) return 0;
-      const att = attacker.attributes ?? fallbackAttributes((attacker.tier ?? TroopTier.TIER_1) as TroopTier);
-      const defAvg = avgAttrs(defender);
-      const phaseBase = phase === 'ranged' ? 0.042 : phase === 'heavy' ? 0.06 : phase === 'pursuit' ? 0.04 : 0.055;
-      const hit = clamp(
-        0.55 + (att.agility - defAvg.agility) * 0.003 + mods.hit + (phase === 'ranged' ? (att.range - defAvg.range) * 0.0015 : 0),
-        0.08,
-        0.9
-      );
-      const moraleFactor = 1 + (att.morale - defAvg.morale) * 0.0025;
-      const cavFactor = isCavalryUnit(attacker) ? 1.1 : 1.0;
-      const phaseFactor = phase === 'ranged' ? 0.95 : phase === 'heavy' ? 1.05 : phase === 'pursuit' ? 0.9 : 1.0;
-      const attScore = (att.attack * 1.0 + att.range * 0.2) * cavFactor * phaseFactor;
-      const defScore = defAvg.defense * 1.1 + defAvg.hp * 0.9;
-      const ratio = attScore / Math.max(1, attScore + defScore);
-      const randomFactor = 0.75 + Math.random() * 0.6;
-      const rawP = phaseBase * (0.35 + ratio * 1.25) * hit * moraleFactor * (1 + mods.damage) * randomFactor;
-      const minP = 0.0006 + ratio * 0.002;
-      const maxP = 0.6;
-      const pKill = Math.max(minP, Math.min(maxP, rawP));
-      const kills = rollBinomial(attackerCount, pKill);
-      return Math.min(defCount, kills, cap);
-    };
-    let troopsA = battleTroops.map(normalizeTroop);
-    let troopsB = enemyForce.troops.map(normalizeTroop);
-    const totalCount = countTroops(troopsA) + countTroops(troopsB);
-    const battleWidth = Math.max(4, Math.min(20, Math.floor(6 + Math.sqrt(Math.max(1, totalCount)) / 2.5)));
-    const engagementCap = Math.max(8, Math.floor(Math.min(totalCount, battleWidth * 2)));
-    const keyUnitsA = battleTroops.filter(t => t.id === 'player_main' || t.id.startsWith('hero_')).map(normalizeTroop);
-    const enemyLeader = enemyForce.troops.map(normalizeTroop).sort((a, b) => (b.basePower ?? 0) - (a.basePower ?? 0))[0];
-    const terrainMods = getTerrainMods(terrain);
-    const siegeTarget = battleInfo?.targetLocationId ? locations.find(l => l.id === battleInfo.targetLocationId) ?? null : null;
-    const defenderSide: 'A' | 'B' | null = battleInfo?.mode === 'SIEGE' ? 'B' : battleInfo?.mode === 'DEFENSE_AID' ? 'A' : null;
-    const defenseDetails = siegeTarget ? getLocationDefenseDetails(siegeTarget) : null;
-    const attackerEngines = defenderSide
-      ? defenderSide === 'B'
-        ? (siegeTarget?.siegeEngines ?? [])
-        : (enemyForce.siegeEngines ?? [])
-      : [];
-    const siegeEngineTotals = attackerEngines.reduce((acc, type) => {
-      const stats = siegeEngineCombatStats[type];
-      return {
-        wallDamage: acc.wallDamage + stats.wallDamage,
-        attackerRangedHit: acc.attackerRangedHit + stats.attackerRangedHit,
-        attackerRangedDamage: acc.attackerRangedDamage + stats.attackerRangedDamage,
-        attackerMeleeHit: acc.attackerMeleeHit + stats.attackerMeleeHit,
-        attackerMeleeDamage: acc.attackerMeleeDamage + stats.attackerMeleeDamage,
-        defenderRangedHitPenalty: acc.defenderRangedHitPenalty + stats.defenderRangedHitPenalty,
-        defenderRangedDamagePenalty: acc.defenderRangedDamagePenalty + stats.defenderRangedDamagePenalty
-      };
-    }, { wallDamage: 0, attackerRangedHit: 0, attackerRangedDamage: 0, attackerMeleeHit: 0, attackerMeleeDamage: 0, defenderRangedHitPenalty: 0, defenderRangedDamagePenalty: 0 });
-    const defenseTotalHp = defenderSide && defenseDetails ? Math.max(0, defenseDetails.wallHp + defenseDetails.mechanismHp) : 0;
-    let defenseHp = defenseTotalHp;
-    const maxDefenseHp = defenseTotalHp;
-    const getPhaseMods = (side: 'A' | 'B', phaseKey: string, defenseActive: boolean) => {
-      const baseHit = phaseKey === 'ranged' ? terrainMods.rangedHit : terrainMods.meleeHit;
-      let hit = baseHit;
-      let damage = terrainMods.damage;
-      const stance = battlePlan.stance;
-      if (stance === 'ATTACK') {
-        if (side === 'A') {
-          hit += 0.03;
-          damage += 0.05;
-        } else {
-          hit += 0.02;
-          damage += 0.03;
-        }
-      } else if (stance === 'DEFEND') {
-        if (side === 'A') {
-          hit -= 0.01;
-          damage -= 0.02;
-        } else {
-          hit -= 0.03;
-          damage -= 0.05;
-        }
-      } else {
-        if (side === 'A') {
-          hit -= 0.01;
-          damage -= 0.03;
-        } else {
-          hit -= 0.04;
-          damage -= 0.07;
-        }
-      }
-      const isDefender = defenseActive && defenderSide === side;
-      const isAttacker = defenderSide !== null && defenderSide !== side;
-      if (phaseKey === 'ranged') {
-        if (isDefender && defenseDetails) {
-          hit += defenseDetails.rangedHitBonus - siegeEngineTotals.defenderRangedHitPenalty;
-          damage += defenseDetails.rangedDamageBonus - siegeEngineTotals.defenderRangedDamagePenalty;
-        } else if (isAttacker) {
-          hit += siegeEngineTotals.attackerRangedHit;
-          damage += siegeEngineTotals.attackerRangedDamage;
-        }
-      } else {
-        if (isDefender && defenseDetails) {
-          hit -= defenseDetails.meleeDamageReduction;
-          damage -= defenseDetails.meleeDamageReduction;
-        } else if (isAttacker) {
-          hit += siegeEngineTotals.attackerMeleeHit;
-          damage += siegeEngineTotals.attackerMeleeDamage;
-        }
-      }
-      return { hit: clamp(hit, -0.4, 0.6), damage: clamp(damage, -0.5, 0.65) };
-    };
-    const rounds: BattleRound[] = [];
-    while (countTroops(troopsA) > 0 && countTroops(troopsB) > 0) {
-      const roundStartA = countTroops(troopsA);
-      const roundStartB = countTroops(troopsB);
-      const roundCasualtiesA: Array<{ name: string; count: number; cause: string }> = [];
-      const roundCasualtiesB: Array<{ name: string; count: number; cause: string }> = [];
-      const keyUnitDamageA: Array<{ name: string; hpLoss: number; cause: string }> = [];
-      const keyUnitDamageB: Array<{ name: string; hpLoss: number; cause: string }> = [];
-      let siegeDamage = 0;
-      const defenseActive = defenderSide !== null && defenseHp > 0;
-      if (defenderSide && defenseActive) {
-        const attackerCount = defenderSide === 'B' ? countTroops(troopsA) : countTroops(troopsB);
-        const pressure = Math.max(8, Math.floor(Math.sqrt(Math.max(1, attackerCount)) * 5));
-        const engineDamage = siegeEngineTotals.wallDamage * (0.75 + Math.random() * 0.5);
-        siegeDamage = Math.floor(engineDamage + pressure);
-        defenseHp = Math.max(0, defenseHp - siegeDamage);
-      }
-      const actionQueue = [
-        ...buildActionQueue('A', troopsA, battleWidth),
-        ...buildActionQueue('B', troopsB, battleWidth)
-      ].sort((a, b) => {
-        if (a.nextAct !== b.nextAct) return a.nextAct - b.nextAct;
-        if (a.rangedFirst !== b.rangedFirst) return a.rangedFirst ? -1 : 1;
-        if (a.agility !== b.agility) return b.agility - a.agility;
-        return b.range - a.range;
-      });
-      const actionQueuePreview = actionQueue.slice(0, 14).map(item => ({
-        name: item.troop.name,
-        side: item.side
-      }));
-      const actionBudget = Math.min(90, Math.max(16, Math.floor(battleWidth * 3 + 8)));
-      for (let step = 0; step < actionBudget; step++) {
-        if (countTroops(troopsA) <= 0 || countTroops(troopsB) <= 0) break;
-        const actor = actionQueue.shift();
-        if (!actor) break;
-        if (actor.troop.count <= 0) continue;
-        const defenderSide = actor.side === 'A' ? 'B' : 'A';
-        const defenders = defenderSide === 'A' ? troopsA : troopsB;
-        if (countTroops(defenders) <= 0) break;
-        const actionPhase = getActionPhase(actor.troop);
-        const mods = getPhaseMods(actor.side, actionPhase, defenseActive);
-        const actionStrength = Math.min(actor.troop.count, actor.groupCount, battleWidth);
-        const attackCount = Math.max(1, Math.floor(actionStrength));
-        const loss = computeLoss(actor.troop, attackCount, defenders, actionPhase, mods, attackCount);
-        if (loss > 0) {
-          if (defenderSide === 'A') roundCasualtiesA.push(...applyLosses(troopsA, loss, actionPhase, 'A'));
-          else roundCasualtiesB.push(...applyLosses(troopsB, loss, actionPhase, 'B'));
-        }
-        actor.nextAct += actor.interval;
-        actionQueue.push(actor);
-        actionQueue.sort((a, b) => a.nextAct - b.nextAct);
-      }
-      const lossRatioA = (roundStartA - countTroops(troopsA)) / Math.max(1, roundStartA);
-      const lossRatioB = (roundStartB - countTroops(troopsB)) / Math.max(1, roundStartB);
-      const moraleAvgA = avgAttrs(troopsA).morale;
-      const moraleAvgB = avgAttrs(troopsB).morale;
-      if (lossRatioA > 0.3 && Math.random() < 0.35 + clamp((40 - moraleAvgA) / 100, 0, 0.25)) {
-        const extraLoss = Math.min(countTroops(troopsA), Math.max(1, Math.floor(roundStartA * (0.03 + Math.random() * 0.05))));
-        roundCasualtiesA.push(...applyLosses(troopsA, extraLoss, 'morale', 'A'));
-      }
-      if (lossRatioB > 0.3 && Math.random() < 0.35 + clamp((40 - moraleAvgB) / 100, 0, 0.25)) {
-        const extraLoss = Math.min(countTroops(troopsB), Math.max(1, Math.floor(roundStartB * (0.03 + Math.random() * 0.05))));
-        roundCasualtiesB.push(...applyLosses(troopsB, extraLoss, 'morale', 'B'));
-      }
-      const injuryChanceA = battlePlan.stance === 'ATTACK' ? 0.42 : battlePlan.stance === 'DEFEND' ? 0.32 : 0.22;
-      if (roundCasualtiesA.length > 0 && Math.random() < injuryChanceA && keyUnitsA.length > 0) {
-        const unit = keyUnitsA[Math.floor(Math.random() * keyUnitsA.length)];
-        keyUnitDamageA.push({ name: unit.name, hpLoss: Math.floor(6 + Math.random() * 18), cause: getPhaseCause('melee') });
-      }
-      if (roundCasualtiesB.length > 0 && Math.random() < 0.35 && enemyLeader) {
-        keyUnitDamageB.push({ name: enemyLeader.name, hpLoss: Math.floor(6 + Math.random() * 18), cause: getPhaseCause('melee') });
-      }
-      const siegeReport = defenderSide
-        ? [
-          attackerEngines.length > 0 ? `攻城器械：${attackerEngines.map(getSiegeEngineName).join('、')}` : '攻城器械：无',
-          defenseHp > 0 ? `城防耐久${defenseHp}/${maxDefenseHp}` : '城防已被击穿',
-          siegeDamage > 0 ? `城防受损${siegeDamage}` : ''
-        ].filter(Boolean).join('，')
-        : '';
-      const phaseSummary = `战场宽度${battleWidth}（每方同时接战人数），随机捉对厮杀，每回合行动步数${actionBudget}。行动按敏捷轮转，远程单位优先出手。${siegeReport ? ` ${siegeReport}。` : ''}`;
-      rounds.push({
-        roundNumber: rounds.length + 1,
-        description: phaseSummary,
-        casualtiesA: roundCasualtiesA,
-        keyUnitDamageA,
-        keyUnitDamageB,
-        casualtiesB: roundCasualtiesB,
-        actionQueue: actionQueuePreview
-      });
-      if (roundCasualtiesA.length === 0 && roundCasualtiesB.length === 0) {
-        const pressureLossA = Math.min(countTroops(troopsA), Math.max(1, Math.floor(roundStartA * 0.01)));
-        const pressureLossB = Math.min(countTroops(troopsB), Math.max(1, Math.floor(roundStartB * 0.01)));
-        if (pressureLossA > 0) roundCasualtiesA.push(...applyLosses(troopsA, pressureLossA, 'fatigue', 'A'));
-        if (pressureLossB > 0) roundCasualtiesB.push(...applyLosses(troopsB, pressureLossB, 'fatigue', 'B'));
-      }
-    }
-    const remainingA = countTroops(troopsA);
-    const remainingB = countTroops(troopsB);
-    const remainingTroopsA = troopsA.filter(t => t.count > 0).map(t => ({ ...t }));
-    const remainingTroopsB = troopsB.filter(t => t.count > 0).map(t => ({ ...t }));
-    const outcome: BattleResult['outcome'] = remainingA <= 0 && remainingB <= 0 ? 'B' : remainingB <= 0 ? 'A' : remainingA <= 0 ? 'B' : remainingA >= remainingB ? 'A' : 'B';
-    return {
-      rounds,
-      outcome,
-      lootGold: 0,
-      renownGained: 0,
-      xpGained: 0,
-      remainingA: remainingTroopsA,
-      remainingB: remainingTroopsB
-    };
-  };
+    battleInfo?: BattleEngagementMeta
+  ): BattleResult =>
+    resolveBattleProgrammaticFn(battleTroops, enemyForce, terrain, currentPlayer, battleInfo, {
+      getTroopTemplate,
+      battlePlan,
+      locations,
+      getLocationDefenseDetails,
+      getSiegeEngineName,
+      siegeEngineCombatStats: SIEGE_ENGINE_COMBAT_STATS
+    });
 
   const attemptFlee = () => {
      if (!activeEnemy) return;
@@ -7731,28 +5734,10 @@ export default function App() {
   const copyPendingBattlePrompt = async () => {
     const enemy = activeEnemy;
     if (!enemy) return;
-    const meta = pendingBattleMeta ?? { mode: 'FIELD' as const };
+    const meta: BattleEngagementMeta = pendingBattleMeta ?? { mode: 'FIELD' };
     const currentPlayer = playerRef.current;
     const currentHeroes = heroesRef.current;
-    let battleTroops = getBattleTroops(currentPlayer, currentHeroes);
-
-    if (meta.mode === 'DEFENSE_AID' && meta.targetLocationId) {
-      const loc = locations.find(l => l.id === meta.targetLocationId);
-      const supportTroops = (() => {
-        if (!loc) return [];
-        if (meta.supportTroops) return meta.supportTroops;
-        if (loc.type === 'HIDEOUT') {
-          const hideout = loc.hideout;
-          const layers = hideout?.layers ?? [];
-          const layerIndex = loc.activeSiege?.hideoutLayerIndex ?? hideout?.selectedLayer ?? 0;
-          const layer = layers[Math.max(0, Math.min(layers.length - 1, Math.floor(layerIndex)))];
-          return layer?.garrison ?? [];
-        }
-        return loc.garrison ?? [];
-      })();
-      const taggedGarrison = supportTroops.map(t => ({ ...t, id: `garrison_${t.id}` }));
-      battleTroops = [...battleTroops, ...taggedGarrison];
-    }
+    const battleTroops = appendDefenseAidTroops(getBattleTroops(currentPlayer, currentHeroes), locations, meta);
 
     const deploymentContext = buildDeploymentContext(currentPlayer, currentHeroes, enemy, battleTroops);
     const prompt = buildBattlePrompt(
@@ -7786,47 +5771,14 @@ export default function App() {
     }
   };
 
-  const startBattle = async (isTraining: boolean = false, meta?: { mode: 'FIELD' | 'SIEGE' | 'DEFENSE_AID'; targetLocationId?: string; siegeContext?: string; supportTroops?: Troop[]; supportLabel?: string }) => {
+  const startBattle = async (isTraining: boolean = false, meta?: BattleEngagementMeta) => {
     if (!activeEnemy) return;
     const battleInfo = meta ?? { mode: 'FIELD' as const };
     const currentPlayer = playerRef.current;
     let battleTroops = getBattleTroops(currentPlayer, heroesRef.current);
 
-    if (battleInfo.mode === 'DEFENSE_AID' && battleInfo.targetLocationId) {
-      const loc = locations.find(l => l.id === battleInfo.targetLocationId);
-      const supportTroops = (() => {
-        if (!loc) return [];
-        if (battleInfo.supportTroops) return battleInfo.supportTroops;
-        if (loc.type === 'HIDEOUT') {
-          const hideout = loc.hideout;
-          const layers = hideout?.layers ?? [];
-          const layerIndex = loc.activeSiege?.hideoutLayerIndex ?? hideout?.selectedLayer ?? 0;
-          const layer = layers[Math.max(0, Math.min(layers.length - 1, Math.floor(layerIndex)))];
-          return layer?.garrison ?? [];
-        }
-        return loc.garrison ?? [];
-      })();
-      const taggedGarrison = supportTroops.map(t => ({ ...t, id: `garrison_${t.id}` }));
-      battleTroops = [...battleTroops, ...taggedGarrison];
-    }
-
-    const battleLocationText = (() => {
-      const byId = battleInfo.targetLocationId ? locations.find(l => l.id === battleInfo.targetLocationId) : null;
-      const loc = byId ?? currentLocation;
-      if (loc) {
-        const prefix = battleInfo.mode === 'SIEGE' ? '攻城：' : battleInfo.mode === 'DEFENSE_AID' ? '守城协助：' : '';
-        return `${prefix}${loc.name}（${loc.type} / ${loc.terrain}）`;
-      }
-      const pos = currentPlayer.position;
-      const nearest = locations.reduce<{ loc: Location | null; dist: number }>((best, l) => {
-        const dx = (l.coordinates?.x ?? 0) - (pos?.x ?? 0);
-        const dy = (l.coordinates?.y ?? 0) - (pos?.y ?? 0);
-        const dist = Math.sqrt(dx * dx + dy * dy);
-        if (!best.loc || dist < best.dist) return { loc: l, dist };
-        return best;
-      }, { loc: null, dist: Infinity });
-      return nearest.loc ? `野外（靠近 ${nearest.loc.name}，距离约 ${nearest.dist.toFixed(1)}）` : '野外（未知位置）';
-    })();
+    battleTroops = appendDefenseAidTroops(battleTroops, locations, battleInfo);
+    const battleLocationText = describeBattleLocationText(battleInfo, locations, currentLocation, currentPlayer);
     setBattleMeta(battleInfo);
     setBattleSnapshot({ playerTroops: battleTroops.map(t => ({ ...t })), enemyTroops: activeEnemy.troops.map(t => ({ ...t })) });
     setBattleError(null);
@@ -7844,56 +5796,35 @@ export default function App() {
     else addLog("战斗开始！生成战报中...");
 
     try {
-      let streamedRounds: BattleRound[] = [];
-      let firstRoundReady = false;
-      const result = useAiMode && aiConfig
-        ? await resolveBattle(
-            battleTroops,
-            activeEnemy,
-            activeEnemy.terrain,
-            currentPlayer,
-            aiConfig,
-            battleInfo.siegeContext,
-            buildDeploymentContext(currentPlayer, heroesRef.current, activeEnemy, battleTroops),
-            useStreaming ? {
-              stream: true,
-              onRound: (round) => {
-                streamedRounds = [...streamedRounds, round];
-                setBattleResult(prev => ({
-                  rounds: streamedRounds,
-                  outcome: prev?.outcome ?? 'A',
-                  lootGold: prev?.lootGold ?? 0,
-                  renownGained: prev?.renownGained ?? 0,
-                  xpGained: prev?.xpGained ?? 0
-                }));
-                setCurrentRoundIndex(streamedRounds.length - 1);
-                if (!firstRoundReady) {
-                  firstRoundReady = true;
-                  setView('BATTLE_RESULT');
-                  setIsBattling(false);
-                }
-              }
-            } : undefined
-          )
-        : resolveBattleProgrammatic(
-            battleTroops,
-            activeEnemy,
-            activeEnemy.terrain,
-            currentPlayer,
-            battleInfo
-          );
-      const trainingRewardsRaw = calculateLocalBattleRewards(activeEnemy, currentPlayer.level, currentPlayer.attributes.training ?? 0, result.outcome);
-      const localRewards = isTraining
-        ? { gold: 0, renown: 0, xp: Math.floor(trainingRewardsRaw.xp / 3) }
-        : calculateLocalBattleRewards(activeEnemy, currentPlayer.level, currentPlayer.attributes.training ?? 0, result.outcome);
-      const finalResult = {
-        ...result,
-        lootGold: localRewards.gold,
-        renownGained: localRewards.renown,
-        xpGained: localRewards.xp
-      };
+      const deploymentContext = buildDeploymentContext(currentPlayer, heroesRef.current, activeEnemy, battleTroops);
+      const { finalResult, localRewards, shouldStep, firstRoundReady } = await runBattlePipeline({
+        battleTroops,
+        activeEnemy,
+        currentPlayer,
+        battleInfo,
+        battleResolutionMode,
+        battleStreamEnabled,
+        aiConfig,
+        isTraining,
+        deploymentContext,
+        resolveBattleProgrammatic,
+        onStreamRound: (streamedRounds) => {
+          setBattleResult(prev => ({
+            rounds: streamedRounds,
+            outcome: prev?.outcome ?? 'A',
+            lootGold: prev?.lootGold ?? 0,
+            renownGained: prev?.renownGained ?? 0,
+            xpGained: prev?.xpGained ?? 0
+          }));
+          setCurrentRoundIndex(streamedRounds.length - 1);
+        },
+        onFirstRoundReady: () => {
+          setView('BATTLE_RESULT');
+          setIsBattling(false);
+        }
+      });
+
       setBattleResult(finalResult);
-      const shouldStep = battleResolutionMode === 'PROGRAM' && (finalResult.rounds?.length ?? 0) > 1;
       setIsBattleResultFinal(!shouldStep);
       setIsBattleStreaming(false);
       if (!firstRoundReady) {
@@ -7906,412 +5837,55 @@ export default function App() {
       
       if (!isTraining) {
         const prev = playerRef.current;
-        
-        // Loot: affected by Looting skill
-        const lootMultiplier = 1 + (prev.attributes.looting * 0.1);
-        const newGold = prev.gold + Math.floor(localRewards.gold * lootMultiplier);
-        const newRenown = prev.renown + localRewards.renown;
-        
-        // Casualties & Medicine
-        const totalPlayerCasualties: Record<string, number> = {};
-        const totalPlayerCasualtyDetails: Record<string, { count: number; causes: string[] }> = {};
-        const newFallenRecords: FallenRecord[] = [];
-        const logsToAdd: string[] = [];
-
-        const battleHeroNames = new Set(heroesRef.current.filter(canHeroBattle).map(h => h.name));
-
-        const totalPlayerInjuries: Record<string, { hpLoss: number; causes: string[] }> = {};
-
-        const enemyNamePool = (activeEnemy.troops ?? [])
-          .filter(t => (t.count ?? 0) > 0)
-          .flatMap(t => Array.from({ length: Math.max(1, Math.min(5, Math.floor(t.count / 3))) }).map(() => t.name));
-        const pickEnemyName = () => enemyNamePool.length > 0
-          ? enemyNamePool[Math.floor(Math.random() * enemyNamePool.length)]
-          : activeEnemy.name;
-        const resolveEnemyNameFromCause = (cause?: string) => {
-          if (!cause) return '';
-          const raw = String(cause);
-          const match = (activeEnemy.troops ?? []).find(t => raw.includes(t.name));
-          return match?.name ?? '';
-        };
-        const formatDeathCause = (cause?: string) => {
-          const base = (cause ?? '').trim();
-          const matched = resolveEnemyNameFromCause(base);
-          if (matched) return base.includes('击') || base.includes('斩') || base.includes('杀') || base.includes('射') ? base : `被${matched}击杀`;
-          if (base) return base;
-          return `被${pickEnemyName()}击杀`;
-        };
-        const formatWoundCause = (cause?: string) => {
-          const base = (cause ?? '').trim();
-          const matched = resolveEnemyNameFromCause(base);
-          if (matched) return base.includes('击') || base.includes('斩') || base.includes('杀') || base.includes('射') ? base : `被${matched}重创`;
-          if (base) return base;
-          return `被${pickEnemyName()}重创`;
-        };
-
-        finalResult.rounds.forEach(round => {
-          const roundCasualtiesA = round.casualtiesA ?? (round as any).playerCasualties ?? [];
-          roundCasualtiesA.forEach(c => {
-            totalPlayerCasualties[c.name] = (totalPlayerCasualties[c.name] || 0) + c.count;
-            if (!totalPlayerCasualtyDetails[c.name]) totalPlayerCasualtyDetails[c.name] = { count: 0, causes: [] };
-            totalPlayerCasualtyDetails[c.name].count += c.count;
-            if (c.cause) totalPlayerCasualtyDetails[c.name].causes.push(c.cause);
-          });
-          const injuries = round.keyUnitDamageA ?? (round as any).heroInjuries ?? (round as any).playerInjuries ?? [];
-          injuries.forEach((injury: any) => {
-            const name = String(injury?.name ?? '').trim();
-            const loss = Math.max(0, Math.floor(injury?.hpLoss ?? 0));
-            if (!name || loss <= 0) return;
-            if (!totalPlayerInjuries[name]) totalPlayerInjuries[name] = { hpLoss: 0, causes: [] };
-            totalPlayerInjuries[name].hpLoss += loss;
-            if (injury.cause) totalPlayerInjuries[name].causes.push(injury.cause);
-          });
+        const settlement = computeBattleSettlement({
+          prev,
+          heroes: heroesRef.current,
+          finalResult,
+          battleTroops,
+          activeEnemy,
+          battleInfo,
+          battleLocationText,
+          localRewards,
+          locations,
+          getTroopTemplate,
+          getTroopRace,
+          IMPOSTER_TROOP_IDS,
+          canHeroBattle,
+          normalizePlayerSoldiers,
+          markSoldiersWounded,
+          removeSoldiersById,
+          buildTroopsFromSoldiers,
+          buildWoundedEntriesFromSoldiers,
+          calculateXpGain
         });
-
-        const playerSide = battleTroops
-          .filter(t => (t?.count ?? 0) > 0)
-          .slice(0, 16)
-          .map(t => `${t.name}x${t.count}`)
-          .join('、') || '（无）';
-        const enemySide = (activeEnemy.troops ?? [])
-          .filter(t => (t?.count ?? 0) > 0)
-          .slice(0, 16)
-          .map(t => `${t.name}x${t.count}`)
-          .join('、') || '（无）';
-        const keyUnitDamageSummary = (() => {
-          const includedNames = new Set<string>([...Array.from(battleHeroNames), prev.name]);
-          const events = (finalResult.rounds ?? []).flatMap(round => {
-            const roundNumber = typeof round?.roundNumber === 'number' ? round.roundNumber : 0;
-            const playerInjuries = round.keyUnitDamageA ?? (round as any).heroInjuries ?? (round as any).playerInjuries ?? [];
-            const enemyInjuries = round.keyUnitDamageB ?? (round as any).enemyInjuries ?? [];
-            const mapItems = (injuries: any[], sideLabel: string, filterNames?: Set<string>) => {
-              if (!Array.isArray(injuries)) return [];
-              return injuries.map((injury: any) => {
-                const name = String(injury?.name ?? '').trim();
-                const loss = Math.max(0, Math.floor(injury?.hpLoss ?? 0));
-                const cause = String(injury?.cause ?? '').trim();
-                return { roundNumber, name, loss, cause, sideLabel };
-              }).filter(item => item.name && item.loss > 0 && (!filterNames || filterNames.has(item.name)));
-            };
-            return [
-              ...mapItems(playerInjuries, 'A', includedNames),
-              ...mapItems(enemyInjuries, 'B')
-            ];
-          });
-          if (events.length === 0) return '（无）';
-          return events
-            .slice(0, 24)
-            .map(e => `R${e.roundNumber || '?'} ${e.sideLabel}方 ${e.name}(HP -${e.loss})${e.cause ? `：${e.cause}` : ''}`)
-            .join('；');
-        })();
-
-        setRecentBattleBriefs(prevBriefs => {
-          const next: BattleBrief = {
-            day: prev.day,
-            battleLocation: battleLocationText,
-            enemyName: activeEnemy.name,
-            outcome: finalResult.outcome,
-            playerSide,
-            enemySide,
-            keyUnitDamageSummary
-          };
-          return [next, ...(Array.isArray(prevBriefs) ? prevBriefs : [])].slice(0, 3);
-        });
-
-        setWorldBattleReports(prevReports => {
-          const next: WorldBattleReport = {
-            id: `battle_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-            day: prev.day,
-            createdAt: new Date().toLocaleString('zh-CN', { hour12: false }),
-            battleLocation: battleLocationText,
-            enemyName: activeEnemy.name,
-            outcome: finalResult.outcome,
-            playerSide,
-            enemySide,
-            keyUnitDamageSummary,
-            rounds: Array.isArray(finalResult.rounds) ? finalResult.rounds.map(r => ({ ...r })) : []
-          };
-          return [next, ...(Array.isArray(prevReports) ? prevReports : [])].slice(0, 12);
-        });
-
-        // Player HP Loss Logic (only from battle report injuries)
-        const playerInjury = totalPlayerInjuries[prev.name];
-        const playerCasualtyCount = totalPlayerCasualties[prev.name] || 0;
-        let hpLoss = playerInjury?.hpLoss ?? 0;
-        if (playerCasualtyCount > 0) {
-          hpLoss = Math.max(hpLoss, prev.currentHp);
+        setPlayer(settlement.nextPlayer);
+        setHeroes(settlement.nextHeroes);
+        settlement.logs.forEach(addLog);
+        if (settlement.garrisonUpdate) {
+          const loc = locations.find(l => l.id === settlement.garrisonUpdate!.locationId);
+          if (loc) updateLocationState({ ...loc, garrison: settlement.garrisonUpdate!.garrison });
         }
-        const newHp = Math.floor(Math.max(0, prev.currentHp - hpLoss));
-        const newStatus = newHp <= 10 ? 'INJURED' : prev.status;
-
-        if (hpLoss > 0) {
-          const causeText = playerInjury?.causes?.length ? `，原因：${playerInjury.causes[0]}` : '';
-          if (newHp <= 0 || playerCasualtyCount > 0) {
-            logsToAdd.push(`你在战斗中重伤退场！${causeText}`);
-          } else {
-            logsToAdd.push(`你在战斗中受了伤 (HP -${Math.floor(hpLoss)})${causeText}`);
-          }
-        }
-        if (newStatus === 'INJURED' && prev.status !== 'INJURED') logsToAdd.push("你受了重伤，无法继续参与战斗！");
-
-        // Apply Casualties with Medicine Check
-        const medicineSaveChance = prev.attributes.medicine * 0.05;
-        const woundedRecoveryDays = Math.max(3, 8 - Math.floor((prev.attributes.medicine ?? 0) / 4));
-        const normalizedPlayer = normalizePlayerSoldiers(prev);
-        let roster = Array.isArray(normalizedPlayer.soldiers) ? normalizedPlayer.soldiers.map(s => ({ ...s })) : [];
-        const playerTroopIds = new Set(prev.troops.map(t => t.id));
-        roster = roster.map(s => {
-          if (s.status !== 'ACTIVE') return s;
-          if (!playerTroopIds.has(s.troopId)) return s;
-          const line = `Day ${prev.day} · ${activeEnemy.name} · 参战`;
-          if ((s.history ?? []).includes(line)) return s;
-          return { ...s, history: [...(s.history ?? []), line] };
-        });
-
-        let remainingCasualties = { ...totalPlayerCasualties };
-
-        // 1. Deduct from Garrison if DEFENSE_AID
-        if (battleInfo.mode === 'DEFENSE_AID' && battleInfo.targetLocationId) {
-             const loc = locations.find(l => l.id === battleInfo.targetLocationId);
-             if (loc) {
-                 const garrison = loc.garrison ?? [];
-                 const supportLimits = (battleInfo.supportTroops ?? garrison).reduce<Record<string, number>>((acc, troop) => {
-                   acc[troop.name] = (acc[troop.name] || 0) + troop.count;
-                   return acc;
-                 }, {});
-                 const updatedGarrison = garrison.map(t => {
-                     let loss = remainingCasualties[t.name] || 0;
-                     if (!supportLimits[t.name]) return t;
-                     const cap = supportLimits[t.name];
-                     const actualLoss = Math.min(t.count, loss, cap);
-                     if (actualLoss > 0) {
-                         remainingCasualties[t.name] -= actualLoss;
-                         supportLimits[t.name] -= actualLoss;
-                     }
-                     return { ...t, count: t.count - actualLoss };
-                 }).filter(t => t.count > 0);
-                 
-                 updateLocationState({ ...loc, garrison: updatedGarrison });
-             }
-        }
-
-        const deadByName: Record<string, number> = {};
-        const woundedByName: Record<string, number> = {};
-        Object.entries(remainingCasualties).forEach(([name, rawCount]) => {
-          const casualties = Math.max(0, Math.floor(rawCount || 0));
-          if (casualties <= 0) return;
-          const troop = prev.troops.find(t => t.name === name);
-          if (!troop) return;
-          const pool = roster.filter(s => s.troopId === troop.id && s.status === 'ACTIVE');
-          if (pool.length === 0) return;
-          const shuffled = [...pool].sort(() => Math.random() - 0.5).slice(0, casualties);
-          const savedIds: string[] = [];
-          const deadIds: string[] = [];
-          const causeList = totalPlayerCasualtyDetails[name]?.causes ?? [];
-          let causeIndex = 0;
-          const nextCause = () => {
-            if (causeList.length === 0) return '';
-            const cause = causeList[causeIndex % causeList.length];
-            causeIndex += 1;
-            return cause;
-          };
-          shuffled.forEach(s => {
-            if (Math.random() < medicineSaveChance) savedIds.push(s.id);
-            else deadIds.push(s.id);
-          });
-          if (savedIds.length > 0) {
-            const groups = savedIds.reduce<Record<string, string[]>>((acc, id) => {
-              const cause = nextCause();
-              const key = cause || '受伤';
-              (acc[key] ??= []).push(id);
-              return acc;
-            }, {});
-            Object.entries(groups).forEach(([cause, ids]) => {
-              const note = `Day ${prev.day} · ${activeEnemy.name} · 负伤（${formatWoundCause(cause)}）`;
-              roster = markSoldiersWounded(roster, ids, prev.day + woundedRecoveryDays, note);
-            });
-            woundedByName[name] = (woundedByName[name] ?? 0) + savedIds.length;
-          }
-          if (deadIds.length > 0) {
-            roster = removeSoldiersById(roster, deadIds);
-            deadByName[name] = (deadByName[name] ?? 0) + deadIds.length;
-          }
-        });
-
-        Object.entries(woundedByName).forEach(([name, count]) => {
-          if (count > 0) logsToAdd.push(`医术救回了 ${count} 名 ${name}（重伤，预计 ${woundedRecoveryDays} 天恢复）。`);
-        });
-        Object.entries(deadByName).forEach(([name, count]) => {
-          if (count > 0) {
-            const sampleCause = totalPlayerCasualtyDetails[name]?.causes?.[0];
-            newFallenRecords.push({
-              id: `fallen_${Date.now()}_${Math.random()}`,
-              unitName: name,
-              count,
-              day: prev.day,
-              battleName: activeEnemy.name,
-              cause: formatDeathCause(sampleCause)
-            });
-          }
-        });
-
-        const survivingTroops = buildTroopsFromSoldiers(roster);
-        const survivingTroopsMeta = survivingTroops.map(t => {
-          const tmpl = getTroopTemplate(t.id);
-          const isRoach = t.id.startsWith('roach_') || getTroopRace(t, IMPOSTER_TROOP_IDS) === 'ROACH';
-          const isMaxed = !(tmpl?.upgradeTargetId ?? t.upgradeTargetId);
-          return { troop: t, isRoach, isMaxed };
-        });
-
-        const deadHeroRecords: FallenHeroRecord[] = [];
-        const updatedHeroesBase = heroesRef.current.map(hero => {
-          if (!canHeroBattle(hero)) return hero;
-          const heroInjury = totalPlayerInjuries[hero.name];
-          let nextHero = hero;
-          if (heroInjury?.hpLoss) {
-            const newHeroHp = Math.max(0, Math.floor(hero.currentHp - heroInjury.hpLoss));
-            const status = newHeroHp / hero.maxHp >= 0.8 ? 'ACTIVE' : 'INJURED';
-            const causeText = heroInjury.causes.length > 0 ? `，原因：${heroInjury.causes[0]}` : '';
-            nextHero = { ...nextHero, currentHp: newHeroHp, status };
-            if (newHeroHp <= 0) {
-              logsToAdd.push(`${hero.name} 重伤退场！${causeText}`);
-            } else {
-              logsToAdd.push(`${hero.name} 受伤 (HP -${heroInjury.hpLoss})${causeText}`);
-            }
-          }
-          const casualtyCount = totalPlayerCasualties[hero.name] || 0;
-          if (casualtyCount > 0) {
-            nextHero = { ...nextHero, currentHp: 0, status: 'INJURED' };
-            logsToAdd.push(`${hero.name} 重伤退场！`);
-          }
-          if (nextHero.currentHp <= 0) {
-            const injurySeverity = heroInjury?.hpLoss ? Math.min(1, heroInjury.hpLoss / Math.max(1, hero.maxHp)) : 0;
-            let deathChance = 0.08 + injurySeverity * 0.1 + (casualtyCount > 0 ? 0.08 : 0);
-            deathChance *= (1 - Math.min(0.9, prev.attributes.medicine * 0.06));
-            deathChance = Math.max(0.01, Math.min(0.35, deathChance));
-            if (Math.random() < deathChance) {
-              nextHero = { ...nextHero, status: 'DEAD', currentExpression: 'DEAD', currentHp: 0 };
-              newFallenRecords.push({
-                id: `fallen_${Date.now()}_${Math.random()}`,
-                unitName: `${hero.name}（英雄）`,
-                count: 1,
-                day: prev.day,
-                battleName: activeEnemy.name,
-                cause: heroInjury?.causes?.[0] ? `英雄殒命：${heroInjury.causes[0]}` : '英雄殒命'
-              });
-              deadHeroRecords.push({
-                id: `fallen_hero_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-                hero: { ...hero, ...nextHero, recruited: false },
-                day: prev.day,
-                battleName: activeEnemy.name,
-                cause: heroInjury?.causes?.[0] ? `英雄殒命：${heroInjury.causes[0]}` : '英雄殒命'
-              });
-              logsToAdd.push(`【噩耗】${hero.name} 没能撑过这次重伤，永远离开了队伍。`);
-            }
-          }
-          return nextHero;
-        });
-
-        const eligibleTroops = survivingTroopsMeta.filter(item => !item.isRoach && !item.isMaxed);
-        const eligibleHeroes = updatedHeroesBase.filter(hero => {
-          if (!hero.recruited) return false;
-          if (hero.status === 'DEAD') return false;
-          return battleHeroNames.has(hero.name);
-        });
-        const playerEligible = prev.status === 'ACTIVE';
-        const shareCount = eligibleTroops.length + eligibleHeroes.length + (playerEligible ? 1 : 0);
-        const xpShare = shareCount > 0 ? Math.floor(localRewards.xp / shareCount) : 0;
-
-        if (xpShare > 0) {
-          roster = roster.map(s => {
-            if (s.status !== 'ACTIVE') return s;
-            const tmpl = getTroopTemplate(s.troopId);
-            const race = tmpl
-              ? getTroopRace({ id: tmpl.id, name: tmpl.name, doctrine: tmpl.doctrine, evangelist: tmpl.evangelist, race: tmpl.race })
-              : getTroopRace({ id: s.troopId, name: s.name } as any);
-            const isRoach = race === 'ROACH';
-            const isMaxed = !(tmpl?.upgradeTargetId ?? (tmpl?.upgradeTargetIds?.[0] ?? ''));
-            if (isRoach) return { ...s, xp: 0 };
-            if (isMaxed) return s;
-            return { ...s, xp: Math.min(s.maxXp, s.xp + xpShare) };
-          });
-        }
-        const nextTroopsFromRoster = buildTroopsFromSoldiers(roster);
-
-        const updatedHeroes = updatedHeroesBase.map(hero => {
-          const eligible = hero.recruited && hero.status !== 'DEAD' && battleHeroNames.has(hero.name);
-          if (!eligible || xpShare <= 0) return hero;
-          const { xp, level, attributePoints, maxXp, logs: heroLogs } = calculateXpGain(hero.xp, hero.level, hero.attributePoints, hero.maxXp, xpShare);
-          if (heroLogs.length > 0) logsToAdd.push(...heroLogs.map(log => `${hero.name}：${log}`));
-          return { ...hero, xp, level, attributePoints, maxXp };
-        });
-
-        const playerXpResult = playerEligible && xpShare > 0
-          ? calculateXpGain(prev.xp, prev.level, prev.attributePoints, prev.maxXp, xpShare)
-          : { xp: prev.xp, level: prev.level, attributePoints: prev.attributePoints, maxXp: prev.maxXp, logs: [] as string[] };
-        logsToAdd.push(...playerXpResult.logs);
-
-        setPlayer({
-          ...normalizedPlayer,
-          gold: newGold,
-          renown: newRenown,
-          soldiers: roster,
-          troops: nextTroopsFromRoster,
-          woundedTroops: buildWoundedEntriesFromSoldiers(roster, prev.day),
-          currentHp: newHp,
-          status: newStatus as 'ACTIVE' | 'INJURED',
-          fallenRecords: [...prev.fallenRecords, ...newFallenRecords],
-          fallenHeroes: [...(prev.fallenHeroes ?? []), ...deadHeroRecords],
-          xp: playerXpResult.xp,
-          level: playerXpResult.level,
-          attributePoints: playerXpResult.attributePoints,
-          maxXp: playerXpResult.maxXp
-        });
-        setHeroes(updatedHeroes.filter(h => h.status !== 'DEAD'));
-        
-        logsToAdd.forEach(addLog);
+        setRecentBattleBriefs(prevBriefs => [settlement.battleBrief, ...(Array.isArray(prevBriefs) ? prevBriefs : [])].slice(0, 3));
+        setWorldBattleReports(prevReports => [settlement.worldBattleReport, ...(Array.isArray(prevReports) ? prevReports : [])].slice(0, 12));
       }
       if (isTraining && localRewards.xp > 0) {
-        const prev = playerRef.current;
-        const eligibleTroops = prev.troops.filter(t => t.count > 0 && getTroopRace(t, IMPOSTER_TROOP_IDS) !== 'ROACH');
-        const eligibleHeroes = heroesRef.current.filter(hero => hero.recruited && canHeroBattle(hero) && hero.currentHp > 0);
-        const playerEligible = prev.currentHp > 0;
-        const shareCount = eligibleTroops.length + eligibleHeroes.length + (playerEligible ? 1 : 0);
-        const xpShare = shareCount > 0 ? Math.floor(localRewards.xp / shareCount) : 0;
-        if (xpShare > 0) {
-          const normalized = normalizePlayerSoldiers(prev);
-          let roster = Array.isArray(normalized.soldiers) ? normalized.soldiers.map(s => ({ ...s })) : [];
-          roster = roster.map(s => {
-            if (s.status !== 'ACTIVE') return s;
-            const tmpl = getTroopTemplate(s.troopId);
-            const race = tmpl
-              ? getTroopRace({ id: tmpl.id, name: tmpl.name, doctrine: tmpl.doctrine, evangelist: tmpl.evangelist, race: tmpl.race }, IMPOSTER_TROOP_IDS)
-              : getTroopRace({ id: s.troopId, name: s.name } as any, IMPOSTER_TROOP_IDS);
-            if (race === 'ROACH') return { ...s, xp: 0 };
-            return { ...s, xp: Math.min(s.maxXp, s.xp + xpShare) };
-          });
-          const nextTroops = buildTroopsFromSoldiers(roster);
-          const updatedHeroes = heroesRef.current.map(hero => {
-            if (!hero.recruited) return hero;
-            if (!canHeroBattle(hero) || hero.currentHp <= 0) return hero;
-            const { xp, level, attributePoints, maxXp } = calculateXpGain(hero.xp, hero.level, hero.attributePoints, hero.maxXp, xpShare);
-            return { ...hero, xp, level, attributePoints, maxXp };
-          });
-          const playerXpResult = playerEligible
-            ? calculateXpGain(prev.xp, prev.level, prev.attributePoints, prev.maxXp, xpShare)
-            : { xp: prev.xp, level: prev.level, attributePoints: prev.attributePoints, maxXp: prev.maxXp };
-          setPlayer(current => ({
-            ...current,
-            troops: nextTroops,
-            soldiers: roster,
-            woundedTroops: buildWoundedEntriesFromSoldiers(roster, prev.day),
-            xp: playerXpResult.xp,
-            level: playerXpResult.level,
-            attributePoints: playerXpResult.attributePoints,
-            maxXp: playerXpResult.maxXp
-          }));
-          setHeroes(updatedHeroes);
-          addLog(`训练场演练结束，获得经验 +${localRewards.xp}（每单位分配 ${xpShare}）。`);
+        const trainingResult = computeTrainingXpRewards({
+          prev: playerRef.current,
+          heroes: heroesRef.current,
+          xpAmount: localRewards.xp,
+          getTroopTemplate,
+          getTroopRace,
+          IMPOSTER_TROOP_IDS,
+          canHeroBattle,
+          normalizePlayerSoldiers,
+          buildTroopsFromSoldiers,
+          buildWoundedEntriesFromSoldiers,
+          calculateXpGain
+        });
+        if (trainingResult) {
+          setPlayer(trainingResult.nextPlayer);
+          setHeroes(trainingResult.nextHeroes);
+          addLog(trainingResult.log);
         }
       }
 
@@ -10863,422 +8437,44 @@ export default function App() {
   );
 
   const renderDecisionModal = () => {
-    const active = pendingDecisions[0] ?? null;
-    if (!active) return null;
-    if (isBattling || view === 'BATTLE' || view === 'BATTLE_RESULT' || view === 'MAIN_MENU' || view === 'INTRO' || view === 'ENDING' || view === 'GAME_OVER') return null;
-    const loc = locations.find(l => l.id === active.locationId) ?? null;
-    const shift = () => setPendingDecisions(prev => prev.slice(1));
-    const clampPct = (v: number) => Math.max(0, Math.min(100, Math.floor(v)));
-    const now = Date.now();
-    const createdAt = new Date(now).toLocaleString('zh-CN', { hour12: false });
-
-    if (active.kind === 'CITY_RELIGION') {
-      if (!loc || loc.type !== 'CITY') return null;
-      const faithNow = clampPct(loc.religion?.faith ?? 0);
-      const baseDelta = Math.floor(Number(active.baseDelta ?? 0));
-      const hasChapel = (loc.buildings ?? []).includes('CHAPEL');
-      const suppressCostRaw = 90 + Math.abs(baseDelta) * 22 + Math.floor(faithNow * 0.3);
-      const suppressCost = Math.max(20, Math.floor(suppressCostRaw * (hasChapel ? 0.9 : 1)));
-      const canSuppress = player.gold >= suppressCost;
-      const heroesHere = heroes.filter(h => h.recruited && h.status !== 'DEAD');
-      const hero = heroesHere.find(h => h.id === decisionHeroId) ?? heroesHere[0] ?? null;
-
-      const applyFaithDelta = (delta: number, reason: string, heroId?: string) => {
-        const nextFaith = clampPct(faithNow + delta);
-        setLocations(prev => prev.map(l => {
-          if (l.id !== loc.id) return l;
-          const currentFaith = clampPct(l.religion?.faith ?? 0);
-          const faithAfter = clampPct(currentFaith + delta);
-          const localLogs = Array.isArray(l.localLogs) ? l.localLogs : [];
-          const text = `传教事件处理：${reason}（${delta >= 0 ? `+${delta}%` : `${delta}%`}，现 ${faithAfter}%）。`;
-          const nextLocalLogs = localLogs.length > 0 && localLogs[0].text === text ? localLogs : [{ day: active.day, text }, ...localLogs].slice(0, 30);
-          return { ...l, localLogs: nextLocalLogs, religion: { ...(l.religion ?? { faith: 0 }), faith: faithAfter, started: true, lastEventDay: active.day } };
-        }));
-        setCurrentLocation(prev => {
-          if (!prev || prev.id !== loc.id) return prev;
-          const currentFaith = clampPct(prev.religion?.faith ?? 0);
-          const faithAfter = clampPct(currentFaith + delta);
-          return { ...prev, religion: { ...(prev.religion ?? { faith: 0 }), faith: faithAfter, started: true, lastEventDay: active.day } };
-        });
-        addLog(`【传教事件】${loc.name}：${reason}（现 ${nextFaith}%）。`);
-        if (heroId) {
-          setHeroes(prev => prev.map(h => {
-            if (h.id !== heroId) return h;
-            const mem: HeroPermanentMemory = {
-              id: `faith_evt_${now}_${Math.floor(Math.random() * 10000)}`,
-              text: `传教事件：${loc.name}｜${reason}`,
-              createdAt,
-              createdDay: playerRef.current.day,
-              roundIndex: playerRef.current.day
-            };
-            return { ...h, permanentMemory: [mem, ...(h.permanentMemory ?? [])].slice(0, 24) };
-          }));
-        }
-      };
-
-      return (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-stone-900 border border-stone-700 rounded shadow-2xl p-6 space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-lg font-bold text-stone-200">{active.title}</div>
-                <div className="text-xs text-stone-500 mt-1">第 {active.day} 天 · {loc.name}</div>
-              </div>
-              <button
-                onClick={() => {
-                  const extra = baseDelta < 0 && Math.random() < (hasChapel ? 0.2 : 0.35) ? (hasChapel ? -1 : -2) : 0;
-                  applyFaithDelta(baseDelta + extra, '放任不管');
-                  shift();
-                }}
-                className="text-stone-400 hover:text-white"
-              >
-                跳过处理
-              </button>
-            </div>
-            <pre className="whitespace-pre-wrap text-sm text-stone-300 bg-black/30 border border-stone-800 rounded p-4">{active.description}</pre>
-            <div className="flex flex-col md:flex-row gap-2 justify-end">
-              <Button
-                variant="secondary"
-                onClick={() => {
-                  const extra = baseDelta < 0 && Math.random() < (hasChapel ? 0.2 : 0.35) ? (hasChapel ? -1 : -2) : 0;
-                  applyFaithDelta(baseDelta + extra, '放任不管');
-                  shift();
-                }}
-              >
-                放任不管
-              </Button>
-              <Button
-                variant="secondary"
-                disabled={!canSuppress}
-                onClick={() => {
-                  if (!canSuppress) return;
-                  const delta = baseDelta < 0 ? Math.ceil(baseDelta * (hasChapel ? 0.35 : 0.5)) : baseDelta;
-                  setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - suppressCost) }));
-                  applyFaithDelta(delta, `花钱镇压（-${suppressCost}）`);
-                  shift();
-                }}
-              >
-                花钱镇压（{suppressCost}）
-              </Button>
-              <div className="flex items-center gap-2">
-                <select
-                  value={hero?.id ?? ''}
-                  onChange={(e) => setDecisionHeroId(e.target.value)}
-                  className="bg-stone-950 border border-stone-700 rounded px-2 py-2 text-sm text-stone-200"
-                  disabled={heroesHere.length === 0}
-                >
-                  {heroesHere.map(h => (
-                    <option key={h.id} value={h.id}>{h.name} Lv.{h.level}</option>
-                  ))}
-                </select>
-                <Button
-                  variant="gold"
-                  disabled={!hero}
-                  onClick={() => {
-                    if (!hero) return;
-                    const bonus = Math.floor((hero.level ?? 0) / 8);
-                    const delta = baseDelta < 0 ? Math.max(1, Math.floor(Math.abs(baseDelta) / 2) + 1 + bonus) : (baseDelta + 2 + bonus);
-                    applyFaithDelta(delta, `派 ${hero.name} 讲道`, hero.id);
-                    shift();
-                  }}
-                >
-                  派英雄讲道
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    if (active.kind === 'HIDEOUT_GOV') {
-      if (!loc || loc.type !== 'HIDEOUT' || loc.owner !== 'PLAYER' || !loc.hideout) return null;
-      const gov = loc.hideout.governance ?? { stability: 60, productivity: 55, prosperity: 50, harmony: 55 };
-      const relationImpact = (active as any)?.payload?.relationImpact as { raceId: RaceId; onlyTwoChoices?: boolean } | null;
-      const relationLabel = relationImpact ? RACE_LABELS[relationImpact.raceId] : '';
-      const applyGov = (delta: { stability: number; productivity: number; prosperity: number; harmony: number }, cost: number, label: string) => {
-        if (cost > 0) setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - cost) }));
-        const nextGov = {
-          stability: clampPct(gov.stability + delta.stability),
-          productivity: clampPct(gov.productivity + delta.productivity),
-          prosperity: clampPct(gov.prosperity + delta.prosperity),
-          harmony: clampPct(gov.harmony + delta.harmony),
-          lastEventDay: active.day,
-          nextEventDay: gov.nextEventDay
-        };
-        setLocations(prev => prev.map(l => {
-          if (l.id !== loc.id || l.type !== 'HIDEOUT' || !l.hideout) return l;
-          const localLogs = Array.isArray(l.localLogs) ? l.localLogs : [];
-          const text = `内政处理：${label}（稳${delta.stability >= 0 ? `+${delta.stability}` : delta.stability} 产${delta.productivity >= 0 ? `+${delta.productivity}` : delta.productivity} 繁${delta.prosperity >= 0 ? `+${delta.prosperity}` : delta.prosperity} 和${delta.harmony >= 0 ? `+${delta.harmony}` : delta.harmony}）`;
-          const nextLocalLogs = localLogs.length > 0 && localLogs[0].text === text ? localLogs : [{ day: active.day, text }, ...localLogs].slice(0, 30);
-          return { ...l, localLogs: nextLocalLogs, hideout: { ...l.hideout, governance: nextGov } };
-        }));
-        setCurrentLocation(prev => {
-          if (!prev || prev.id !== loc.id || prev.type !== 'HIDEOUT' || !prev.hideout) return prev;
-          return { ...prev, hideout: { ...prev.hideout, governance: nextGov } };
-        });
-        addLog(`【内政】${loc.name}：${label}。`);
-        const rebellionRisk = nextGov.stability <= 15 ? 0.28 : nextGov.stability <= 20 ? 0.15 : 0;
-        if (rebellionRisk > 0 && Math.random() < rebellionRisk) {
-          const rebelCount = Math.max(10, Math.min(120, Math.floor((100 - nextGov.stability) * 0.9 + nextGov.productivity * 0.35 + nextGov.prosperity * 0.25)));
-          const mix = [
-            { id: 'militia', ratio: 0.55 },
-            { id: 'peasant', ratio: 0.25 },
-            { id: 'archer', ratio: 0.12 },
-            { id: 'footman', ratio: 0.08 }
-          ];
-          const troops = mix
-            .map(x => ({ ...x, count: Math.max(1, Math.floor(rebelCount * x.ratio)) }))
-            .filter(x => x.count > 0)
-            .map(x => createTroop(x.id as any, x.count));
-          const enemy: EnemyForce = {
-            id: `hideout_rebellion_${Date.now()}`,
-            name: '叛军',
-            description: '内政失衡引发的叛乱。你必须亲自镇压，否则隐匿点将被夺走。',
-            troops,
-            difficulty: nextGov.stability <= 15 ? '困难' : '中等',
-            lootPotential: 0.2,
-            terrain: loc.terrain,
-            baseTroopId: troops[0]?.id ?? 'militia'
-          };
-          setActiveEnemy(enemy);
-          setPendingBattleMeta({ mode: 'FIELD', targetLocationId: loc.id, siegeContext: 'HIDEOUT_REBELLION' });
-          setPendingBattleIsTraining(false);
-          addLog(`【叛乱】${loc.name} 爆发叛乱！准备迎战。`);
-          setView('BATTLE');
-        }
-      };
-      const applyRelation = (delta: number, label: string) => {
-        if (!relationImpact || !delta) return;
-        updateRelation('RACE', relationImpact.raceId, delta, `内政处理：${label}（${relationLabel}）`);
-      };
-      const costRelief = 140;
-      const costMediate = 80;
-      const canRelief = player.gold >= costRelief;
-      const canMediate = player.gold >= costMediate;
-      const onlyTwoChoices = !!relationImpact?.onlyTwoChoices;
-
-      return (
-        <div className="fixed inset-0 z-50 bg-black/80 flex items-center justify-center p-4">
-          <div className="w-full max-w-2xl bg-stone-900 border border-stone-700 rounded shadow-2xl p-6 space-y-4">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-lg font-bold text-stone-200">{active.title}</div>
-                <div className="text-xs text-stone-500 mt-1">第 {active.day} 天 · {loc.name}</div>
-              </div>
-              <button
-                onClick={() => {
-                  applyGov({ stability: -2, productivity: 0, prosperity: 0, harmony: -1 }, 0, '观望不决');
-                  if (relationImpact) applyRelation(-4, '观望不决');
-                  shift();
-                }}
-                className="text-stone-400 hover:text-white"
-              >
-                跳过处理
-              </button>
-            </div>
-            <pre className="whitespace-pre-wrap text-sm text-stone-300 bg-black/30 border border-stone-800 rounded p-4">{active.description}</pre>
-            <div className="flex flex-col md:flex-row gap-2 justify-end">
-              {onlyTwoChoices ? (
-                <>
-                  <Button
-                    variant="secondary"
-                    disabled={!canMediate}
-                    onClick={() => {
-                      if (!canMediate) return;
-                      applyGov({ stability: 6, productivity: -2, prosperity: 0, harmony: 8 }, costMediate, `安抚使者（-${costMediate}）`);
-                      applyRelation(10, '安抚使者');
-                      shift();
-                    }}
-                  >
-                    安抚使者（{costMediate}）
-                  </Button>
-                  <Button
-                    variant="gold"
-                    onClick={() => {
-                      applyGov({ stability: -6, productivity: 6, prosperity: 3, harmony: -6 }, 0, '强硬清剿');
-                      applyRelation(-10, '强硬清剿');
-                      shift();
-                    }}
-                  >
-                    强硬清剿
-                  </Button>
-                </>
-              ) : (
-                <>
-                  <Button
-                    variant="secondary"
-                    disabled={!canRelief}
-                    onClick={() => {
-                      if (!canRelief) return;
-                      applyGov({ stability: 10, productivity: -3, prosperity: -1, harmony: 4 }, costRelief, `安抚民心（-${costRelief}）`);
-                      applyRelation(8, '安抚民心');
-                      shift();
-                    }}
-                  >
-                    安抚民心（{costRelief}）
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      applyGov({ stability: -9, productivity: 8, prosperity: 5, harmony: -2 }, 0, '强化生产');
-                      applyRelation(-8, '强化生产');
-                      shift();
-                    }}
-                  >
-                    强化生产
-                  </Button>
-                  <Button
-                    variant="gold"
-                    disabled={!canMediate}
-                    onClick={() => {
-                      if (!canMediate) return;
-                      applyGov({ stability: 3, productivity: -2, prosperity: 0, harmony: 10 }, costMediate, `调停冲突（-${costMediate}）`);
-                      applyRelation(4, '调停冲突');
-                      shift();
-                    }}
-                  >
-                    调停冲突（{costMediate}）
-                  </Button>
-                </>
-              )}
-            </div>
-          </div>
-        </div>
-      );
-    }
-
-    return null;
+    return (
+      <DecisionOverlay
+        pendingDecisions={pendingDecisions}
+        isBlockedByView={isBattling || view === 'BATTLE' || view === 'BATTLE_RESULT' || view === 'MAIN_MENU' || view === 'INTRO' || view === 'ENDING' || view === 'GAME_OVER'}
+        locations={locations}
+        heroes={heroes}
+        player={player}
+        decisionHeroId={decisionHeroId}
+        setDecisionHeroId={setDecisionHeroId}
+        setPendingDecisions={setPendingDecisions}
+        setLocations={setLocations}
+        setCurrentLocation={setCurrentLocation}
+        setPlayer={setPlayer}
+        setHeroes={setHeroes}
+        setActiveEnemy={setActiveEnemy}
+        setPendingBattleMeta={setPendingBattleMeta}
+        setPendingBattleIsTraining={setPendingBattleIsTraining}
+        addLog={addLog}
+        onUpdateRelation={updateRelation}
+        onEnterBattle={() => setView('BATTLE')}
+        playerRef={playerRef}
+      />
+    );
   };
 
   const renderBattleSimulation = () => {
     const leftTroops = (battleSnapshot?.playerTroops ?? player.troops ?? []).filter(t => (t.count ?? 0) > 0);
     const rightTroops = (battleSnapshot?.enemyTroops ?? activeEnemy?.troops ?? []).filter(t => (t.count ?? 0) > 0);
-    const leftMax = Math.max(1, ...leftTroops.map(t => t.count ?? 0));
-    const rightMax = Math.max(1, ...rightTroops.map(t => t.count ?? 0));
     return (
-      <div className="fixed inset-0 bg-black/90 z-50 flex flex-col items-center justify-center text-center p-4">
-        {battleError ? (
-          <div className="animate-fade-in flex flex-col items-center">
-            <AlertTriangle size={64} className="text-red-500 mb-6" />
-            <h2 className="text-3xl font-serif font-bold text-red-500 mb-4">战局推演失败</h2>
-            <p className="text-stone-400 max-w-md mb-8">{battleError}</p>
-            <div className="flex gap-4">
-              <Button onClick={() => setBattleError(null)} variant="secondary">
-                取消
-              </Button>
-              <Button onClick={() => setIsSettingsOpen(true)} variant="secondary">
-                设置
-              </Button>
-              <Button
-                onClick={() => startBattle(currentLocation?.type === 'TRAINING_GROUNDS', battleMeta ?? undefined)}
-                size="lg"
-                className="flex items-center gap-2"
-              >
-                <RefreshCw size={20}/> 重试
-              </Button>
-            </div>
-          </div>
-        ) : (
-          <>
-            <div className="w-full max-w-5xl bg-stone-950/40 border border-stone-800 rounded p-4 mb-6 relative overflow-hidden">
-              <style>{`
-                @keyframes battleArrow {
-                  0% { transform: translateX(0); opacity: 0; }
-                  15% { opacity: 1; }
-                  100% { transform: translateX(220px); opacity: 0; }
-                }
-                @keyframes battleArrowReverse {
-                  0% { transform: translateX(0); opacity: 0; }
-                  15% { opacity: 1; }
-                  100% { transform: translateX(-220px); opacity: 0; }
-                }
-                @keyframes battleSpark {
-                  0% { transform: scale(0.6); opacity: 0; }
-                  30% { opacity: 1; }
-                  100% { transform: scale(1.2); opacity: 0; }
-                }
-                @keyframes battleCharge {
-                  0%, 100% { transform: translateX(0); }
-                  50% { transform: translateX(8px); }
-                }
-              `}</style>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-center">
-                <div className="space-y-2 max-h-[320px] overflow-auto pr-2">
-                  <div className="text-xs text-red-300">红方</div>
-                  {leftTroops.length === 0 ? (
-                    <div className="text-xs text-stone-500">无可见部队</div>
-                  ) : (
-                    leftTroops.map(t => (
-                      <div key={`left_${t.id}`} className="text-left">
-                        <div className="text-xs text-stone-200 truncate">{t.name ?? t.id} · {t.count}</div>
-                        <div className="h-1 bg-red-900/40 rounded">
-                          <div className="h-full bg-red-400/80 rounded animate-pulse" style={{ width: `${Math.max(6, Math.round((t.count ?? 0) / leftMax * 100))}%` }} />
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-                <div className="relative flex flex-col items-center justify-center gap-2">
-                  <div className="text-4xl animate-bounce">⚔</div>
-                  <div className="text-xs text-stone-500">交战演算中</div>
-                  <div className="relative w-full h-28 mt-2">
-                    <div className="absolute left-2 top-2 text-xs text-red-300 animate-[battleCharge_1.2s_ease-in-out_infinite]">冲锋</div>
-                    <div className="absolute right-2 bottom-2 text-xs text-blue-300 animate-[battleCharge_1.2s_ease-in-out_infinite]">迎战</div>
-                    {[0, 1, 2, 3, 4, 5].map(i => (
-                      <span
-                        key={`arrow_l_${i}`}
-                        className="absolute left-2 text-red-300 text-sm"
-                        style={{ top: `${12 + i * 14}px`, animation: `battleArrow ${0.8 + i * 0.1}s linear ${i * 0.15}s infinite` }}
-                      >
-                        ➶
-                      </span>
-                    ))}
-                    {[0, 1, 2, 3, 4, 5].map(i => (
-                      <span
-                        key={`arrow_r_${i}`}
-                        className="absolute right-2 text-blue-300 text-sm"
-                        style={{ top: `${18 + i * 14}px`, animation: `battleArrowReverse ${0.8 + i * 0.1}s linear ${i * 0.12}s infinite` }}
-                      >
-                        ➷
-                      </span>
-                    ))}
-                    {[0, 1, 2, 3].map(i => (
-                      <span
-                        key={`spark_${i}`}
-                        className="absolute left-1/2 text-amber-300 text-lg"
-                        style={{ top: `${20 + i * 18}px`, animation: `battleSpark ${0.6 + i * 0.2}s ease-in-out ${i * 0.1}s infinite` }}
-                      >
-                        ✦
-                      </span>
-                    ))}
-                  </div>
-                </div>
-                <div className="space-y-2 max-h-[320px] overflow-auto pl-2">
-                  <div className="text-xs text-blue-300">蓝方</div>
-                  {rightTroops.length === 0 ? (
-                    <div className="text-xs text-stone-500">无可见部队</div>
-                  ) : (
-                    rightTroops.map(t => (
-                      <div key={`right_${t.id}`} className="text-right">
-                        <div className="text-xs text-stone-200 truncate">{t.name ?? t.id} · {t.count}</div>
-                        <div className="h-1 bg-blue-900/40 rounded">
-                          <div className="h-full bg-blue-400/80 rounded animate-pulse ml-auto" style={{ width: `${Math.max(6, Math.round((t.count ?? 0) / rightMax * 100))}%` }} />
-                        </div>
-                      </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-            <h2 className="text-3xl font-serif text-amber-500 mb-2">正在推演战局...</h2>
-            <div className="text-xs text-stone-500 mb-3">传输方式：{isBattleStreaming ? '流式' : '一次性'}</div>
-            <p className="text-stone-400 italic max-w-md animate-pulse">
-              "战争的胜负往往在第一支箭射出之前就已经注定了。"
-            </p>
-          </>
-        )}
-      </div>
+      <BattleSimulationOverlay
+        battleError={battleError}
+        leftTroops={leftTroops}
+        rightTroops={rightTroops}
+        isBattleStreaming={isBattleStreaming}
+        onCancelError={() => setBattleError(null)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        onRetry={() => startBattle(currentLocation?.type === 'TRAINING_GROUNDS', battleMeta ?? undefined)}
+      />
     );
   };
 
@@ -11362,6 +8558,29 @@ export default function App() {
     };
   })();
 
+  const handleIntroFinish = () => {
+    const hideout = locations.find(l => l.id === 'hideout_underground') ?? null;
+    setPlayer(prev => ({
+      ...prev,
+      story: {
+        ...(prev.story ?? {}),
+        introSeen: true,
+        mainQuest: prev.story?.mainQuest ?? 'CLEANSE_PORTALS',
+        mainQuestStage: Math.max(1, prev.story?.mainQuestStage ?? 0)
+      },
+      position: hideout?.coordinates ?? prev.position
+    }));
+    addLog('【主线】清理传送门周边的伪人活动，封堵异常源头。');
+    addLog('提示：传送门据点会不断酝酿新的袭击，围绕它们建立据点、清剿外溢，是回家的唯一线索。');
+    if (hideout) {
+      setCurrentLocation(hideout);
+      setTownTab('HIDEOUT');
+      setView('TOWN');
+    } else {
+      setView('MAP');
+    }
+  };
+
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-sans selection:bg-amber-900 selection:text-white overflow-hidden flex flex-col">
       {view !== 'MAIN_MENU' && view !== 'INTRO' && view !== 'ENDING' && view !== 'GAME_OVER' && view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INSPECT' && (
@@ -11384,320 +8603,236 @@ export default function App() {
         />
       )}
       
-      <main className={view === 'MAP' || view === 'HERO_CHAT' || view === 'MAIN_MENU' ? "flex-1 w-full flex" : "flex-1 container mx-auto pb-8 pt-4"}>
-        {view === 'MAIN_MENU' && (
-          <MainMenuView
-            saves={saveSlots}
-            selectedSaveId={selectedSaveId}
-            onSelectSave={(id) => setSelectedSaveId(id)}
-            onDeleteSave={(id) => deleteSaveSlot(id)}
-            onNewGame={startNewGame}
-            onContinue={(preferredId) => loadSaveSlot(preferredId)}
-            onCreateBlankSave={createBlankSaveSlot}
-            endings={[
-              { id: 'PORTAL_CLEARED', title: '封堵裂隙', subtitle: '你夺回了回家的门。' },
-              { id: 'NEW_COVENANT', title: '诸神黄昏后的新约', subtitle: '你把信仰写进废土。' },
-              { id: 'HIDEOUT_FALLEN', title: '隐匿点沦陷', subtitle: '最后退路被异常吞没。' },
-              { id: 'HIDEOUT_REBELLION', title: '叛军夺取隐匿点', subtitle: '内政失衡，地下燃起反旗。' },
-              { id: 'ALL_DIED', title: '无名之死', subtitle: '队伍覆灭，传说终止。' }
-            ]}
-            onReplayEnding={(endingId) => {
-              setEndingReturnView('MAIN_MENU');
-              setPortalEndingChoiceMade(true);
-              setPlayer(prev => ({
-                ...prev,
-                story: {
-                  ...(prev.story ?? {}),
-                  endingId,
-                  gameOverReason: endingId
-                }
-              }));
-              setView('ENDING');
-            }}
-          />
-        )}
-        {view === 'BILLS' && (
-          <BillsView
-            player={player}
-            locations={locations}
-            getTroopTemplate={getTroopTemplate}
-            onBack={() => setView('MAP')}
-          />
-        )}
-        {view === 'MAP' && (
-          <BigMapView
-            zoom={zoom}
-            camera={camera}
-            locations={locations}
-            player={player}
-            workState={workState}
-            miningState={miningState}
-            roachLureState={roachLureState}
-            habitatStayState={habitatStayState}
-            hideoutStayState={hideoutStayState}
-            onAbortWork={() => {
-              if (!workState?.isActive) return;
-              const ratio = workState.totalDays > 0 ? workState.daysPassed / workState.totalDays : 0;
-              const earned = ratio < 0.5 ? 0 : Math.max(0, Math.floor(workState.totalPay / 5));
-              if (earned > 0) setPlayer(prev => ({ ...prev, gold: prev.gold + earned }));
-              addLog(earned > 0 ? `你中止了委托，领取了 ${earned} 第纳尔。` : '你中止了委托，但进度不足一半，拿不到报酬。');
-              setWorkState(null);
-            }}
-            onAbortMining={() => {
-              if (!miningState?.isActive) return;
-              addLog('你中止了采矿。');
-              setMiningState(null);
-            }}
-            onAbortRoachLure={() => {
-              if (!roachLureState?.isActive) return;
-              addLog('你中止了吸引蟑螂。');
-              setRoachLureState(null);
-            }}
-            onAbortHabitat={() => {
-              if (!habitatStayState?.isActive) return;
-              addLog('你中止了栖息。');
-              setHabitatStayState(null);
-            }}
-            onAbortHideoutStay={() => {
-              if (!hideoutStayState?.isActive) return;
-              addLog('你中止了停留。');
-              setHideoutStayState(null);
-            }}
-            hoveredLocation={hoveredLocation}
-            mousePos={mousePos}
-            mapRef={mapRef}
-            handleMouseDown={handleMouseDown}
-            handleMouseMove={handleMouseMove}
-            handleMouseUp={handleMouseUp}
-            moveTo={moveTo}
-            setHoveredLocation={setHoveredLocation}
-          />
-        )}
-        {view === 'ENDING' && (
-          (endingKey === 'PORTAL_CLEARED' && newCovenantAvailable && !portalEndingChoiceMade) ? (
-            <div className="fixed inset-0 z-50 bg-black flex items-center justify-center p-4">
-              <div className="w-full max-w-2xl bg-stone-900 border border-stone-700 rounded shadow-2xl p-6 space-y-4">
-                <div className="text-2xl font-serif text-amber-400">终章：门</div>
-                <div className="text-sm text-stone-400 leading-relaxed">
-                  你攻破了伪人传送门。门在发光，但城市里的信仰也在发声。
-                </div>
-                <div className="bg-black/30 border border-stone-800 rounded p-4 space-y-2">
-                  <div className="text-stone-200 font-bold">可选结局</div>
-                  <div className="text-xs text-stone-500">满足条件：所有城市信教比例 ≥ 90%</div>
-                </div>
-                <div className="flex flex-col md:flex-row gap-3 justify-end">
-                  <Button
-                    variant="secondary"
-                    onClick={() => {
-                      setPortalEndingChoiceMade(true);
-                    }}
-                  >
-                    选择正常结局
-                  </Button>
-                  <Button
-                    variant="gold"
-                    onClick={() => {
-                      setPortalEndingChoiceMade(true);
-                      setPlayer(prev => ({
-                        ...prev,
-                        story: {
-                          ...(prev.story ?? {}),
-                          endingId: 'NEW_COVENANT',
-                          gameOverReason: 'NEW_COVENANT'
-                        }
-                      }));
-                    }}
-                  >
-                    选择宗教结局：诸神黄昏后的新约
-                  </Button>
-                </div>
-              </div>
-            </div>
-          ) : (
-            <EndingCinematicView
-              title={endingContent.title}
-              subtitle={endingContent.subtitle}
-              lines={endingContent.lines}
-              onFinish={() => setView(endingReturnView)}
-            />
-          )
-        )}
-        {view === 'INTRO' && (
-          <IntroCinematicView
-            onFinish={() => {
-              const hideout = locations.find(l => l.id === 'hideout_underground') ?? null;
-              setPlayer(prev => ({
-                ...prev,
-                story: {
-                  ...(prev.story ?? {}),
-                  introSeen: true,
-                  mainQuest: prev.story?.mainQuest ?? 'CLEANSE_PORTALS',
-                  mainQuestStage: Math.max(1, prev.story?.mainQuestStage ?? 0)
-                },
-                position: hideout?.coordinates ?? prev.position
-              }));
-              addLog('【主线】清理传送门周边的伪人活动，封堵异常源头。');
-              addLog('提示：传送门据点会不断酝酿新的袭击，围绕它们建立据点、清剿外溢，是回家的唯一线索。');
-              if (hideout) {
-                setCurrentLocation(hideout);
-                setTownTab('HIDEOUT');
-                setView('TOWN');
-              } else {
-                setView('MAP');
+      <AppMainContent
+        view={view}
+        mainMenuProps={{
+          saves: saveSlots,
+          selectedSaveId,
+          onSelectSave: (id) => setSelectedSaveId(id),
+          onDeleteSave: (id) => deleteSaveSlot(id),
+          onNewGame: startNewGame,
+          onContinue: (preferredId) => loadSaveSlot(preferredId),
+          onCreateBlankSave: createBlankSaveSlot,
+          endings: [
+            { id: 'PORTAL_CLEARED', title: '封堵裂隙', subtitle: '你夺回了回家的门。' },
+            { id: 'NEW_COVENANT', title: '诸神黄昏后的新约', subtitle: '你把信仰写进废土。' },
+            { id: 'HIDEOUT_FALLEN', title: '隐匿点沦陷', subtitle: '最后退路被异常吞没。' },
+            { id: 'HIDEOUT_REBELLION', title: '叛军夺取隐匿点', subtitle: '内政失衡，地下燃起反旗。' },
+            { id: 'ALL_DIED', title: '无名之死', subtitle: '队伍覆灭，传说终止。' }
+          ],
+          onReplayEnding: (endingId) => {
+            setEndingReturnView('MAIN_MENU');
+            setPortalEndingChoiceMade(true);
+            setPlayer(prev => ({
+              ...prev,
+              story: {
+                ...(prev.story ?? {}),
+                endingId,
+                gameOverReason: endingId
               }
-            }}
-          />
-        )}
-        {view === 'RELATIONS' && renderRelations()}
-        {view === 'WORLD_BOARD' && renderWorldBoard()}
-        {view === 'TROOP_ARCHIVE' && renderTroopArchive()}
-        {view === 'TOWN' && (
-          <TownView
-            townState={{
-              currentLocation,
-              locations,
-              lords,
-              player,
-              heroes,
-              heroDialogue,
-              townTab,
-              workDays,
-              miningDays,
-              roachLureDays,
-              hideoutStayDays,
-              workState,
-              miningState,
-              roachLureState,
-              habitatStayState,
-              hideoutStayState,
-              altarRecruitDays,
-              altarRecruitState,
-              forgeTroopIndex,
-              forgeEnchantmentId,
-              undeadDialogue,
-              undeadChatInput,
-              isUndeadChatLoading,
-              altarDialogues,
-              altarDrafts,
-              altarProposals,
-              isAltarLoading,
-              aiProvider,
-              doubaoApiKey,
-              geminiApiKey,
-              openAIBaseUrl,
-              openAIKey,
-              openAIModel,
-              recentLogs: logs.slice(0, 12),
-              playerReligionName: getPlayerReligion()?.religionName ?? null
-            }}
-            townActions={{
-              setHeroDialogue,
-              setHeroes,
-              addLog,
-              setTownTab,
-              setWorkDays,
-              setMiningDays,
-              setRoachLureDays,
-              setHideoutStayDays,
-              setWorkState,
-              setMiningState,
-              setRoachLureState,
-              setHabitatStayState,
-              setHideoutStayState,
-              setAltarRecruitDays,
-              setAltarRecruitState,
-              setForgeTroopIndex,
-              setForgeEnchantmentId,
-              setUndeadChatInput,
-              sendToUndead,
-              setAltarDialogues,
-              setAltarDrafts,
-              setAltarProposals,
-              setIsAltarLoading,
-              applyAltarProposal,
-              startSiegeBattle,
-              handleRecruitOffer,
-              updateLocationState,
-              setPlayer,
-              onRecruitHero: handleRecruitHeroRelation,
-              onLordProvoked: handleLordProvoked,
-              setActiveEnemy,
-              setPendingBattleMeta,
-              setPendingBattleIsTraining,
-              onDefenseAidJoin: handleDefenseAidJoin,
-              onBackToMap: () => setView('MAP'),
-              onEnterBattle: () => setView('BATTLE'),
-              updateLord,
-              onPreachInCity: preachInCity,
-              onInspectHideout: (layerIndex) => {
-                const hideout = currentLocation?.hideout;
-                const maxLayer = Math.max(0, (hideout?.layers?.length ?? 1) - 1);
-                const safe = Math.max(0, Math.min(maxLayer, Math.floor(layerIndex || 0)));
-                setHideoutInspectLayerIndex(safe);
-                setView('HIDEOUT_INSPECT');
-              },
-              onConsumeRecompilerSoldier: consumeRecompilerSoldier
-            }}
-            townDerived={{
-              playerRef,
-              undeadChatListRef,
-              altarChatListRef,
-              getBelieverStats,
-              getMaxTroops,
-              getTroopTemplate,
-              buildGarrisonTroops,
-              getGarrisonCount,
-              getGarrisonLimit,
-              getLocationDefenseDetails,
-              getSiegeEngineName,
-              siegeEngineOptions,
-              isBattling,
-              calculatePower,
-              getHeroRoleLabel,
-              enchantmentRecipes: ENCHANTMENT_RECIPES,
-              mineralMeta: MINERAL_META,
-              mineralPurityLabels: MINERAL_PURITY_LABELS,
-              mineConfigs: MINE_CONFIGS,
-              initialMinerals: INITIAL_PLAYER_STATE.minerals,
-              buildingOptions,
-              getBuildingName,
-              processDailyCycle
-            }}
-          />
-        )}
-        {view === 'HIDEOUT_INSPECT' && currentLocation && currentLocation.type === 'HIDEOUT' && (
-          <HideoutInspectView
-            location={currentLocation}
-            heroes={heroes}
-            initialLayerIndex={hideoutInspectLayerIndex}
-            onLayerChange={(index) => {
-              const hideout = currentLocation.hideout;
-              if (!hideout) return;
-              const maxLayer = Math.max(0, (hideout.layers?.length ?? 1) - 1);
-              const safe = Math.max(0, Math.min(maxLayer, Math.floor(index || 0)));
+            }));
+            setView('ENDING');
+          }
+        }}
+        billsProps={{
+          player,
+          locations,
+          getTroopTemplate,
+          onBack: () => setView('MAP')
+        }}
+        mapProps={{
+          zoom,
+          camera,
+          locations,
+          player,
+          workState,
+          miningState,
+          roachLureState,
+          habitatStayState,
+          hideoutStayState,
+          hoveredLocation,
+          mousePos,
+          mapRef,
+          handleMouseDown,
+          handleMouseMove,
+          handleMouseUp,
+          moveTo,
+          setHoveredLocation,
+          setPlayer,
+          setWorkState,
+          setMiningState,
+          setRoachLureState,
+          setHabitatStayState,
+          setHideoutStayState,
+          addLog
+        }}
+        endingProps={{
+          endingKey,
+          newCovenantAvailable,
+          portalEndingChoiceMade,
+          endingContent,
+          onChooseNormal: () => {
+            setPortalEndingChoiceMade(true);
+          },
+          onChooseReligion: () => {
+            setPortalEndingChoiceMade(true);
+            setPlayer(prev => ({
+              ...prev,
+              story: {
+                ...(prev.story ?? {}),
+                endingId: 'NEW_COVENANT',
+                gameOverReason: 'NEW_COVENANT'
+              }
+            }));
+          },
+          onFinishEnding: () => setView(endingReturnView)
+        }}
+        onIntroFinish={handleIntroFinish}
+        renderRelations={renderRelations}
+        renderWorldBoard={renderWorldBoard}
+        renderTroopArchive={renderTroopArchive}
+        townProps={{
+          townState: {
+            currentLocation,
+            locations,
+            lords,
+            player,
+            heroes,
+            heroDialogue,
+            townTab,
+            workDays,
+            miningDays,
+            roachLureDays,
+            hideoutStayDays,
+            workState,
+            miningState,
+            roachLureState,
+            habitatStayState,
+            hideoutStayState,
+            altarRecruitDays,
+            altarRecruitState,
+            forgeTroopIndex,
+            forgeEnchantmentId,
+            undeadDialogue,
+            undeadChatInput,
+            isUndeadChatLoading,
+            altarDialogues,
+            altarDrafts,
+            altarProposals,
+            isAltarLoading,
+            aiProvider,
+            doubaoApiKey,
+            geminiApiKey,
+            openAIBaseUrl,
+            openAIKey,
+            openAIModel,
+            recentLogs: logs.slice(0, 12),
+            playerReligionName: getPlayerReligion()?.religionName ?? null
+          },
+          townActions: {
+            setHeroDialogue,
+            setHeroes,
+            addLog,
+            setTownTab,
+            setWorkDays,
+            setMiningDays,
+            setRoachLureDays,
+            setHideoutStayDays,
+            setWorkState,
+            setMiningState,
+            setRoachLureState,
+            setHabitatStayState,
+            setHideoutStayState,
+            setAltarRecruitDays,
+            setAltarRecruitState,
+            setForgeTroopIndex,
+            setForgeEnchantmentId,
+            setUndeadChatInput,
+            sendToUndead,
+            setAltarDialogues,
+            setAltarDrafts,
+            setAltarProposals,
+            setIsAltarLoading,
+            applyAltarProposal,
+            startSiegeBattle,
+            handleRecruitOffer,
+            updateLocationState,
+            setPlayer,
+            onRecruitHero: handleRecruitHeroRelation,
+            onLordProvoked: handleLordProvoked,
+            setActiveEnemy,
+            setPendingBattleMeta,
+            setPendingBattleIsTraining,
+            onDefenseAidJoin: handleDefenseAidJoin,
+            onBackToMap: () => setView('MAP'),
+            onEnterBattle: () => setView('BATTLE'),
+            updateLord,
+            onPreachInCity: preachInCity,
+            onInspectHideout: (layerIndex) => {
+              const hideout = currentLocation?.hideout;
+              const maxLayer = Math.max(0, (hideout?.layers?.length ?? 1) - 1);
+              const safe = Math.max(0, Math.min(maxLayer, Math.floor(layerIndex || 0)));
               setHideoutInspectLayerIndex(safe);
-              const nextHideout = { ...hideout, selectedLayer: safe };
-              updateLocationState({ ...currentLocation, hideout: nextHideout });
-            }}
-            onBackToTown={() => {
-              setTownTab('HIDEOUT');
-              setView('TOWN');
-            }}
-            onBackToMap={() => setView('MAP')}
-          />
-        )}
-        {view === 'BANDIT_ENCOUNTER' && renderBanditEncounter()}
-        {view === 'ASYLUM' && renderAsylum()}
-        {view === 'MARKET' && renderMarket()}
-        {view === 'CAVE' && renderMysteriousCave()}
-        {view === 'PARTY' && renderParty()}
-        {view === 'CHARACTER' && renderCharacter()}
-        {view === 'HERO_CHAT' && renderHeroChat()}
-        {view === 'TRAINING' && renderTraining()}
-        {view === 'BATTLE' && renderBattle()}
-        {view === 'BATTLE_RESULT' && renderBattleResult()}
-        {view === 'GAME_OVER' && renderGameOver()}
-      </main>
+              setView('HIDEOUT_INSPECT');
+            },
+            onConsumeRecompilerSoldier: consumeRecompilerSoldier
+          },
+          townDerived: {
+            playerRef,
+            undeadChatListRef,
+            altarChatListRef,
+            getBelieverStats,
+            getMaxTroops,
+            getTroopTemplate,
+            buildGarrisonTroops,
+            getGarrisonCount,
+            getGarrisonLimit,
+            getLocationDefenseDetails,
+            getSiegeEngineName,
+            siegeEngineOptions,
+            isBattling,
+            calculatePower,
+            getHeroRoleLabel,
+            enchantmentRecipes: ENCHANTMENT_RECIPES,
+            mineralMeta: MINERAL_META,
+            mineralPurityLabels: MINERAL_PURITY_LABELS,
+            mineConfigs: MINE_CONFIGS,
+            initialMinerals: INITIAL_PLAYER_STATE.minerals,
+            buildingOptions,
+            getBuildingName,
+            processDailyCycle
+          }
+        }}
+        hideoutInspectLocation={currentLocation}
+        hideoutInspectHeroes={heroes}
+        hideoutInspectLayerIndex={hideoutInspectLayerIndex}
+        onHideoutLayerChange={(index) => {
+          if (!currentLocation || currentLocation.type !== 'HIDEOUT') return;
+          const hideout = currentLocation.hideout;
+          if (!hideout) return;
+          const maxLayer = Math.max(0, (hideout.layers?.length ?? 1) - 1);
+          const safe = Math.max(0, Math.min(maxLayer, Math.floor(index || 0)));
+          setHideoutInspectLayerIndex(safe);
+          const nextHideout = { ...hideout, selectedLayer: safe };
+          updateLocationState({ ...currentLocation, hideout: nextHideout });
+        }}
+        onHideoutBackToTown={() => {
+          setTownTab('HIDEOUT');
+          setView('TOWN');
+        }}
+        onHideoutBackToMap={() => setView('MAP')}
+        renderBanditEncounter={renderBanditEncounter}
+        renderAsylum={renderAsylum}
+        renderMarket={renderMarket}
+        renderMysteriousCave={renderMysteriousCave}
+        renderParty={renderParty}
+        renderCharacter={renderCharacter}
+        renderHeroChat={renderHeroChat}
+        renderTraining={renderTraining}
+        renderBattle={renderBattle}
+        renderBattleResult={renderBattleResult}
+        renderGameOver={renderGameOver}
+      />
 
       {isSettingsOpen && renderSettingsModal()}
       {isChangelogOpen && <ChangelogModal entries={CHANGELOG} onClose={() => setIsChangelogOpen(false)} />}
@@ -11708,33 +8843,12 @@ export default function App() {
       {/* AI Simulation Overlay */}
       {(isBattling || battleError) && renderBattleSimulation()}
 
-      {/* Log Console */}
-      {view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INSPECT' && !isBattling && (
-        <div className={`fixed bottom-0 left-0 w-full md:w-96 md:left-4 md:bottom-4 bg-black/80 backdrop-blur-sm border-t md:border border-stone-800 transition-all duration-300 z-40 flex flex-col ${isLogExpanded ? 'h-96' : 'h-32'}`}>
-           <div className="flex justify-between items-center p-2 bg-stone-900/50 border-b border-stone-800">
-              <h4 className="text-xs uppercase text-stone-600 font-bold">日志 ({logs.length})</h4>
-              <button 
-                 onClick={() => setIsLogExpanded(!isLogExpanded)}
-                 className="text-stone-500 hover:text-stone-300 p-1"
-              >
-                 {isLogExpanded ? <ChevronDown size={14}/> : <ChevronUp size={14}/>}
-              </button>
-           </div>
-           <div className="flex-1 overflow-y-auto scrollbar-hide p-4">
-               {logs.length === 0 ? (
-                 <div className="text-sm text-stone-600">（暂无日志）</div>
-               ) : (
-                 <div className="flex flex-col gap-1">
-                   {logs.map((log, i) => (
-                  <p key={i} className={`text-sm ${i === 0 ? 'text-yellow-400 font-bold log-slide-in' : 'text-stone-400'}`}>
-                    <span className="mr-2 text-stone-600">➜</span>{log}
-                  </p>
-                ))}
-                 </div>
-               )}
-           </div>
-        </div>
-      )}
+      <LogConsole
+        logs={logs}
+        isExpanded={isLogExpanded}
+        onToggleExpanded={() => setIsLogExpanded(!isLogExpanded)}
+        visible={view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INSPECT' && !isBattling}
+      />
     </div>
   );
 }

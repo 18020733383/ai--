@@ -9,18 +9,27 @@
 - 存档：序列化、索引、自动存档、导入导出。
 - 世界报表：全图兵力统计、信徒统计、世界公告栏数据整形。
 
-## 已迁出或预留迁出点
-- `game/systems/diplomacy/`: 世界关系初始化、归一化、关系变更。
-- `app/providers/ai-settings/`: AI 配置构造与本地存储读写。
-- `app/save-load/`: 存档 schema、索引、slot 元数据。
-- `features/world-board/model/`: 世界兵力与信徒统计。
-- `features/town/`: TownView 的类型边界和公开出口。
+## 已迁出
+- `game/systems/diplomacy`: 世界关系、worldInit、randomUtils、workContracts。
+- `game/systems/locationDefense`: `getLocationDefenseDetails`。
+- `game/systems/recruitment`: `getRecruitmentPool`。
+- `game/systems/relationHelpers`: `getLocationRace`, `getLocationRelationTarget`, `getLocationRecruitId`, `getRelationScale`, `getEncounterChance`, `getEnemyRace`, `buildSupportTroops`, `getCityReligionTierCap`, `computePreachPlan`, `normalizeRelationMatrix`, `getRelationValue`。
+- `game/systems/heroHelpers`: `getHeroRoleLabel`, `getHpRatio`, `getHeroPower`, `canHeroBattle`, `buildHeroAttributes`, `buildPlayerAttributes`, `buildHeroTroop`, `buildHeroAttributesFromTroop`, `buildEnemyLordHero`, `buildEnemyCommanderHero`, `pickBestTroop`, `ensureEnemyHeroTroops`, `buildPlayerTroop`, `getBattleTroops`。
+- `game/data`: minerals、siegeEngines、buildings、heroes (HERO_EMOTIONS)。
+- `features/battle/model/resolveBattleProgrammatic`: 程序化战斗结算。
+- `app/providers/ai-settings`、`app/save-load`、`features/world-board/model`、`features/town`。
 
-## 后续优先级
-1. 继续缩减 `App.tsx` 中的内联渲染 helper。
-2. 拆 `processDailyCycle` 为世界系统模块。
-3. 抽离战斗发起、战斗结算和奖励应用。
-4. 将地图、战斗、城镇的局部状态改成 feature hook 或容器对象。
+## 后续优先级（按块大小与依赖复杂度）
+
+| 优先级 | 块 | 约行数 | 复杂度 |
+|--------|-----|--------|--------|
+| 1 | `processDailyCycle` | ~3600 | 高：大量 state/setters、addLog、回调 |
+| 2 | ~~`getLocationDefenseDetails`~~ | ~~~230~~ | ✅ 已迁至 `game/systems/locationDefense` |
+| 3 | ~~`getRecruitmentPool`~~ | ~~~150~~ | ✅ 已迁至 `game/systems/recruitment` |
+| 4 | ~~关系/外交 helpers~~ | ~~~200~~ | ✅ 已迁至 `game/systems/relationHelpers` |
+| 5 | ~~Hero 相关逻辑~~ | ~~~150~~ | ✅ 已迁至 `game/systems/heroHelpers` |
+| 6 | 地图/移动逻辑 | ~100 | 中 |
+| 7 | ~~parrotChatter/parrotMischiefEvents~~ | ~~~65~~ | ✅ 已迁至 `game/data/flavor.ts` |
 
 ## 拆分约束
 - 不改玩法行为，只做结构重组。

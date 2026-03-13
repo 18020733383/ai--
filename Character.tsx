@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Hero, HeroChatLine, PartyDiaryEntry } from './types';
 import { Button } from './components/Button';
 import { MessageCircle, Plus, Heart, Zap, Copy, Flag } from 'lucide-react';
+import { HERO_EMOTIONS } from './game/data/heroes';
 
 type CharacterProps = {
   hero: Hero;
@@ -44,6 +45,15 @@ export default function Character({
 }: CharacterProps) {
   const expression = hero.currentExpression || 'IDLE';
   const face = `url("/image/characters/${hero.id}/${expression}.png"), url("/image/characters/${hero.id}/${expression}.jpg"), url("/image/characters/${hero.id}/${expression}.jpeg")`;
+  useEffect(() => {
+    if (!hero?.id) return;
+    HERO_EMOTIONS.forEach(em => {
+      ['png', 'jpg', 'jpeg'].forEach(ext => {
+        const img = new Image();
+        img.src = `/image/characters/${hero.id}/${em}.${ext}`;
+      });
+    });
+  }, [hero?.id]);
   const [isMemoryOpen, setIsMemoryOpen] = useState(false);
   const [isDiaryOpen, setIsDiaryOpen] = useState(false);
   const [isWorldBookOpen, setIsWorldBookOpen] = useState(false);

@@ -2447,7 +2447,8 @@ export function buildHeroChatPrompt(
 memoryEdits 格式为数组，每项是 { "action": "UPDATE|DELETE|ADD", "id"?: "记忆ID", "text"?: "内容" }。
 UPDATE/DELETE 必须给出 id；UPDATE 必须给出新 text；ADD 只需要 text。
 如果没有任何修改，memoryEdits 返回空数组 []。
-diaryEdits 格式同 memoryEdits，用于操作【队伍日记】。
+diaryEdits 格式同 memoryEdits：{ "action": "UPDATE|DELETE|ADD", "id"?: "日记ID", "text"?: "内容" }。UPDATE/DELETE 必须给出 id；UPDATE 必须给出新 text；ADD 只需要 text。
+队伍日记支持增删改查：可 ADD 新条、UPDATE 修改已有条（用 id）、DELETE 删除条（用 id）。【重要】如已有相关日记，优先用 UPDATE 修改该条而非 ADD 新条，避免每轮都 ADD 导致日记膨胀；仅在确实需要记录全新事件时 ADD。
 如果没有任何修改，diaryEdits 返回空数组 []。
 emotion 只能是以下之一：ANGRY, IDLE, SILENT, AWKWARD, HAPPY, SAD, AFRAID, SURPRISED, DEAD
 - 背景: ${hero.background}
@@ -2507,7 +2508,7 @@ ${historyText || '（暂无）'}
 持久记忆要更积极：优先记录“稳定的、可复用的事实/偏好/关系变化/玩家习惯/队伍梗”，而不是流水账。
 当【持久记忆】为空时：本轮必须在 memoryEdits 里 ADD 1-2 条“初始记忆”（内容简短具体，面向未来可复用）。
 当【持久记忆】不为空时：只要出现新信息或偏好偏移，就在 memoryEdits 里 ADD/UPDATE 0-2 条（不要每轮都空数组）。
-队伍日记用于共享吐槽与团队大事，必要时请在 diaryEdits 里添加或整理，避免重复与无意义刷屏。
+队伍日记用于共享吐槽与团队大事。优先修改已有条目（UPDATE）而非新增；仅在全新事件时 ADD。避免重复、无意义刷屏与每轮都加一条。
   `.trim();
   return prompt;
 }

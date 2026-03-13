@@ -6,4 +6,7 @@ export * from './enemies';
 export * from './troops';
 export * from './heroes';
 export * from './player-state';
+export * from './buildings';
 export * from './locations';
+export * from './minerals';
+export * from './siegeEngines';
