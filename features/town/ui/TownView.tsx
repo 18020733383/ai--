@@ -1,0 +1,121 @@
+import { TownView as LegacyTownView, type TownViewProps } from '../../../views/TownView';
+
+export type TownState = Pick<
+  TownViewProps,
+  | 'currentLocation'
+  | 'locations'
+  | 'lords'
+  | 'player'
+  | 'heroes'
+  | 'heroDialogue'
+  | 'townTab'
+  | 'workDays'
+  | 'miningDays'
+  | 'roachLureDays'
+  | 'hideoutStayDays'
+  | 'workState'
+  | 'miningState'
+  | 'roachLureState'
+  | 'habitatStayState'
+  | 'hideoutStayState'
+  | 'altarRecruitDays'
+  | 'altarRecruitState'
+  | 'forgeTroopIndex'
+  | 'forgeEnchantmentId'
+  | 'undeadDialogue'
+  | 'undeadChatInput'
+  | 'isUndeadChatLoading'
+  | 'altarDialogues'
+  | 'altarDrafts'
+  | 'altarProposals'
+  | 'isAltarLoading'
+  | 'aiProvider'
+  | 'doubaoApiKey'
+  | 'geminiApiKey'
+  | 'openAIBaseUrl'
+  | 'openAIKey'
+  | 'openAIModel'
+  | 'recentLogs'
+  | 'playerReligionName'
+>;
+
+export type TownActions = Pick<
+  TownViewProps,
+  | 'setHeroDialogue'
+  | 'setHeroes'
+  | 'addLog'
+  | 'setTownTab'
+  | 'setWorkDays'
+  | 'setMiningDays'
+  | 'setRoachLureDays'
+  | 'setHideoutStayDays'
+  | 'setWorkState'
+  | 'setMiningState'
+  | 'setRoachLureState'
+  | 'setHabitatStayState'
+  | 'setHideoutStayState'
+  | 'setAltarRecruitDays'
+  | 'setAltarRecruitState'
+  | 'setForgeTroopIndex'
+  | 'setForgeEnchantmentId'
+  | 'setUndeadChatInput'
+  | 'sendToUndead'
+  | 'setAltarDialogues'
+  | 'setAltarDrafts'
+  | 'setAltarProposals'
+  | 'setIsAltarLoading'
+  | 'applyAltarProposal'
+  | 'startSiegeBattle'
+  | 'handleRecruitOffer'
+  | 'updateLocationState'
+  | 'setPlayer'
+  | 'onRecruitHero'
+  | 'onLordProvoked'
+  | 'setActiveEnemy'
+  | 'setPendingBattleMeta'
+  | 'setPendingBattleIsTraining'
+  | 'onDefenseAidJoin'
+  | 'onBackToMap'
+  | 'onEnterBattle'
+  | 'updateLord'
+  | 'onPreachInCity'
+  | 'onInspectHideout'
+  | 'onConsumeRecompilerSoldier'
+>;
+
+export type TownDerived = Pick<
+  TownViewProps,
+  | 'playerRef'
+  | 'undeadChatListRef'
+  | 'altarChatListRef'
+  | 'getBelieverStats'
+  | 'getMaxTroops'
+  | 'getTroopTemplate'
+  | 'buildGarrisonTroops'
+  | 'getGarrisonCount'
+  | 'getGarrisonLimit'
+  | 'getLocationDefenseDetails'
+  | 'getSiegeEngineName'
+  | 'siegeEngineOptions'
+  | 'isBattling'
+  | 'calculatePower'
+  | 'getHeroRoleLabel'
+  | 'enchantmentRecipes'
+  | 'mineralMeta'
+  | 'mineralPurityLabels'
+  | 'mineConfigs'
+  | 'initialMinerals'
+  | 'buildingOptions'
+  | 'getBuildingName'
+  | 'processDailyCycle'
+>;
+
+type FeatureTownViewProps = {
+  townState: TownState;
+  townActions: TownActions;
+  townDerived: TownDerived;
+};
+
+export const TownView = ({ townState, townActions, townDerived }: FeatureTownViewProps) => {
+  return <LegacyTownView {...townState} {...townActions} {...townDerived} />;
+};

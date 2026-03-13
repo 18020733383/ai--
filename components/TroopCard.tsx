@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Troop } from '../types';
-import { getTroopRace, TROOP_RACE_LABELS } from '../constants';
+import { getTroopRace, TROOP_RACE_LABELS } from '../game/data';
 import { Bird, Shield, Users, Sword, ChevronUp, Hammer, ShieldAlert, Star } from 'lucide-react';
 
 interface TroopCardProps {

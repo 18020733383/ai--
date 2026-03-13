@@ -1,201 +1,10 @@
 
-import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, ParrotVariant, Hero, RaceId, TroopRace, BugSummonRecipe, MineralId, Anomaly } from './types';
-
-export const MAP_WIDTH = 960;
-export const MAP_HEIGHT = 960;
-
-export const WORLD_BOOK = [
-  '词条：附加规则效果，影响命中、伤害、控制或属性。',
-  '技能：兵种自带能力，以【技能：】标记，是战斗关键表现。',
-  '第纳尔：通用金币，用于招募、升级、建设与交易。',
-  '世界观：世界是一台破旧服务器运行的代码集合，现实像系统日志。',
-  '伪人：错误实例化的产物，行为异常、身份不稳定。',
-  '魔法水晶：系统 bug 凝结形成的实体，用于附魔或触发异常。'
-].join('\n');
-
-export const RACE_LABELS: Record<RaceId, string> = {
-  HUMAN: '人类',
-  ROACH: '蟑螂族群',
-  UNDEAD: '亡灵族群',
-  IMPOSTER: '伪人族群',
-  BANDIT: '盗匪团伙',
-  AUTOMATON: '失控机兵',
-  VOID: '深渊势力',
-  MADNESS: '疯人群体',
-  BEAST: '野兽族群',
-  GOBLIN: '哥布林部落'
-};
-
-export const RACE_RELATION_MATRIX: Record<RaceId, Record<RaceId, number>> = {
-  HUMAN: {
-    HUMAN: 0,
-    ROACH: -35,
-    UNDEAD: -25,
-    IMPOSTER: -80,
-    BANDIT: -50,
-    AUTOMATON: -30,
-    VOID: -60,
-    MADNESS: -40,
-    BEAST: -10,
-    GOBLIN: -35
-  },
-  ROACH: {
-    HUMAN: -35,
-    ROACH: 0,
-    UNDEAD: -10,
-    IMPOSTER: -60,
-    BANDIT: -20,
-    AUTOMATON: -15,
-    VOID: -45,
-    MADNESS: -25,
-    BEAST: -25,
-    GOBLIN: -15
-  },
-  UNDEAD: {
-    HUMAN: -25,
-    ROACH: -10,
-    UNDEAD: 0,
-    IMPOSTER: -55,
-    BANDIT: -20,
-    AUTOMATON: -20,
-    VOID: -40,
-    MADNESS: -15,
-    BEAST: -5,
-    GOBLIN: -10
-  },
-  IMPOSTER: {
-    HUMAN: -80,
-    ROACH: -60,
-    UNDEAD: -55,
-    IMPOSTER: 0,
-    BANDIT: -55,
-    AUTOMATON: -40,
-    VOID: -70,
-    MADNESS: -50,
-    BEAST: -55,
-    GOBLIN: -55
-  },
-  BANDIT: {
-    HUMAN: -50,
-    ROACH: -20,
-    UNDEAD: -20,
-    IMPOSTER: -55,
-    BANDIT: 0,
-    AUTOMATON: -25,
-    VOID: -35,
-    MADNESS: -15,
-    BEAST: -20,
-    GOBLIN: -15
-  },
-  AUTOMATON: {
-    HUMAN: -30,
-    ROACH: -15,
-    UNDEAD: -20,
-    IMPOSTER: -40,
-    BANDIT: -25,
-    AUTOMATON: 0,
-    VOID: -45,
-    MADNESS: -25,
-    BEAST: -18,
-    GOBLIN: -20
-  },
-  VOID: {
-    HUMAN: -60,
-    ROACH: -45,
-    UNDEAD: -40,
-    IMPOSTER: -70,
-    BANDIT: -35,
-    AUTOMATON: -45,
-    VOID: 0,
-    MADNESS: -30,
-    BEAST: -40,
-    GOBLIN: -45
-  },
-  MADNESS: {
-    HUMAN: -40,
-    ROACH: -25,
-    UNDEAD: -15,
-    IMPOSTER: -50,
-    BANDIT: -15,
-    AUTOMATON: -25,
-    VOID: -30,
-    MADNESS: 0,
-    BEAST: -8,
-    GOBLIN: -20
-  },
-  BEAST: {
-    HUMAN: -10,
-    ROACH: -25,
-    UNDEAD: -5,
-    IMPOSTER: -55,
-    BANDIT: -20,
-    AUTOMATON: -18,
-    VOID: -40,
-    MADNESS: -8,
-    BEAST: 0,
-    GOBLIN: -10
-  },
-  GOBLIN: {
-    HUMAN: -35,
-    ROACH: -15,
-    UNDEAD: -10,
-    IMPOSTER: -55,
-    BANDIT: -15,
-    AUTOMATON: -20,
-    VOID: -45,
-    MADNESS: -20,
-    BEAST: -10,
-    GOBLIN: 0
-  }
-};
-
-export const FACTIONS = [
-  {
-    id: 'VERDANT_COVENANT',
-    name: '翠弦盟约',
-    shortName: '翠弦',
-    description: '由河谷与林地的弓手团结成的盟约，以记录与远射守护贸易脉络。',
-    focus: 'RANGED',
-    color: '#22c55e',
-    specialTroopIds: ['verdant_scout_archer', 'verdant_skybow']
-  },
-  {
-    id: 'FROST_OATH',
-    name: '霜誓王庭',
-    shortName: '霜誓',
-    description: '北境要塞与山岭关隘组成的誓盟，以重装与誓约维系残存秩序。',
-    focus: 'MELEE',
-    color: '#60a5fa',
-    specialTroopIds: ['frost_oath_halberdier', 'frost_oath_bladeguard']
-  },
-  {
-    id: 'RED_DUNE',
-    name: '赤沙驭团',
-    shortName: '赤沙',
-    description: '沙海驿路上的骑团联邦，依靠风暴与驭骑掌控补给线。',
-    focus: 'CAVALRY',
-    color: '#f97316',
-    specialTroopIds: ['red_dune_lancer', 'red_dune_cataphract']
-  },
-  {
-    id: 'AUREATE_LEAGUE',
-    name: '曜金同盟',
-    shortName: '曜金',
-    description: '沿着日升大道崛起的新贵联盟，偏好秩序与贸易，信奉“税票与长弓同样致命”。',
-    focus: 'RANGED',
-    color: '#facc15',
-    specialTroopIds: ['imperial_elite_knight', 'knight']
-  },
-  {
-    id: 'ARCANE_CONCORD',
-    name: '星辉秘约',
-    shortName: '星辉',
-    description: '由高阶法师与塔城学派构成的秘约联盟，擅长以符文与法阵压制战场。',
-    focus: 'RANGED',
-    color: '#a78bfa',
-    specialTroopIds: ['stellar_initiate', 'lumen_disciple', 'rift_sentinel', 'aether_scholar']
-  }
-] as const;
+import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, Hero, BugSummonRecipe, MineralId, Anomaly } from './types';
+export { MAP_WIDTH, MAP_HEIGHT, WORLD_BOOK } from './game/data/world';
+export { RACE_LABELS, RACE_RELATION_MATRIX } from './game/data/races';
+export { FACTIONS } from './game/data/factions';
+export { PARROT_VARIANTS, ENEMY_QUOTES, parrotChatter, parrotMischiefEvents, IMPOSTER_TROOP_IDS, TROOP_RACE_LABELS, getTroopRace } from './game/data/flavor';
+export { ENEMY_TYPES } from './game/data/enemies';
 
 const troopAttr = (attack: number, defense: number, agility: number, hp: number, range: number, morale: number) => ({
   attack,
@@ -4808,126 +4617,6 @@ export const ANOMALY_CATALOG: Anomaly[] = BUG_SUMMON_RECIPES.map(recipe => ({
   description: recipe.description
 }));
 
-export const PARROT_VARIANTS: ParrotVariant[] = [
-  { name: '玄风鹦鹉', type: 'XUANFENG', color: 'text-slate-300', price: 40, personality: 'MANIC', description: '最便宜的吵闹鸟，基本只会乱叫。' },
-  { name: '虎皮鹦鹉', type: 'BUDGERIGAR', color: 'text-lime-400', price: 60, personality: 'MANIC', description: '活泼又聒噪，学不会战术，只会学你骂人。' },
-  { name: '蓝黄金刚鹦鹉', type: 'MACAW', color: 'text-blue-400', price: 100, personality: 'SARCASTIC', description: '羽毛华丽，嘴巴却很毒。喜欢在关键时刻嘲讽你的战术。' },
-  { name: '月轮鹦鹉', type: 'PARAKEET', color: 'text-green-600', price: 150, personality: 'GLOOMY', description: '总是低着头，仿佛看透了这世间的苦难。它预言的坏事通常都很准。' },
-  { name: '非洲灰鹦鹉', type: 'GREY', color: 'text-stone-400', price: 500, personality: 'WISE', description: '智商极高，眼神深邃。偶尔会引用古代哲学家的名言，或者纠正你的语法。' },
-  { name: '葵花凤头鹦鹉', type: 'COCKATOO', color: 'text-yellow-200', price: 300, personality: 'MANIC', description: '拥有莫西干发型的摇滚明星。大部分时间在尖叫，极度亢奋。' },
-];
-
-export const ENEMY_QUOTES: Record<string, string[]> = {
-  'peasant': ["别杀我们！我们只是想要点面包！", "把钱交出来，你可以滚了！", "兄弟们，这就是那只肥羊！"],
-  'militia': ["此处禁止通行！除非...嘿嘿。", "这片沙漠归我们管！", "留下买路财！"],
-  'hunter': ["森林会埋葬你们。", "你的头骨会是很好的装饰品。", "嘘...猎物上钩了。"],
-  'footman': ["以钢铁之名，碾碎他们！", "北境不需要弱者。", "把他们的头砍下来当酒杯！"],
-  'knight': ["叛徒？不，我们是新的秩序！", "为了被遗忘的荣耀！", "向我的剑刃下跪！"],
-  'zealot': ["血祭血神！", "火焰会净化一切！", "为了末日的降临！献身吧！"],
-  'wolf_rider': ["肉！新鲜的肉！", "撕碎他们！", "嗷呜————！"],
-  'automaton': ["目标锁定...歼灭模式启动...", "检测到有机生命体...清除...", "指令：毁灭。"],
-  'skeleton_warrior': ["加入我们...成为永恒...", "这里只有死亡...", "大脑...新鲜的大脑..."],
-  'void_caller': ["深渊正在凝视你...", "你的理智...如此脆弱...", "拥抱虚空吧！"],
-  'mad_patient': ["医生！医生在哪里？！", "哈哈哈！我不吃药！我不吃药！", "把你的脸皮借我穿一下！"],
-  'specter': ["离开...这片诅咒之地...", "你的灵魂...归我了...", "痛苦..."],
-  'meatball_soldier': ["别吃我！我是过期肉！", "为了火锅之神！", "我们要把你也煮了！"],
-};
-
-export const parrotChatter: Record<string, string[]> = {
-  SARCASTIC: [
-    "这就是你的战术？笑死鸟了！",
-    "我又饿了，穷鬼！",
-    "快点走，蜗牛都比你快！",
-    "哎呀，又输了？",
-    "你的剑是拿来切菜的吗？"
-  ],
-  GLOOMY: [
-    "我们会死在这里的...",
-    "我看不到希望...",
-    "这雨水尝起来像眼泪...",
-    "末日近了...",
-    "唉..."
-  ],
-  WISE: [
-    "知彼知己，百战不殆。",
-    "不要被怒火冲昏了头脑。",
-    "观察风向，它会告诉你答案。",
-    "真正的力量源于内心。",
-    "有些战斗是可以避免的。"
-  ],
-  MANIC: [
-    "哇啊啊啊！冲啊！",
-    "爆炸！爆炸！艺术就是爆炸！",
-    "我们要去哪？！我们要去哪？！",
-    "血！我要看到血流成河！",
-    "嘿嘿嘿嘿嘿！"
-  ]
-};
-
-export const parrotMischiefEvents = [
-  { action: "啃坏了装备架", cost: 2, taunt: "这木头口感不错！" },
-  { action: "在地图上拉了一坨", cost: 5, taunt: "帮你在地图上做个标记，不用谢！" },
-  { action: "偷走了一枚金币藏起来", cost: 1, taunt: "亮晶晶的！我的！" },
-  { action: "啄伤了新兵的手指", cost: 3, taunt: "那根手指指着我不礼貌！" },
-  { action: "骂了路过的商人傻瓜", cost: 10, taunt: "那家伙看起来就是个奸商！" },
-  { action: "偷吃了应急干粮", cost: 4, taunt: "味道有点干，下次加点酱！" },
-  { action: "撕掉了编年史的一页", cost: 6, taunt: "这段历史太无聊了，我帮你删了！" },
-  { action: "打翻了油灯", cost: 8, taunt: "这里太黑了，我想看看火光！" },
-  { action: "把你的靴子藏到了房顶", cost: 5, taunt: "光脚走路有益健康！" },
-  { action: "模仿长官下达了错误的命令", cost: 7, taunt: "向左转！不，向右转！哈哈！" }
-];
-
-export const IMPOSTER_TROOP_IDS = new Set([
-  'void_larva', 'glitch_pawn', 'static_noise_walker', 'null_fragment',
-  'imposter_light_infantry', 'imposter_spearman', 'imposter_short_bowman', 'imposter_slinger',
-  'imposter_shield_conscript', 'imposter_axeman', 'imposter_javelin_thrower', 'imposter_scout_rider',
-  'entropy_acolyte', 'pixel_shifter', 'null_pointer_hound', 'syntax_error_scout', 'imposter_wanderer',
-  'imposter_heavy_infantry', 'imposter_pikeman', 'imposter_swordsman', 'imposter_longbowman',
-  'imposter_crossbowman', 'imposter_halberdier', 'imposter_mace_guard', 'imposter_raider_rider',
-  'imposter_stalker', 'memory_leak_mage', 'recursion_archer', 'deadlock_sentinel', 'buffer_overflow_brute', 'hypnotist_imposter',
-  'imposter_heavy_knight', 'imposter_horse_archer', 'imposter_pike_guard', 'imposter_reaper_blade',
-  'imposter_mirrorblade', 'blue_screen_golem', 'kernel_panic_knight', 'segmentation_fault_dragon', 'not_found_assassin',
-  'legacy_code_abomination', 'system_crash_titan', 'infinite_loop_devourer'
-]);
-
-export const TROOP_RACE_LABELS: Record<TroopRace, string> = {
-  HUMAN: '人类',
-  ROACH: '蟑螂',
-  UNDEAD: '亡灵',
-  IMPOSTER: '伪人',
-  BANDIT: '盗匪',
-  AUTOMATON: '机兵',
-  VOID: '深渊',
-  MADNESS: '疯人',
-  BEAST: '野兽',
-  GOBLIN: '哥布林',
-  UNKNOWN: '未知'
-};
-
-export const getTroopRace = (
-  troop: Pick<Troop, 'id' | 'name' | 'doctrine' | 'evangelist' | 'race'>,
-  imposterTroopIds: Set<string> = IMPOSTER_TROOP_IDS
-): TroopRace => {
-  const normalizedId = troop.id.startsWith('garrison_') ? troop.id.slice('garrison_'.length) : troop.id;
-  const doctrineLabel = troop.doctrine?.trim();
-  if (troop.race) return troop.race;
-  if (normalizedId.startsWith('shaped_')) return 'UNKNOWN';
-  if (normalizedId.startsWith('altar_') || troop.evangelist || !!doctrineLabel) return 'HUMAN';
-  if (normalizedId.startsWith('bug_')) return 'UNKNOWN';
-  if (imposterTroopIds.has(normalizedId)) return 'IMPOSTER';
-  if (normalizedId.startsWith('roach_')) return 'ROACH';
-  if (normalizedId.startsWith('undead_') || normalizedId.startsWith('skeleton') || normalizedId.startsWith('zombie') || normalizedId.startsWith('specter')) return 'UNDEAD';
-  if (normalizedId.startsWith('automaton') || normalizedId.startsWith('ai_')) return 'AUTOMATON';
-  if (normalizedId.startsWith('void_')) return 'VOID';
-  if (normalizedId.startsWith('mad_') || normalizedId.includes('patient')) return 'MADNESS';
-  if (normalizedId.startsWith('beast_')) return 'BEAST';
-  if (normalizedId.startsWith('goblin_')) return 'GOBLIN';
-  if (normalizedId.includes('bandit') || normalizedId.includes('raider') || normalizedId.includes('thief')) return 'BANDIT';
-  const name = String(troop.name ?? '');
-  if (name.includes('匪') || name.includes('盗') || name.includes('强盗') || name.includes('劫匪')) return 'BANDIT';
-  return 'HUMAN';
-};
-
 // Helper to create fresh troops
 export const createTroop = (id: string, count: number = 1): Troop => {
   const template = TROOP_TEMPLATES[id];
@@ -5394,6 +5083,31 @@ export const INITIAL_HERO_ROSTER: Hero[] = [
     status: 'ACTIVE',
     recruited: false,
     quotes: ['壳在，线就不断。', '阵型不准乱。', '巢群的节拍，跟上。'],
+    chatMemory: [],
+    permanentMemory: [],
+    chatRounds: 0
+  },
+  {
+    id: 'hero_sealion',
+    name: '澜鳍',
+    race: 'BEAST',
+    role: 'SHIELD',
+    title: '加州海狮护潮者',
+    background: '来自海雾栖地的加州海狮战士，擅长用厚实胸鳍顶开敌阵，用潮声稳定同伴。',
+    traits: ['特长：潮盾震退', '特长：海雾守势'],
+    portrait: '厚鳍海狮盾卫',
+    personality: '稳重沉着、语气低缓，喜欢用潮汐与海风作比喻，强调稳扎稳打的阵型。',
+    currentExpression: 'IDLE',
+    level: 1,
+    xp: 0,
+    maxXp: 100,
+    attributePoints: 0,
+    attributes: { attack: 12, hp: 140, agility: 8 },
+    currentHp: 140,
+    maxHp: 140,
+    status: 'ACTIVE',
+    recruited: false,
+    quotes: ['潮声会护住队伍。', '靠近我，阵线不会散。', '海风起时，就是我们推进之时。'],
     chatMemory: [],
     permanentMemory: [],
     chatRounds: 0
@@ -7153,19 +6867,3 @@ export const LOCATIONS: Location[] = [
   }
 ];
 
-export const ENEMY_TYPES = [
-  { name: '劫匪', baseTroopId: 'peasant', countRange: [5, 15], difficulty: '简单' },
-  { name: '森林强盗', baseTroopId: 'hunter', countRange: [8, 18], difficulty: '中等' },
-  { name: '雪原掠夺者', baseTroopId: 'footman', countRange: [10, 20], difficulty: '困难' },
-  { name: '沙漠悍匪', baseTroopId: 'militia', countRange: [12, 25], difficulty: '中等' },
-  { name: '叛变骑士团', baseTroopId: 'knight', countRange: [5, 10], difficulty: '极难' },
-  { name: '火锅讨伐队', baseTroopId: 'meatball_soldier', countRange: [10, 20], difficulty: '美味' },
-  { name: '末日教团', baseTroopId: 'zealot', countRange: [15, 30], difficulty: '中等' },
-  { name: '兽王狩猎队', baseTroopId: 'wolf_rider', countRange: [6, 12], difficulty: '困难' },
-  { name: '失控机兵', baseTroopId: 'automaton', countRange: [3, 8], difficulty: '极难' },
-  { name: '亡灵大军', baseTroopId: 'skeleton_warrior', countRange: [20, 40], difficulty: '极难' },
-  { name: '深渊先锋', baseTroopId: 'void_caller', countRange: [2, 5], difficulty: '噩梦' },
-  { name: '出逃病患', baseTroopId: 'mad_patient', countRange: [10, 25], difficulty: '诡异' },
-  { name: '尸潮', baseTroopId: 'zombie', countRange: [30, 60], difficulty: '中等' },
-  { name: '幽灵巡逻队', baseTroopId: 'specter', countRange: [5, 10], difficulty: '困难' },
-];

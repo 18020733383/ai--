@@ -3,7 +3,7 @@ import { Bird, MessageCircle, Plus, Heart, Zap, Star, Flag } from 'lucide-react'
 import { Hero, PlayerState, SoldierInstance } from '../types';
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
-import { getTroopRace, TROOP_RACE_LABELS } from '../constants';
+import { getTroopRace, TROOP_RACE_LABELS } from '../game/data';
 
 type PartyCategoryFilter = 'ALL' | 'NORMAL' | 'HEAVY';
 

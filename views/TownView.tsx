@@ -2,62 +2,14 @@ import React from 'react';
 import { AlertTriangle, Beer, Brain, Coins, Ghost, Hammer, History, Home, MapPin, MessageCircle, Mountain, Plus, Scroll, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, Zap } from 'lucide-react';
 import { Button } from '../components/Button';
 import { TroopCard } from '../components/TroopCard';
+import { CoffeeChatSection, ForgeSection, GarrisonSection, HabitatSection, MagicianLibrarySection, MiningSection, RecruitSection, RoachLureSection, TavernSection, WorkSection } from '../features/town';
 import { chatWithAltar, chatWithCampLeader, chatWithLord, proposeHeroPromotion, type HeroPromotionDraft } from '../services/geminiService';
-import { ANOMALY_CATALOG, getTroopRace, TROOP_RACE_LABELS } from '../constants';
+import { ANOMALY_CATALOG } from '../constants';
+import { getTroopRace, TROOP_RACE_LABELS } from '../game/data';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, SoldierInstance, StayParty, Troop, TroopTier } from '../types';
+import type { AltarRecruitState, HabitatStayState, HideoutStayState, MiningState, RoachLureState, TownTab, WorkState } from '../features/town/model/types';
 
-type TownTab = 'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER' | 'HABITAT' | 'HIDEOUT';
-
-type WorkState = {
-  isActive: boolean;
-  locationId: string;
-  contractId: string;
-  contractTitle: string;
-  totalDays: number;
-  daysPassed: number;
-  totalPay: number;
-};
-
-type MiningState = {
-  isActive: boolean;
-  locationId: string;
-  mineralId: MineralId;
-  totalDays: number;
-  daysPassed: number;
-  yieldByPurity: Record<MineralPurity, number>;
-};
-
-type RoachLureState = {
-  isActive: boolean;
-  locationId: string;
-  totalDays: number;
-  daysPassed: number;
-  recruitedByTroopId: Record<string, number>;
-};
-
-type HabitatStayState = {
-  isActive: boolean;
-  locationId: string;
-  totalDays: number;
-  daysPassed: number;
-};
-
-type AltarRecruitState = {
-  isActive: boolean;
-  locationId: string;
-  totalDays: number;
-  daysPassed: number;
-  recruitedByTroopId: Record<string, number>;
-};
-
-type HideoutStayState = {
-  isActive: boolean;
-  locationId: string;
-  totalDays: number;
-  daysPassed: number;
-};
-
-type TownViewProps = {
+export type TownViewProps = {
   currentLocation: Location | null;
   locations: Location[];
   lords: Lord[];
@@ -264,7 +216,7 @@ export const TownView = ({
     const type = currentLocation.type;
     const bgType = type === 'FIELD_CAMP' ? 'BANDIT_CAMP' : type === 'HIDEOUT' ? 'RUINS' : type;
     return {
-      backgroundImage: `url("/image/locations/${currentLocation.id}.png"), url("/image/locations/${currentLocation.id}.jpg"), url("/image/locations/${currentLocation.id}.jpeg"), url("/image/${bgType}.webp"), url("/image/${bgType}.png"), url("/image/${bgType}.jpg"), url("/image/${bgType}.jpeg")`,
+      backgroundImage: `url("/image/locations/${bgType}.png"), url("/image/locations/${bgType}.jpg"), url("/image/locations/${bgType}.jpeg"), url("/image/${bgType}.webp"), url("/image/${bgType}.png"), url("/image/${bgType}.jpg"), url("/image/${bgType}.jpeg")`,
       backgroundSize: 'cover',
       backgroundPosition: 'center'
     };
@@ -3469,552 +3421,156 @@ export const TownView = ({
           </div>
         )}
         {activeTownTab === 'RECRUIT' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
-            <div className="col-span-1 md:col-span-2 bg-stone-900/40 p-4 rounded border border-stone-800 mb-4">
-              <p className="text-stone-400 text-sm">
-                {isHotpot
-                  ? "这里可以招募到特殊的食材...我是说战士。"
-                  : isCoffee
-                    ? "亡灵愿意以廉价的代价加入。刷新时间受天数影响，招募数量受统御技能影响。"
-                    : isHeavyTrialGrounds
-                      ? "这里出售试验级重型单位。库存通常很少，且占用队伍人数上限（按台/辆计）。"
-                      : "在这里可以招募到基础士兵。刷新时间受天数影响，招募数量受统御技能影响。"}
-              </p>
-            </div>
-            {isCity && playerReligionName && (
-              <div className="col-span-1 md:col-span-2 bg-stone-900/40 p-4 rounded border border-stone-800">
-                {(() => {
-                  const faith = Math.max(0, Math.min(100, Math.floor(currentLocation.religion?.faith ?? 0)));
-                  const rel = Math.max(-100, Math.min(100, Math.floor(locationRelationValue ?? 0)));
-                  const costBase = 60 + Math.floor(faith * 0.9);
-                  const relFactor = rel >= 0 ? (1 - Math.min(0.35, rel * 0.005)) : (1 + Math.min(0.6, Math.abs(rel) * 0.008));
-                  const cost = Math.max(20, Math.min(800, Math.floor(costBase * relFactor)));
-                  const gainBase = 6 + Math.round(rel / 30);
-                  const damp = Math.max(0.15, 1 - faith / 115);
-                  const gain = Math.max(1, Math.min(12, Math.floor(gainBase * damp)));
-                  const cap = faith >= 80 ? 4 : faith >= 60 ? 3 : faith >= 40 ? 2 : faith >= 20 ? 1 : 0;
-                  const canAfford = player.gold >= cost;
-                  const disabled = isRestricted || !canAfford;
-                  return (
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="text-stone-200 font-bold">信教比例：{faith}%</div>
-                        <div className="text-xs text-stone-500">当前信仰：{playerReligionName}</div>
-                      </div>
-                      <div className="w-full h-2 bg-black/40 border border-stone-800 rounded overflow-hidden">
-                        <div className="h-full bg-amber-600" style={{ width: `${faith}%` }} />
-                      </div>
-                      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-                        <div className="text-xs text-stone-500">
-                          20/40/60/80% 解锁教徒招募（当前：T1~T{cap || 0}）
-                        </div>
-                        <Button
-                          variant="secondary"
-                          disabled={disabled}
-                          onClick={() => onPreachInCity(currentLocation.id)}
-                        >
-                          传教（{cost}）+{gain}%
-                        </Button>
-                      </div>
-                      {isRestricted && (
-                        <div className="text-xs text-red-300">据点处于封锁/战时状态，无法传教。</div>
-                      )}
-                      {!isRestricted && !canAfford && (
-                        <div className="text-xs text-red-300">资金不足，无法传教。</div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
-            )}
-            {isHeavyTrialGrounds ? (
-              currentLocation.mercenaries.length > 0 ? currentLocation.mercenaries.map(offer =>
-                renderRecruitCard(offer, 'MERCENARY')
-              ) : (
-                <div className="col-span-2 text-center py-12 border border-dashed border-stone-800 rounded">
-                  <p className="text-stone-500 italic">试验场今天没有可用的重型装备。</p>
-                </div>
-              )
-            ) : (
-              currentLocation.volunteers.length > 0 ? currentLocation.volunteers.map(offer =>
-                renderRecruitCard(offer, 'VOLUNTEER')
-              ) : (
-                <div className="col-span-2 text-center py-12 border border-dashed border-stone-800 rounded">
-                  <p className="text-stone-500 italic">这一带暂时没有愿意参军的人。（过几天再来看看）</p>
-                </div>
-              )
-            )}
-          </div>
+          <RecruitSection
+            currentLocation={currentLocation}
+            player={player}
+            playerReligionName={playerReligionName}
+            locationRelationValue={locationRelationValue}
+            isHotpot={isHotpot}
+            isCoffee={isCoffee}
+            isHeavyTrialGrounds={isHeavyTrialGrounds}
+            isCity={isCity}
+            isRestricted={isRestricted}
+            renderRecruitCard={renderRecruitCard}
+            onPreachInCity={onPreachInCity}
+          />
         )}
 
         {isHabitat && activeTownTab === 'HABITAT' && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
-              <div className="flex items-center justify-between gap-3">
-                <div className="text-stone-200 font-bold">栖息地</div>
-                <div className="text-xs text-stone-600">时间会加速流逝，世界照常运转</div>
-              </div>
-              <div className="text-sm text-stone-400 mt-2 leading-relaxed">
-                你可以在此停留一段时间，用更短的间隔推进每日结算（商队、袭掠、攻城、招募刷新等都会照常发生）。
-              </div>
-            </div>
-
-            <div className="bg-stone-900/40 p-4 rounded border border-stone-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="text-stone-200 font-bold">快进天数</div>
-                <div className="text-xs text-stone-500">当前第 {player.day} 天</div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
-                <div className="md:col-span-2">
-                  <div className="text-xs text-stone-500 mb-1">天数（1-1000）</div>
-                  <input
-                    type="number"
-                    min={1}
-                    max={1000}
-                    value={habitatStayDays}
-                    onChange={e => setHabitatStayDays(Number(e.target.value))}
-                    className="w-full bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded"
-                  />
-                </div>
-                <Button
-                  variant="secondary"
-                  disabled={habitatStayState?.isActive}
-                  onClick={() => {
-                    const days = Math.max(1, Math.min(1000, Math.floor(habitatStayDays || 1)));
-                    setHabitatStayDays(days);
-                    setHabitatStayState({
-                      isActive: true,
-                      locationId: currentLocation.id,
-                      totalDays: days,
-                      daysPassed: 0
-                    });
-                    onBackToMap();
-                  }}
-                >
-                  <MapPin size={16} className="inline mr-2" /> 开始栖息
-                </Button>
-              </div>
-            </div>
-          </div>
+          <HabitatSection
+            playerDay={player.day}
+            habitatStayDays={habitatStayDays}
+            setHabitatStayDays={setHabitatStayDays}
+            habitatStayStateActive={!!habitatStayState?.isActive}
+            onStartHabitat={() => {
+              const days = Math.max(1, Math.min(1000, Math.floor(habitatStayDays || 1)));
+              setHabitatStayDays(days);
+              setHabitatStayState({
+                isActive: true,
+                locationId: currentLocation.id,
+                totalDays: days,
+                daysPassed: 0
+              });
+              onBackToMap();
+            }}
+          />
         )}
 
         {isCoffee && activeTownTab === 'COFFEE_CHAT' && (
-          <div className="space-y-4 animate-fade-in">
-            <div className="bg-stone-900/40 p-4 rounded border border-stone-800 text-sm text-stone-400 flex items-center justify-between gap-3">
-              <div>亡灵们会记得你最近的经历，也会盯着你的队伍阵容评头论足。</div>
-              <div className="text-xs text-stone-600 whitespace-nowrap">Enter 发送</div>
-            </div>
-
-            <div className="bg-stone-900/40 p-4 rounded border border-stone-800 space-y-3">
-              <div className="flex items-center justify-between">
-                <div className="text-stone-200 font-bold">咖啡与点心</div>
-                <div className="text-xs text-stone-500">赠礼会被记录进英雄对话</div>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-                <div className="md:col-span-1">
-                  <div className="text-xs text-stone-500 mb-1">选择英雄</div>
-                  <select
-                    value={coffeeGiftHeroId}
-                    onChange={e => {
-                      setCoffeeGiftHeroId(e.target.value);
-                      setCoffeeGiftError(null);
-                    }}
-                    className="w-full bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded"
-                  >
-                    {giftableHeroes.length === 0 ? (
-                      <option value="">（暂无可赠送英雄）</option>
-                    ) : (
-                      giftableHeroes.map(h => (
-                        <option key={`gift_hero_${h.id}`} value={h.id}>{h.name}</option>
-                      ))
-                    )}
-                  </select>
-                </div>
-                <div className="md:col-span-1">
-                  <div className="text-xs text-stone-500 mb-1">选择礼物</div>
-                  <select
-                    value={coffeeGiftItemId}
-                    onChange={e => {
-                      setCoffeeGiftItemId(e.target.value);
-                      setCoffeeGiftError(null);
-                    }}
-                    className="w-full bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded"
-                  >
-                    {coffeeGiftItems.map(item => (
-                      <option key={`gift_item_${item.id}`} value={item.id}>
-                        {item.name}（{item.price}）
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div className="md:col-span-1 flex items-end gap-2">
-                  <Button
-                    variant="gold"
-                    disabled={giftableHeroes.length === 0}
-                    onClick={() => {
-                      const hero = heroes.find(h => h.id === coffeeGiftHeroId);
-                      const item = coffeeGiftItems.find(i => i.id === coffeeGiftItemId);
-                      if (!hero || !item) {
-                        setCoffeeGiftError('请选择英雄与礼物。');
-                        return;
-                      }
-                      if (player.gold < item.price) {
-                        setCoffeeGiftError('金钱不足。');
-                        return;
-                      }
-                      const record = {
-                        id: `gift_${Date.now()}`,
-                        day: player.day,
-                        heroId: hero.id,
-                        heroName: hero.name,
-                        itemName: item.name,
-                        itemType: item.itemType,
-                        price: item.price,
-                        sourceLocationName: currentLocation.name
-                      };
-                      setPlayer(prev => ({
-                        ...prev,
-                        gold: prev.gold - item.price,
-                        giftRecords: [...(prev.giftRecords ?? []), record]
-                      }));
-                      addLog(`你在${currentLocation.name}花费 ${item.price} 第纳尔，送给 ${hero.name} 一份「${item.name}」。`);
-                      setCoffeeGiftError(null);
-                    }}
-                  >
-                    购买并赠送
-                  </Button>
-                </div>
-              </div>
-              {coffeeGiftError && (
-                <div className="text-sm text-red-300 bg-red-950/20 border border-red-900/40 rounded px-3 py-2">
-                  {coffeeGiftError}
-                </div>
-              )}
-            </div>
-
-            <div
-              ref={undeadChatListRef}
-              className="bg-gradient-to-b from-stone-950/40 to-stone-900/40 p-4 rounded border border-stone-800 max-h-72 overflow-y-auto scrollbar-hide space-y-2"
-            >
-              {undeadDialogue.map((line, index) => (
-                <div key={index} className={`flex ${line.role === 'PLAYER' ? 'justify-end' : 'justify-start'} log-slide-in`}>
-                  <div
-                    className={[
-                      'max-w-[85%] md:max-w-[70%] px-3 py-2 rounded-2xl border shadow',
-                      line.role === 'PLAYER'
-                        ? 'bg-stone-800 border-stone-700 text-stone-200 rounded-br-sm'
-                        : 'bg-amber-950/25 border-amber-900/50 text-amber-200 rounded-bl-sm'
-                    ].join(' ')}
-                  >
-                    <div className="text-[10px] tracking-wider uppercase opacity-70 mb-1">
-                      {line.role === 'PLAYER' ? '你' : '亡灵'}
-                    </div>
-                    <div className="text-sm leading-relaxed whitespace-pre-wrap">{line.text}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <div className="bg-stone-900/40 p-3 rounded border border-stone-800">
-              <div className="flex flex-col md:flex-row gap-2">
-                <input
-                  value={undeadChatInput}
-                  onChange={(e) => setUndeadChatInput(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key !== 'Enter') return;
-                    const composing = (e.nativeEvent as any)?.isComposing;
-                    if (composing) return;
-                    e.preventDefault();
-                    sendToUndead();
-                  }}
-                  className="flex-1 bg-stone-950 border border-stone-700 text-stone-200 px-3 py-2 rounded placeholder:text-stone-600"
-                  placeholder="问亡灵点什么..."
-                  disabled={isUndeadChatLoading}
-                />
-                <Button
-                  onClick={sendToUndead}
-                  variant="secondary"
-                  disabled={isUndeadChatLoading || !undeadChatInput.trim()}
-                >
-                  {isUndeadChatLoading ? '…' : '发送'}
-                </Button>
-              </div>
-            </div>
-          </div>
+          <CoffeeChatSection
+            giftableHeroes={giftableHeroes}
+            coffeeGiftItems={coffeeGiftItems}
+            coffeeGiftHeroId={coffeeGiftHeroId}
+            setCoffeeGiftHeroId={setCoffeeGiftHeroId}
+            coffeeGiftItemId={coffeeGiftItemId}
+            setCoffeeGiftItemId={setCoffeeGiftItemId}
+            coffeeGiftError={coffeeGiftError}
+            clearCoffeeGiftError={() => setCoffeeGiftError(null)}
+            onSubmitGift={() => {
+              const hero = heroes.find(h => h.id === coffeeGiftHeroId);
+              const item = coffeeGiftItems.find(i => i.id === coffeeGiftItemId);
+              if (!hero || !item) {
+                setCoffeeGiftError('请选择英雄与礼物。');
+                return;
+              }
+              if (player.gold < item.price) {
+                setCoffeeGiftError('金钱不足。');
+                return;
+              }
+              const record = {
+                id: `gift_${Date.now()}`,
+                day: player.day,
+                heroId: hero.id,
+                heroName: hero.name,
+                itemName: item.name,
+                itemType: item.itemType,
+                price: item.price,
+                sourceLocationName: currentLocation.name
+              };
+              setPlayer(prev => ({
+                ...prev,
+                gold: prev.gold - item.price,
+                giftRecords: [...(prev.giftRecords ?? []), record]
+              }));
+              addLog(`你在${currentLocation.name}花费 ${item.price} 第纳尔，送给 ${hero.name} 一份「${item.name}」。`);
+              setCoffeeGiftError(null);
+            }}
+            undeadDialogue={undeadDialogue}
+            undeadChatListRef={undeadChatListRef}
+            undeadChatInput={undeadChatInput}
+            setUndeadChatInput={setUndeadChatInput}
+            sendToUndead={sendToUndead}
+            isUndeadChatLoading={isUndeadChatLoading}
+          />
         )}
 
         {isCity && activeTownTab === 'TAVERN' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 animate-fade-in">
-            <div className="col-span-1 md:col-span-2 bg-stone-900/40 p-4 rounded border border-stone-800 mb-4">
-              <p className="text-stone-400 text-sm">酒馆里偶尔会出现寻找雇主的资深战士。费用较高。</p>
-            </div>
-            <div className="col-span-1 md:col-span-2 bg-stone-900/40 p-4 rounded border border-stone-800">
-              <div className="flex items-center justify-between">
-                <div className="text-amber-500 font-bold">旅人传闻</div>
-                <div className="text-xs text-stone-500">英雄会在城市酒馆停留几天后离开</div>
-              </div>
-              {tavernHeroes.length === 0 ? (
-                <div className="text-stone-500 text-sm mt-3">今天没有熟面孔。</div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                  {tavernHeroes.map(hero => (
-                    <div key={hero.id} className="bg-stone-950/40 border border-stone-800 rounded p-4 space-y-3">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <Star size={14} className="text-amber-400" />
-                            <div className="text-stone-200 font-bold">{hero.name}</div>
-                            <span className="text-[10px] px-2 py-0.5 rounded border border-stone-700 text-stone-400 bg-stone-900/30">
-                              {getHeroRoleLabel(hero.role)}
-                            </span>
-                          </div>
-                          <div className="text-xs text-stone-500">{hero.title} · {hero.portrait}</div>
-                        </div>
-                        <div className="text-xs text-stone-500">等级 {hero.level}</div>
-                      </div>
-                      <div className="text-sm text-stone-400 leading-relaxed">{hero.background}</div>
-                      <div className="flex flex-wrap gap-2 text-[11px] text-stone-400">
-                        {hero.traits.map((trait, idx) => (
-                          <span key={`${hero.id}-trait-${idx}`} className="px-2 py-0.5 rounded border border-stone-700 bg-stone-900/40">
-                            {trait}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="flex items-center gap-2 text-xs text-stone-500">
-                        <span>攻击 {hero.attributes.attack}</span>
-                        <span>血量 {hero.maxHp}</span>
-                        <span>敏捷 {hero.attributes.agility}</span>
-                      </div>
-                      <div className="flex gap-2">
-                        <Button onClick={() => talkToHero(hero)} variant="secondary">对话</Button>
-                        <Button onClick={() => recruitHero(hero)} variant="gold" disabled={player.gold < getHeroRecruitCost(hero)}>
-                          招募（{getHeroRecruitCost(hero)}）
-                        </Button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {activeHero && heroDialogue && (
-                <div className="mt-4 bg-stone-900/60 border border-stone-800 rounded p-4">
-                  <div className="text-xs text-stone-500 mb-1">{activeHero.name}：</div>
-                  <div className="text-stone-200">{heroDialogue.text}</div>
-                </div>
-              )}
-            </div>
-            {currentLocation.mercenaries.length > 0 ? currentLocation.mercenaries.map((offer) =>
-              renderRecruitCard(offer, 'MERCENARY')
-            ) : (
-              <div className="col-span-2 text-center py-12 border border-dashed border-stone-800 rounded">
-                <p className="text-stone-500 italic">酒馆里只有醉鬼。</p>
-              </div>
-            )}
-          </div>
+          <TavernSection
+            player={player}
+            tavernHeroes={tavernHeroes}
+            activeHero={activeHero}
+            heroDialogue={heroDialogue}
+            getHeroRoleLabel={getHeroRoleLabel}
+            getHeroRecruitCost={getHeroRecruitCost}
+            talkToHero={talkToHero}
+            recruitHero={recruitHero}
+            renderRecruitCard={renderRecruitCard}
+            mercenaries={currentLocation.mercenaries}
+          />
         )}
 
         {isCity && activeTownTab === 'WORK' && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
-              <p className="text-stone-400 text-sm">城里会定期发布不同等级的委托。接下委托后时间会自动快进，你可以中途退出。</p>
-            </div>
-            <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4">
-              {((currentLocation.workBoard?.contracts ?? []).length <= 0) ? (
-                <div className="text-stone-500 text-sm">目前没有可接的委托。</div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {(currentLocation.workBoard?.contracts ?? []).map(c => (
-                    <div key={c.id} className="bg-stone-950/40 border border-stone-800 rounded p-4">
-                      {(() => {
-                        const commerce = Math.max(0, player.attributes.commerce ?? 0);
-                        const commerceBonusRate = Math.min(0.5, commerce * 0.01);
-                        const payWithBonus = Math.max(0, Math.floor(c.pay * (1 + commerceBonusRate)));
-                        return (
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="text-stone-200 font-bold">{c.title}</div>
-                          <div className="text-xs text-stone-500 mt-1">
-                            等级 {c.tier} · 耗时 {c.days} 天 · 报酬 {payWithBonus}
-                            {commerce > 0 ? `（商业 ${commerce}：+${Math.round(commerceBonusRate * 100)}%）` : ''}
-                          </div>
-                        </div>
-                        <Button
-                          onClick={() => handleStartWorkContract(c.id)}
-                          variant="gold"
-                          disabled={!!workState?.isActive || !!miningState?.isActive || !!roachLureState?.isActive}
-                        >
-                          接取
-                        </Button>
-                      </div>
-                        );
-                      })()}
-                      <div className="text-xs text-stone-500 mt-2">
-                        中途退出：进度过半才有报酬，且只有 1/5。
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <WorkSection
+            currentLocation={currentLocation}
+            player={player}
+            workStateActive={!!workState?.isActive}
+            miningStateActive={!!miningState?.isActive}
+            roachLureStateActive={!!roachLureState?.isActive}
+            onStartWorkContract={handleStartWorkContract}
+          />
         )}
 
         {isMine && activeTownTab === 'MINING' && mineConfig && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
-              <p className="text-stone-400 text-sm">
-                矿脉会产出{mineConfig.crystalName}，附带效果：{mineConfig.effect}。挖矿会消耗时间并推进天数。
-              </p>
-            </div>
-            <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4">
-              <div className="flex flex-wrap items-center gap-4">
-                <span className="text-stone-300">挖矿天数</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={miningDays}
-                  onChange={(e) => setMiningDays(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
-                  className="w-20 bg-stone-800 border border-stone-700 text-stone-200 px-2 py-1 rounded"
-                  disabled={!!miningState?.isActive}
-                />
-                <div className="text-stone-500 text-sm">纯度随机 1-5 级</div>
-              </div>
-              <Button
-                onClick={handleStartMining}
-                variant="secondary"
-                disabled={!!miningState?.isActive || !!workState?.isActive || !!roachLureState?.isActive}
-                className="flex items-center gap-2 w-full md:w-auto"
-              >
-                <Mountain size={16} /> 开始挖矿
-              </Button>
-            </div>
-
-            <div className="bg-stone-900/60 p-6 rounded border border-stone-800">
-              <div className="text-stone-200 font-bold mb-3">矿石库存</div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                {(Object.keys(mineralMeta) as MineralId[]).map(id => (
-                  <div key={id} className="bg-stone-900 border border-stone-800 rounded p-3 space-y-2">
-                    <div className="text-stone-200 font-semibold">{mineralMeta[id].name}</div>
-                    <div className="text-xs text-stone-500">{mineralMeta[id].effect}</div>
-                    <div className="text-xs text-stone-400">
-                      {[5, 4, 3, 2, 1].map(purity => (
-                        <span key={`${id}_${purity}`} className="mr-2">
-                          {mineralPurityLabels[purity as MineralPurity]} {mineralInventory[id][purity as MineralPurity] ?? 0}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
+          <MiningSection
+            mineConfig={mineConfig}
+            miningDays={miningDays}
+            setMiningDays={setMiningDays}
+            miningStateActive={!!miningState?.isActive}
+            workStateActive={!!workState?.isActive}
+            roachLureStateActive={!!roachLureState?.isActive}
+            onStartMining={handleStartMining}
+            mineralMeta={mineralMeta}
+            mineralPurityLabels={mineralPurityLabels}
+            mineralInventory={mineralInventory}
+          />
         )}
 
         {isRoachNest && activeTownTab === 'ROACH_LURE' && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
-              <p className="text-stone-400 text-sm">
-                在蟑螂窝附近摆上油渍纸板与热饮残渣，静候虫群集合。每一天会随机吸引一批 Tier 1 蟑螂士兵加入你。
-              </p>
-            </div>
-            <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4">
-              <div className="flex flex-wrap items-center gap-4">
-                <span className="text-stone-300">吸引天数</span>
-                <input
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={roachLureDays}
-                  onChange={(e) => setRoachLureDays(Math.max(1, Math.min(20, Number(e.target.value) || 1)))}
-                  className="w-20 bg-stone-800 border border-stone-700 text-stone-200 px-2 py-1 rounded"
-                  disabled={!!roachLureState?.isActive}
-                />
-                <div className="text-stone-500 text-sm">预计收获总数：{roachLureDays * 1} - {roachLureDays * 3}</div>
-              </div>
-              <Button
-                onClick={handleStartRoachLure}
-                variant="secondary"
-                disabled={!!roachLureState?.isActive || !!workState?.isActive || !!miningState?.isActive || currentTroopCount >= maxTroops}
-                className="flex items-center gap-2 w-full md:w-auto"
-              >
-                <span>🪳</span> 开始吸引
-              </Button>
-            </div>
-          </div>
+          <RoachLureSection
+            roachLureDays={roachLureDays}
+            setRoachLureDays={setRoachLureDays}
+            roachLureStateActive={!!roachLureState?.isActive}
+            workStateActive={!!workState?.isActive}
+            miningStateActive={!!miningState?.isActive}
+            currentTroopCount={currentTroopCount}
+            maxTroops={maxTroops}
+            onStartRoachLure={handleStartRoachLure}
+          />
         )}
 
         {isMagicianLibrary && activeTownTab === 'MAGICIAN_LIBRARY' && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
-              <p className="text-stone-400 text-sm">
-                消耗异常水晶抽取异常样本，抽取有 20% 概率失稳。收集异常后即可进行召唤。
-              </p>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              <div className="bg-stone-900/60 border border-stone-800 rounded p-4 space-y-3">
-                <div className="text-stone-200 font-bold">水晶抽异常</div>
-                <div className="space-y-3">
-                  {(Object.keys(mineralMeta) as MineralId[]).map(id => {
-                    const pool = anomalyPools[id] ?? [];
-                    const available = getMineralAvailable(mineralInventory, id, 1);
-                    return (
-                      <div key={id} className="bg-stone-900 border border-stone-800 rounded p-3 space-y-2">
-                        <div className="flex items-center justify-between">
-                          <div className="text-stone-200 font-semibold">{mineralMeta[id].name}</div>
-                          <span className="text-xs text-stone-400">库存 {available}</span>
-                        </div>
-                        <div className="text-xs text-stone-500">{mineralMeta[id].effect}</div>
-                        <div className="text-xs text-stone-500">异常池：{pool.length} 种</div>
-                        <Button
-                          onClick={() => handleDrawAnomaly(id)}
-                          variant="secondary"
-                          disabled={available < 1 || pool.length === 0}
-                          className="w-full"
-                        >
-                          消耗 1 抽取
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="bg-stone-900/60 border border-stone-800 rounded p-4 space-y-3">
-                <div className="text-stone-200 font-bold">异常召唤</div>
-                {ownedAnomalies.length === 0 ? (
-                  <div className="text-stone-500 text-sm">尚未收集到异常样本。</div>
-                ) : (
-                  <div className="space-y-3">
-                    {ownedAnomalies.map(({ anomaly, count }) => {
-                      if (!anomaly) return null;
-                      const troop = getTroopTemplate(anomaly.troopId);
-                      const canSummon = currentTroopCount < maxTroops;
-                      const label = canSummon ? '召唤' : '队伍已满';
-                      return (
-                        <div key={anomaly.id} className="bg-stone-900 border border-stone-800 rounded p-3 space-y-2">
-                          <div className="flex items-center justify-between">
-                            <div className="text-stone-200 font-semibold">{anomaly.name}</div>
-                            <span className="text-xs text-sky-300">T{anomaly.tier}</span>
-                          </div>
-                          <div className="text-xs text-stone-500">{anomaly.description}</div>
-                          <div className="text-xs text-stone-400">异常样本：{count}</div>
-                          <div className="text-xs text-stone-400">召唤兵种：{troop?.name ?? anomaly.troopId}</div>
-                          <Button
-                            onClick={() => handleAnomalySummon(anomaly)}
-                            variant="secondary"
-                            disabled={!canSummon}
-                            className="w-full"
-                          >
-                            {label}
-                          </Button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <MagicianLibrarySection
+            mineralMeta={mineralMeta}
+            anomalyPools={anomalyPools}
+            mineralInventory={mineralInventory}
+            ownedAnomalies={ownedAnomalies}
+            currentTroopCount={currentTroopCount}
+            maxTroops={maxTroops}
+            getMineralAvailable={getMineralAvailable as any}
+            getTroopTemplate={getTroopTemplate}
+            onDrawAnomaly={handleDrawAnomaly}
+            onAnomalySummon={handleAnomalySummon}
+          />
         )}
 
         {isRecompiler && activeTownTab === 'RECOMPILER' && (
@@ -4589,104 +4145,27 @@ export const TownView = ({
         )}
 
         {isBlacksmith && activeTownTab === 'FORGE' && (
-          <div className="space-y-6 animate-fade-in">
-            <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
-              <p className="text-stone-400 text-sm">
-                铁匠铺可用矿石为部队附魔词条，词条会提高纸面战力并影响战报。
-              </p>
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-              <div className="bg-stone-900/60 border border-stone-800 rounded p-4 space-y-3">
-                <div className="text-stone-200 font-bold">选择部队</div>
-                {player.troops.length === 0 ? (
-                  <div className="text-stone-500 text-sm">暂无可附魔部队。</div>
-                ) : (
-                  <div className="space-y-2 max-h-80 overflow-y-auto scrollbar-hide">
-                    {player.troops.map((troop, index) => (
-                      <button
-                        key={`${troop.id}_${index}`}
-                        onClick={() => setForgeTroopIndex(index)}
-                        className={`w-full text-left border rounded p-2 ${forgeTroopIndex === index ? 'border-amber-500 bg-stone-900' : 'border-stone-800 bg-stone-950/40'}`}
-                      >
-                        <div className="text-stone-200 text-sm font-semibold">{troop.name} × {troop.count}</div>
-                        <div className="text-xs text-stone-500">{troop.equipment.join('、')}</div>
-                        {troop.enchantments && troop.enchantments.length > 0 && (
-                          <div className="text-[11px] text-fuchsia-300">词条：{troop.enchantments.map(e => e.name).join('、')}</div>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="bg-stone-900/60 border border-stone-800 rounded p-4 space-y-3 lg:col-span-2">
-                <div className="text-stone-200 font-bold">词条列表</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {enchantmentRecipes.map(recipe => {
-                    const costText = recipe.costs.map(cost => {
-                      const name = mineralMeta[cost.mineralId].name;
-                      const purityLabel = mineralPurityLabels[cost.purityMin];
-                      return `${purityLabel}${name} x${cost.amount}`;
-                    }).join(' + ');
-                    const available = recipe.costs.every(cost => getMineralAvailable(mineralInventory, cost.mineralId, cost.purityMin) >= cost.amount);
-                    const selected = forgeEnchantmentId === recipe.enchantment.id;
-                    return (
-                      <button
-                        key={recipe.enchantment.id}
-                        onClick={() => setForgeEnchantmentId(recipe.enchantment.id)}
-                        className={`text-left border rounded p-3 space-y-2 ${selected ? 'border-amber-500 bg-stone-900' : 'border-stone-800 bg-stone-950/40'}`}
-                      >
-                        <div className="text-stone-200 font-semibold">{recipe.enchantment.name}</div>
-                        <div className="text-xs text-stone-500">{recipe.enchantment.category} · +{Math.round(recipe.enchantment.powerBonus * 100)}% 战力</div>
-                        <div className="text-xs text-stone-400">{recipe.enchantment.description}</div>
-                        <div className={`text-xs ${available ? 'text-emerald-400' : 'text-red-400'}`}>消耗：{costText}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-                <div className="flex items-center justify-between pt-2">
-                  <div className="text-xs text-stone-500">可用矿石会优先消耗高纯度库存。</div>
-                  <Button onClick={handleForge} variant="secondary" className="flex items-center gap-2">
-                    <Hammer size={16} /> 执行附魔
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ForgeSection
+            player={player}
+            forgeTroopIndex={forgeTroopIndex}
+            setForgeTroopIndex={setForgeTroopIndex}
+            forgeEnchantmentId={forgeEnchantmentId}
+            setForgeEnchantmentId={setForgeEnchantmentId}
+            enchantmentRecipes={enchantmentRecipes}
+            mineralMeta={mineralMeta}
+            mineralPurityLabels={mineralPurityLabels}
+            mineralInventory={mineralInventory}
+            getMineralAvailable={getMineralAvailable}
+            onForge={handleForge}
+          />
         )}
 
         {activeTownTab === 'GARRISON' && (
-          <div className="space-y-6 animate-fade-in">
-            {visibleStayParties.length === 0 && (
-              <div className="text-center py-12 border border-dashed border-stone-800 rounded">
-                <p className="text-stone-500 italic">暂无停留部队。</p>
-              </div>
-            )}
-            {visibleStayParties.map(party => (
-              <div key={party.id} className="bg-stone-900/40 border border-stone-800 rounded p-4 space-y-4">
-                <div className="flex items-center justify-between">
-                  <div className="text-stone-200 font-bold flex items-center gap-2">
-                    <Users size={16} className="text-amber-500" />
-                    <span>{party.name}</span>
-                  </div>
-                  <div className="text-stone-400 text-sm flex items-center gap-3">
-                    <span>归属 {getStayPartyOwnerLabel(party)}</span>
-                    <span>总人数 {getPartyCount(party.troops)}</span>
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {party.troops.map(troop => (
-                    <TroopCard
-                      key={`${party.id}-${troop.id}`}
-                      troop={troop}
-                      count={troop.count}
-                      countLabel="数量"
-                    />
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
+          <GarrisonSection
+            visibleStayParties={visibleStayParties}
+            getStayPartyOwnerLabel={getStayPartyOwnerLabel}
+            getPartyCount={getPartyCount}
+          />
         )}
 
         {isFieldCamp && activeTownTab === 'SIEGE' && (

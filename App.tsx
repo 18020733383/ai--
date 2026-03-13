@@ -1,21 +1,26 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, SoldierInstance, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
-import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_RELATION_MATRIX, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './constants';
+import { FACTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveBattle, resolveNegotiation, ShaperDecision } from './services/geminiService';
+import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
+import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
+import { applyWorldDiplomacyDelta, buildInitialWorldDiplomacy, clampRelation, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, normalizeWorldDiplomacy } from './game/systems/diplomacy';
+import { collectWorldTroops as collectWorldTroopsFromWorld, getBelieverStats as getBelieverStatsFromWorld } from './features/world-board/model/worldStats';
+import type { AltarRecruitState, HideoutStayState, MiningState, RoachLureState, TownTab, WorkState } from './features/town/model/types';
 import { Button } from './components/Button';
-import { BigMapView } from './components/BigMapView';
-import { BattleView } from './components/BattleView';
-import { BattleResultView } from './components/BattleResultView';
+import { BigMapView } from './features/world-map';
+import { BattleView, BattleResultView } from './features/battle';
 import { ChangelogModal } from './components/ChangelogModal';
 import { SettingsModal } from './components/SettingsModal';
 import { MapListModal } from './components/MapListModal';
 import { WorldTroopStatsModal } from './components/WorldTroopStatsModal';
 import { CHANGELOG } from './data/changelog';
+import { AppHeader } from './app/ui/AppHeader';
 import { WorldBoardView } from './views/WorldBoardView';
 import { TroopArchiveView } from './views/TroopArchiveView';
 import { PartyView } from './views/PartyView';
-import { TownView } from './views/TownView';
+import { TownView } from './features/town';
 import { HideoutInspectView } from './views/HideoutInspectView';
 import { AsylumView } from './views/AsylumView';
 import { MarketView } from './views/MarketView';
@@ -52,169 +57,6 @@ const calculateXpGain = (currentXp: number, currentLevel: number, currentPoints:
     logs.push(`升级了！当前等级：${level}，获得属性点！`);
   }
   return { xp, level, attributePoints: points, maxXp, logs };
-};
-
-const clampRelation = (value: number) => Math.max(-100, Math.min(100, Math.round(value)));
-
-const buildInitialWorldDiplomacy = (): WorldDiplomacyState => {
-  const factionIds = FACTIONS.map(f => f.id);
-  const raceIds = Object.keys(RACE_LABELS) as RaceId[];
-  const factionRelations = factionIds.reduce((acc, a) => {
-    acc[a] = factionIds.reduce((row, b) => {
-      row[b] = 0;
-      return row;
-    }, {} as Record<string, number>) as Record<typeof factionIds[number], number>;
-    return acc;
-  }, {} as Record<string, Record<string, number>>) as WorldDiplomacyState['factionRelations'];
-  if (factionIds.includes('VERDANT_COVENANT') && factionIds.includes('FROST_OATH')) {
-    (factionRelations as any).VERDANT_COVENANT.FROST_OATH = -18;
-    (factionRelations as any).FROST_OATH.VERDANT_COVENANT = -18;
-  }
-  if (factionIds.includes('VERDANT_COVENANT') && factionIds.includes('RED_DUNE')) {
-    (factionRelations as any).VERDANT_COVENANT.RED_DUNE = -10;
-    (factionRelations as any).RED_DUNE.VERDANT_COVENANT = -10;
-  }
-  if (factionIds.includes('FROST_OATH') && factionIds.includes('RED_DUNE')) {
-    (factionRelations as any).FROST_OATH.RED_DUNE = -22;
-    (factionRelations as any).RED_DUNE.FROST_OATH = -22;
-  }
-  if (factionIds.includes('AUREATE_LEAGUE') && factionIds.includes('VERDANT_COVENANT')) {
-    (factionRelations as any).AUREATE_LEAGUE.VERDANT_COVENANT = -8;
-    (factionRelations as any).VERDANT_COVENANT.AUREATE_LEAGUE = -8;
-  }
-  if (factionIds.includes('AUREATE_LEAGUE') && factionIds.includes('FROST_OATH')) {
-    (factionRelations as any).AUREATE_LEAGUE.FROST_OATH = -12;
-    (factionRelations as any).FROST_OATH.AUREATE_LEAGUE = -12;
-  }
-  if (factionIds.includes('AUREATE_LEAGUE') && factionIds.includes('RED_DUNE')) {
-    (factionRelations as any).AUREATE_LEAGUE.RED_DUNE = -6;
-    (factionRelations as any).RED_DUNE.AUREATE_LEAGUE = -6;
-  }
-  if (factionIds.includes('ARCANE_CONCORD') && factionIds.includes('VERDANT_COVENANT')) {
-    (factionRelations as any).ARCANE_CONCORD.VERDANT_COVENANT = -4;
-    (factionRelations as any).VERDANT_COVENANT.ARCANE_CONCORD = -4;
-  }
-  if (factionIds.includes('ARCANE_CONCORD') && factionIds.includes('FROST_OATH')) {
-    (factionRelations as any).ARCANE_CONCORD.FROST_OATH = -10;
-    (factionRelations as any).FROST_OATH.ARCANE_CONCORD = -10;
-  }
-  if (factionIds.includes('ARCANE_CONCORD') && factionIds.includes('RED_DUNE')) {
-    (factionRelations as any).ARCANE_CONCORD.RED_DUNE = -6;
-    (factionRelations as any).RED_DUNE.ARCANE_CONCORD = -6;
-  }
-  if (factionIds.includes('ARCANE_CONCORD') && factionIds.includes('AUREATE_LEAGUE')) {
-    (factionRelations as any).ARCANE_CONCORD.AUREATE_LEAGUE = 4;
-    (factionRelations as any).AUREATE_LEAGUE.ARCANE_CONCORD = 4;
-  }
-  const raceRelations = raceIds.reduce((acc, a) => {
-    acc[a] = raceIds.reduce((row, b) => {
-      row[b] = clampRelation(RACE_RELATION_MATRIX[a]?.[b] ?? 0);
-      return row;
-    }, {} as Record<string, number>) as Record<typeof raceIds[number], number>;
-    return acc;
-  }, {} as WorldDiplomacyState['raceRelations']);
-  const factionRaceRelations = factionIds.reduce((acc, factionId) => {
-    acc[factionId] = raceIds.reduce((row, raceId) => {
-      row[raceId] = clampRelation(RACE_RELATION_MATRIX.HUMAN?.[raceId] ?? 0);
-      return row;
-    }, {} as Record<string, number>) as Record<typeof raceIds[number], number>;
-    return acc;
-  }, {} as WorldDiplomacyState['factionRaceRelations']);
-  return { factionRelations, raceRelations, factionRaceRelations, events: [] };
-};
-
-const normalizeWorldDiplomacy = (raw: any, currentDay: number): WorldDiplomacyState => {
-  const base = buildInitialWorldDiplomacy();
-  const factionIds = FACTIONS.map(f => f.id);
-  const raceIds = Object.keys(RACE_LABELS) as RaceId[];
-  const next: WorldDiplomacyState = {
-    factionRelations: { ...base.factionRelations },
-    raceRelations: { ...base.raceRelations },
-    factionRaceRelations: { ...base.factionRaceRelations },
-    events: Array.isArray(raw?.events) ? raw.events.filter((e: any) => e && typeof e.text === 'string').slice(0, 60) : []
-  };
-  factionIds.forEach(a => {
-    const row = raw?.factionRelations?.[a];
-    const nextRow: Record<string, number> = { ...(next.factionRelations as any)[a] };
-    factionIds.forEach(b => {
-      nextRow[b] = clampRelation(Number(row?.[b] ?? nextRow[b] ?? 0));
-    });
-    (next.factionRelations as any)[a] = nextRow;
-  });
-  raceIds.forEach(a => {
-    const row = raw?.raceRelations?.[a];
-    const nextRow: Record<string, number> = { ...(next.raceRelations as any)[a] };
-    raceIds.forEach(b => {
-      nextRow[b] = clampRelation(Number(row?.[b] ?? nextRow[b] ?? 0));
-    });
-    (next.raceRelations as any)[a] = nextRow;
-  });
-  factionIds.forEach(factionId => {
-    const row = raw?.factionRaceRelations?.[factionId];
-    const nextRow: Record<string, number> = { ...(next.factionRaceRelations as any)[factionId] };
-    raceIds.forEach(raceId => {
-      nextRow[raceId] = clampRelation(Number(row?.[raceId] ?? nextRow[raceId] ?? 0));
-    });
-    (next.factionRaceRelations as any)[factionId] = nextRow;
-  });
-  next.events = next.events.map((e: any) => ({
-    id: String(e?.id ?? `dip_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`),
-    day: typeof e?.day === 'number' ? e.day : currentDay,
-    kind: e?.kind === 'FACTION_FACTION' || e?.kind === 'FACTION_RACE' || e?.kind === 'RACE_RACE' ? e.kind : 'FACTION_FACTION',
-    aId: String(e?.aId ?? ''),
-    bId: String(e?.bId ?? ''),
-    delta: clampRelation(Number(e?.delta ?? 0)),
-    text: String(e?.text ?? '').trim()
-  })).filter((e: any) => e.text);
-  return next;
-};
-
-const getWorldFactionRelation = (state: WorldDiplomacyState, a: string, b: string) => clampRelation(Number((state.factionRelations as any)?.[a]?.[b] ?? 0));
-const getWorldRaceRelation = (state: WorldDiplomacyState, a: string, b: string) => clampRelation(Number((state.raceRelations as any)?.[a]?.[b] ?? 0));
-const getWorldFactionRaceRelation = (state: WorldDiplomacyState, factionId: string, raceId: string) => clampRelation(Number((state.factionRaceRelations as any)?.[factionId]?.[raceId] ?? 0));
-
-const applyWorldDiplomacyDelta = (state: WorldDiplomacyState, payload: { kind: WorldDiplomacyState['events'][number]['kind']; aId: string; bId: string; delta: number; text: string; day: number }) => {
-  const delta = clampRelation(payload.delta);
-  if (!delta) return state;
-  const id = `dip_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-  const event = { id, day: payload.day, kind: payload.kind, aId: payload.aId, bId: payload.bId, delta, text: payload.text };
-  if (payload.kind === 'FACTION_FACTION') {
-    const current = getWorldFactionRelation(state, payload.aId, payload.bId);
-    const nextValue = clampRelation(current + delta);
-    if (nextValue === current) return state;
-    return {
-      ...state,
-      factionRelations: {
-        ...state.factionRelations,
-        [payload.aId]: { ...(state.factionRelations as any)[payload.aId], [payload.bId]: nextValue }
-      } as any,
-      events: [event, ...(state.events ?? [])].slice(0, 60)
-    };
-  }
-  if (payload.kind === 'RACE_RACE') {
-    const current = getWorldRaceRelation(state, payload.aId, payload.bId);
-    const nextValue = clampRelation(current + delta);
-    if (nextValue === current) return state;
-    return {
-      ...state,
-      raceRelations: {
-        ...state.raceRelations,
-        [payload.aId]: { ...(state.raceRelations as any)[payload.aId], [payload.bId]: nextValue }
-      } as any,
-      events: [event, ...(state.events ?? [])].slice(0, 60)
-    };
-  }
-  const current = getWorldFactionRaceRelation(state, payload.aId, payload.bId);
-  const nextValue = clampRelation(current + delta);
-  if (nextValue === current) return state;
-  return {
-    ...state,
-    factionRaceRelations: {
-      ...state.factionRaceRelations,
-      [payload.aId]: { ...(state.factionRaceRelations as any)[payload.aId], [payload.bId]: nextValue }
-    } as any,
-    events: [event, ...(state.events ?? [])].slice(0, 60)
-  };
 };
 
 const DEFAULT_BATTLE_LAYERS = [
@@ -905,27 +747,14 @@ export default function App() {
   const [trainInputEnemy, setTrainInputEnemy] = useState({ id: 'peasant', count: 10 });
 
   // Town View State
-  const [townTab, setTownTab] = useState<'RECRUIT' | 'TAVERN' | 'GARRISON' | 'LOCAL_GARRISON' | 'DEFENSE' | 'MEMORIAL' | 'WORK' | 'SIEGE' | 'OWNED' | 'COFFEE_CHAT' | 'MINING' | 'FORGE' | 'ROACH_LURE' | 'IMPOSTER_STATIONED' | 'LORD' | 'ALTAR' | 'ALTAR_RECRUIT' | 'MAGICIAN_LIBRARY' | 'RECOMPILER' | 'HABITAT' | 'HIDEOUT'>('RECRUIT');
+  const [townTab, setTownTab] = useState<TownTab>('RECRUIT');
   const [hideoutInspectLayerIndex, setHideoutInspectLayerIndex] = useState(0);
   const [workDays, setWorkDays] = useState(1);
   const [miningDays, setMiningDays] = useState(2);
   const [roachLureDays, setRoachLureDays] = useState(2);
   const [hideoutStayDays, setHideoutStayDays] = useState(3);
-  const [miningState, setMiningState] = useState<{
-    isActive: boolean;
-    locationId: string;
-    mineralId: MineralId;
-    totalDays: number;
-    daysPassed: number;
-    yieldByPurity: Record<MineralPurity, number>;
-  } | null>(null);
-  const [roachLureState, setRoachLureState] = useState<{
-    isActive: boolean;
-    locationId: string;
-    totalDays: number;
-    daysPassed: number;
-    recruitedByTroopId: Record<string, number>;
-  } | null>(null);
+  const [miningState, setMiningState] = useState<MiningState | null>(null);
+  const [roachLureState, setRoachLureState] = useState<RoachLureState | null>(null);
   const [forgeTroopIndex, setForgeTroopIndex] = useState<number | null>(null);
   const [forgeEnchantmentId, setForgeEnchantmentId] = useState<string | null>(null);
   const [undeadChatInput, setUndeadChatInput] = useState('');
@@ -964,13 +793,7 @@ export default function App() {
   const [altarProposals, setAltarProposals] = useState<Record<string, { doctrine: AltarDoctrine; result: AltarTroopTreeResult; prevResult?: AltarTroopTreeResult }>>({});
   const [isAltarLoading, setIsAltarLoading] = useState(false);
   const [altarRecruitDays, setAltarRecruitDays] = useState(2);
-  const [altarRecruitState, setAltarRecruitState] = useState<{
-    isActive: boolean;
-    locationId: string;
-    totalDays: number;
-    daysPassed: number;
-    recruitedByTroopId: Record<string, number>;
-  } | null>(null);
+  const [altarRecruitState, setAltarRecruitState] = useState<AltarRecruitState | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [openAIBaseUrl, setOpenAIBaseUrl] = useState('https://api.openai.com');
   const [openAIKey, setOpenAIKey] = useState('');
@@ -1030,27 +853,14 @@ export default function App() {
   }, [heroes]);
 
   // Work State
-  const [workState, setWorkState] = useState<{
-    isActive: boolean;
-    locationId: string;
-    contractId: string;
-    contractTitle: string;
-    totalDays: number;
-    daysPassed: number;
-    totalPay: number;
-  } | null>(null);
+  const [workState, setWorkState] = useState<WorkState | null>(null);
   const [habitatStayState, setHabitatStayState] = useState<{
     isActive: boolean;
     locationId: string;
     totalDays: number;
     daysPassed: number;
   } | null>(null);
-  const [hideoutStayState, setHideoutStayState] = useState<{
-    isActive: boolean;
-    locationId: string;
-    totalDays: number;
-    daysPassed: number;
-  } | null>(null);
+  const [hideoutStayState, setHideoutStayState] = useState<HideoutStayState | null>(null);
 
   // Logs
   const [logs, setLogs] = useState<string[]>(["欢迎来到《卡拉迪亚编年史》。拖动地图探索，滚轮缩放，点击据点移动。"]);
@@ -2188,36 +1998,14 @@ export default function App() {
   };
 
   const buildAIConfig = () => {
-    if (aiProvider === 'GEMINI') {
-      const key = geminiApiKey.trim();
-      if (!key) return undefined;
-      return {
-        baseUrl: '',
-        apiKey: key,
-        model: 'gemini-3-flash-preview',
-        provider: aiProvider
-      };
-    }
-    if (aiProvider === 'DOUBAO') {
-      const key = doubaoApiKey.trim();
-      const model = openAIModel.trim();
-      if (!key || !model) return undefined;
-      return {
-        baseUrl: openAIBaseUrl.trim() || 'https://ark.cn-beijing.volces.com/api/v3',
-        apiKey: key,
-        model,
-        provider: aiProvider
-      };
-    }
-    const key = openAIKey.trim();
-    const model = openAIModel.trim();
-    if (!key || !model) return undefined;
-    return {
-      baseUrl: openAIBaseUrl.trim() || 'https://api.openai.com',
-      apiKey: key,
-      model,
-      provider: aiProvider
-    };
+    return buildAIConfigFromSettings({
+      aiProvider,
+      doubaoApiKey,
+      geminiApiKey,
+      openAIBaseUrl,
+      openAIKey,
+      openAIModel
+    });
   };
 
   const buildHeroChatBattleBriefsContext = () => {
@@ -2948,73 +2736,21 @@ export default function App() {
 
   useEffect(() => {
     sessionStorage.removeItem('game.logs');
-
-    const baseUrl = localStorage.getItem('openai.baseUrl');
-    const key = localStorage.getItem('openai.key');
-    const model = localStorage.getItem('openai.model');
-    const provider = localStorage.getItem('ai.provider');
-    const doubaoKey = localStorage.getItem('doubao.key');
-    const geminiKey = localStorage.getItem('gemini.key');
-    const profilesRaw = localStorage.getItem('openai.profiles');
-    const activeProfileId = localStorage.getItem('openai.profile.active');
-    const battleStream = localStorage.getItem('battle.stream');
-    const battleMode = localStorage.getItem('battle.mode');
-    const chatterEnabled = localStorage.getItem('hero.chatter.enabled');
-    const chatterMin = localStorage.getItem('hero.chatter.minMinutes');
-    const chatterMax = localStorage.getItem('hero.chatter.maxMinutes');
-    let profiles: { id: string; name: string; baseUrl: string; key: string; model: string }[] = [];
-    if (profilesRaw) {
-      try {
-        const parsed = JSON.parse(profilesRaw);
-        if (Array.isArray(parsed)) {
-          profiles = parsed.filter(p => p && typeof p.id === 'string');
-        }
-      } catch {
-      }
-    }
-    if (profiles.length === 0) {
-      const defaultProfile = {
-        id: `profile_${Date.now()}`,
-        name: '默认',
-        baseUrl: baseUrl ?? 'https://api.openai.com',
-        key: key ?? '',
-        model: model ?? ''
-      };
-      profiles = [defaultProfile];
-      localStorage.setItem('openai.profiles', JSON.stringify(profiles));
-      localStorage.setItem('openai.profile.active', defaultProfile.id);
-      setOpenAIProfiles(profiles);
-      setActiveOpenAIProfileId(defaultProfile.id);
-      setOpenAIProfileName(defaultProfile.name);
-      setOpenAIBaseUrl(defaultProfile.baseUrl);
-      setOpenAIKey(defaultProfile.key);
-      setOpenAIModel(defaultProfile.model);
-    } else {
-      setOpenAIProfiles(profiles);
-      const activeProfile = profiles.find(p => p.id === activeProfileId) ?? profiles[0];
-      setActiveOpenAIProfileId(activeProfile.id);
-      setOpenAIProfileName(activeProfile.name);
-      setOpenAIBaseUrl(activeProfile.baseUrl);
-      setOpenAIKey(activeProfile.key);
-      setOpenAIModel(activeProfile.model);
-    }
-    const normalizedProvider = provider === 'GPT' || provider === 'GEMINI' || provider === 'DOUBAO' || provider === 'CUSTOM'
-      ? provider
-      : 'CUSTOM';
-    setAIProvider(normalizedProvider as AIProvider);
-    setDoubaoApiKey(doubaoKey ?? '');
-    setGeminiApiKey(geminiKey ?? '');
-    if (battleStream) setBattleStreamEnabled(battleStream === '1' || battleStream === 'true');
-    if (battleMode === 'AI' || battleMode === 'PROGRAM') setBattleResolutionMode(battleMode);
-    if (chatterEnabled) setHeroChatterEnabled(chatterEnabled === '1' || chatterEnabled === 'true');
-    if (chatterMin) {
-      const n = Number(chatterMin);
-      if (Number.isFinite(n) && n > 0) setHeroChatterMinMinutes(Math.floor(n));
-    }
-    if (chatterMax) {
-      const n = Number(chatterMax);
-      if (Number.isFinite(n) && n > 0) setHeroChatterMaxMinutes(Math.floor(n));
-    }
+    const settings = loadAISettingsFromStorage();
+    setOpenAIProfiles(settings.openAIProfiles);
+    setActiveOpenAIProfileId(settings.activeOpenAIProfileId);
+    setOpenAIProfileName(settings.openAIProfileName);
+    setOpenAIBaseUrl(settings.openAIBaseUrl);
+    setOpenAIKey(settings.openAIKey);
+    setOpenAIModel(settings.openAIModel);
+    setAIProvider(settings.aiProvider);
+    setDoubaoApiKey(settings.doubaoApiKey);
+    setGeminiApiKey(settings.geminiApiKey);
+    setBattleStreamEnabled(settings.battleStreamEnabled);
+    setBattleResolutionMode(settings.battleResolutionMode);
+    setHeroChatterEnabled(settings.heroChatterEnabled);
+    setHeroChatterMinMinutes(settings.heroChatterMinMinutes);
+    setHeroChatterMaxMinutes(settings.heroChatterMaxMinutes);
   }, []);
 
   useEffect(() => {
@@ -9481,43 +9217,36 @@ export default function App() {
   };
 
   const saveOpenAISettings = () => {
-    const normalizedProfiles = openAIProfiles.length > 0 ? openAIProfiles : [{
-      id: activeOpenAIProfileId ?? `profile_${Date.now()}`,
-      name: openAIProfileName || '默认',
-      baseUrl: openAIBaseUrl,
-      key: openAIKey,
-      model: openAIModel
-    }];
-    const activeId = activeOpenAIProfileId ?? normalizedProfiles[0].id;
-    const updatedProfiles = normalizedProfiles.map(p => {
-      if (p.id !== activeId) return p;
-      return {
-        ...p,
-        name: openAIProfileName || p.name,
-        baseUrl: openAIBaseUrl,
-        key: openAIKey,
-        model: openAIModel
-      };
-    });
+    const { updatedProfiles, activeId } = buildUpdatedProfiles(
+      openAIProfiles,
+      activeOpenAIProfileId,
+      openAIProfileName,
+      openAIBaseUrl,
+      openAIKey,
+      openAIModel
+    );
     setOpenAIProfiles(updatedProfiles);
     setActiveOpenAIProfileId(activeId);
-    localStorage.setItem('openai.profiles', JSON.stringify(updatedProfiles));
-    localStorage.setItem('openai.profile.active', activeId);
-    localStorage.setItem('openai.baseUrl', openAIBaseUrl.trim());
-    localStorage.setItem('openai.key', openAIKey.trim());
-    localStorage.setItem('openai.model', openAIModel.trim());
-    localStorage.setItem('ai.provider', aiProvider);
-    localStorage.setItem('doubao.key', doubaoApiKey.trim());
-    localStorage.setItem('gemini.key', geminiApiKey.trim());
-    localStorage.setItem('battle.stream', battleStreamEnabled ? '1' : '0');
-    localStorage.setItem('battle.mode', battleResolutionMode);
-    localStorage.setItem('hero.chatter.enabled', heroChatterEnabled ? '1' : '0');
-    localStorage.setItem('hero.chatter.minMinutes', String(heroChatterMinMinutes));
-    localStorage.setItem('hero.chatter.maxMinutes', String(heroChatterMaxMinutes));
+    persistAISettingsToStorage({
+      aiProvider,
+      doubaoApiKey,
+      geminiApiKey,
+      openAIBaseUrl,
+      openAIKey,
+      openAIModel,
+      openAIProfiles: updatedProfiles,
+      activeOpenAIProfileId: activeId,
+      openAIProfileName,
+      battleStreamEnabled,
+      battleResolutionMode,
+      heroChatterEnabled,
+      heroChatterMinMinutes,
+      heroChatterMaxMinutes
+    });
   };
 
   const selectOpenAIProfile = (profileId: string) => {
-    const profile = openAIProfiles.find(p => p.id === profileId);
+    const profile = selectAIProfileState(openAIProfiles, profileId);
     if (!profile) return;
     setActiveOpenAIProfileId(profile.id);
     setOpenAIProfileName(profile.name);
@@ -9525,22 +9254,10 @@ export default function App() {
     setOpenAIKey(profile.key);
     setOpenAIModel(profile.model);
     setOpenAIModels([]);
-    localStorage.setItem('openai.profile.active', profile.id);
-    localStorage.setItem('openai.baseUrl', profile.baseUrl.trim());
-    localStorage.setItem('openai.key', profile.key.trim());
-    localStorage.setItem('openai.model', profile.model.trim());
   };
 
   const addOpenAIProfile = () => {
-    const name = `新配置 ${openAIProfiles.length + 1}`;
-    const newProfile = {
-      id: `profile_${Date.now()}`,
-      name,
-      baseUrl: 'https://api.openai.com',
-      key: '',
-      model: ''
-    };
-    const updated = [...openAIProfiles, newProfile];
+    const { profile: newProfile, updated } = createNextAIProfile(openAIProfiles);
     setOpenAIProfiles(updated);
     setActiveOpenAIProfileId(newProfile.id);
     setOpenAIProfileName(newProfile.name);
@@ -9548,11 +9265,6 @@ export default function App() {
     setOpenAIKey('');
     setOpenAIModel('');
     setOpenAIModels([]);
-    localStorage.setItem('openai.profiles', JSON.stringify(updated));
-    localStorage.setItem('openai.profile.active', newProfile.id);
-    localStorage.setItem('openai.baseUrl', newProfile.baseUrl);
-    localStorage.setItem('openai.key', '');
-    localStorage.setItem('openai.model', '');
   };
 
   const SAVEGAME_SCHEMA_VERSION = 1 as const;
@@ -9677,49 +9389,6 @@ export default function App() {
       }
     }
   });
-
-  type SaveSlotMeta = {
-    id: string;
-    name: string;
-    createdAt: number;
-    updatedAt: number;
-    isAuto?: boolean;
-    day?: number;
-    level?: number;
-    renown?: number;
-    endingId?: string;
-  };
-  const SAVE_INDEX_KEY = 'calradia.saves.v1';
-  const SAVE_DATA_PREFIX = 'calradia.save.v1.';
-  const SAVE_SELECTED_KEY = 'calradia.saves.selected';
-  const AUTO_SAVE_ID = 'AUTO';
-
-  const readSaveIndex = (): SaveSlotMeta[] => {
-    try {
-      const raw = localStorage.getItem(SAVE_INDEX_KEY);
-      if (!raw) return [];
-      const list = JSON.parse(raw);
-      if (!Array.isArray(list)) return [];
-      return list
-        .filter(item => item && typeof item.id === 'string')
-        .map(item => ({
-          id: String(item.id),
-          name: String(item.name ?? '未命名存档'),
-          createdAt: typeof item.createdAt === 'number' ? item.createdAt : Date.now(),
-          updatedAt: typeof item.updatedAt === 'number' ? item.updatedAt : Date.now(),
-          isAuto: !!item.isAuto,
-          day: typeof item.day === 'number' ? item.day : undefined,
-          level: typeof item.level === 'number' ? item.level : undefined,
-          renown: typeof item.renown === 'number' ? item.renown : undefined,
-          endingId: typeof item.endingId === 'string' ? item.endingId : undefined
-        }));
-    } catch {
-      return [];
-    }
-  };
-  const writeSaveIndex = (list: SaveSlotMeta[]) => {
-    localStorage.setItem(SAVE_INDEX_KEY, JSON.stringify(list.slice(0, 40)));
-  };
 
   const [saveSlots, setSaveSlots] = useState<SaveSlotMeta[]>(() => readSaveIndex());
   const [selectedSaveId, setSelectedSaveId] = useState<string | null>(() => {
@@ -10629,62 +10298,21 @@ export default function App() {
   // --- Views ---
 
   const collectWorldTroops = () => {
-    const gathered: Troop[] = [];
-    const addTroops = (troops?: Troop[]) => {
-      if (!troops) return;
-      troops.forEach(t => {
-        if (!t || t.count <= 0) return;
-        const template = getTroopTemplate(t.id);
-        if (template) {
-          gathered.push({ ...template, count: t.count, xp: t.xp ?? 0 } as Troop);
-        } else {
-          gathered.push(t);
-        }
-      });
-    };
-
-    addTroops(player.troops);
-
-    locations.forEach(loc => {
-      const garrison = loc.garrison ?? [];
-      if (loc.owner === 'PLAYER') {
-        addTroops(garrison);
-      } else if (garrison.length > 0) {
-        addTroops(garrison);
-      } else {
-        addTroops(buildGarrisonTroops(loc));
-      }
-
-      const stayParties = loc.stayParties ?? [];
-      stayParties.forEach(party => addTroops(party.troops));
-
-      const stationedArmies = loc.stationedArmies ?? [];
-      stationedArmies.forEach(army => addTroops(army.troops));
-
-      if (loc.activeSiege?.troops) {
-        addTroops(loc.activeSiege.troops);
-      }
+    return collectWorldTroopsFromWorld({
+      player,
+      locations,
+      getTroopTemplate,
+      buildGarrisonTroops
     });
-
-    return gathered;
   };
 
   const getBelieverStats = (troopIds: string[]) => {
-    const ids = new Set(troopIds.filter(Boolean));
-    const stats = {
-      total: 0,
-      byTier: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
-    };
-    if (ids.size === 0) return stats;
-    const gathered = collectWorldTroops();
-    gathered.forEach(troop => {
-      if (!ids.has(troop.id)) return;
-      const tier = (getTroopTemplate(troop.id)?.tier ?? troop.tier ?? 1) as TroopTier;
-      const key = Math.min(5, Math.max(1, tier)) as 1 | 2 | 3 | 4 | 5;
-      stats.total += troop.count;
-      stats.byTier[key] += troop.count;
+    return getBelieverStatsFromWorld(troopIds, {
+      player,
+      locations,
+      getTroopTemplate,
+      buildGarrisonTroops
     });
-    return stats;
   };
 
   const copyEndgameBattlePrompt = async () => {
@@ -10782,89 +10410,6 @@ export default function App() {
       addLog('复制失败：浏览器未授权剪贴板。');
     }
   };
-
-  const renderHeader = () => (
-    <header className="bg-stone-900 border-b border-stone-700 p-2 md:p-4 sticky top-0 z-30 shadow-lg flex flex-wrap gap-4 items-center justify-between">
-       <div className="flex items-center gap-2">
-         <div 
-            onClick={() => setView('CHARACTER')}
-            className="flex items-center gap-2 cursor-pointer hover:bg-stone-800 p-1 rounded transition-colors"
-          >
-             <div className="w-8 h-8 rounded-full bg-stone-700 border border-stone-500 flex items-center justify-center">
-               <User size={16} className={player.status === 'INJURED' ? 'text-red-500' : 'text-stone-300'} />
-             </div>
-             <div className="flex flex-col">
-               <span className="text-xs font-bold text-stone-300 leading-none">{player.name} Lv.{player.level}</span>
-               <div className="w-16 h-1.5 bg-stone-800 rounded mt-1">
-                 <div className="h-full bg-red-600" style={{width: `${(player.currentHp / player.maxHp) * 100}%`}}></div>
-               </div>
-               <span className="text-[10px] text-stone-500">{player.currentHp} / {player.maxHp}</span>
-             </div>
-          </div>
-          {player.attributePoints > 0 && <span className="animate-pulse text-yellow-500 text-xs font-bold">● 加点</span>}
-       </div>
-
-       <div className="flex gap-4 text-sm items-center">
-          <div className="flex items-center gap-2 text-stone-400" title="天数">
-             <span className="font-serif">Day {player.day}</span>
-          </div>
-          <div className="flex items-center gap-1 text-yellow-500" title="第纳尔">
-            <Coins size={14} /> <span>{player.gold}</span>
-          </div>
-          <button 
-            onClick={() => setView(view === 'PARTY' ? 'MAP' : 'PARTY')}
-            className="flex items-center gap-1 text-stone-200 hover:text-white px-2 rounded transition-colors" 
-          >
-             <Users size={14} /> <span>{player.troops.reduce((a, b) => a + b.count, 0) + (player.woundedTroops ?? []).reduce((sum, e) => sum + (e.count ?? 0), 0)} / {getMaxTroops()}</span>
-          </button>
-          <button
-            onClick={() => setView(view === 'BILLS' ? 'MAP' : 'BILLS')}
-            className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
-            title="账单"
-          >
-            <Scroll size={14} /> <span className="hidden md:inline">账单</span>
-          </button>
-          <button
-            onClick={() => setIsMapListOpen(true)}
-            className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
-            title="据点列表"
-          >
-            <MapIcon size={14} /> <span className="hidden md:inline">据点</span>
-          </button>
-          <button
-            onClick={() => setIsWorldTroopStatsOpen(true)}
-            className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
-            title="士兵统计"
-          >
-            <Activity size={14} /> <span className="hidden md:inline">统计</span>
-          </button>
-          <button
-            onClick={() => setView('RELATIONS')}
-            className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
-            title="关系"
-          >
-            <Flag size={14} /> <span className="hidden md:inline">关系</span>
-          </button>
-          <button
-            onClick={() => setIsChangelogOpen(true)}
-            className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
-            title="更新日志"
-          >
-            <MessageCircle size={14} /> <span className="hidden md:inline">更新</span>
-          </button>
-          <button
-            onClick={() => {
-              setSettingsError(null);
-              setIsSettingsOpen(true);
-            }}
-            className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
-            title="设置"
-          >
-            <Settings size={14} /> <span className="hidden md:inline">设置</span>
-          </button>
-       </div>
-    </header>
-  );
 
   const renderMapListModal = () => (
     <MapListModal
@@ -12305,7 +11850,25 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-sans selection:bg-amber-900 selection:text-white overflow-hidden flex flex-col">
-      {view !== 'MAIN_MENU' && view !== 'INTRO' && view !== 'ENDING' && view !== 'GAME_OVER' && view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INSPECT' && renderHeader()}
+      {view !== 'MAIN_MENU' && view !== 'INTRO' && view !== 'ENDING' && view !== 'GAME_OVER' && view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INSPECT' && (
+        <AppHeader
+          player={player}
+          view={view}
+          troopCount={player.troops.reduce((a, b) => a + b.count, 0) + (player.woundedTroops ?? []).reduce((sum, e) => sum + (e.count ?? 0), 0)}
+          maxTroops={getMaxTroops()}
+          onOpenCharacter={() => setView('CHARACTER')}
+          onToggleParty={() => setView(view === 'PARTY' ? 'MAP' : 'PARTY')}
+          onToggleBills={() => setView(view === 'BILLS' ? 'MAP' : 'BILLS')}
+          onOpenMapList={() => setIsMapListOpen(true)}
+          onOpenWorldStats={() => setIsWorldTroopStatsOpen(true)}
+          onOpenRelations={() => setView('RELATIONS')}
+          onOpenChangelog={() => setIsChangelogOpen(true)}
+          onOpenSettings={() => {
+            setSettingsError(null);
+            setIsSettingsOpen(true);
+          }}
+        />
+      )}
       
       <main className={view === 'MAP' || view === 'HERO_CHAT' || view === 'MAIN_MENU' ? "flex-1 w-full flex" : "flex-1 container mx-auto pb-8 pt-4"}>
         {view === 'MAIN_MENU' && (
@@ -12476,110 +12039,116 @@ export default function App() {
         {view === 'TROOP_ARCHIVE' && renderTroopArchive()}
         {view === 'TOWN' && (
           <TownView
-            currentLocation={currentLocation}
-            locations={locations}
-            lords={lords}
-            player={player}
-            heroes={heroes}
-            heroDialogue={heroDialogue}
-            setHeroDialogue={setHeroDialogue}
-            setHeroes={setHeroes}
-            addLog={addLog}
-            playerRef={playerRef}
-            townTab={townTab}
-            setTownTab={setTownTab}
-            workDays={workDays}
-            setWorkDays={setWorkDays}
-            miningDays={miningDays}
-            setMiningDays={setMiningDays}
-            roachLureDays={roachLureDays}
-            setRoachLureDays={setRoachLureDays}
-            hideoutStayDays={hideoutStayDays}
-            setHideoutStayDays={setHideoutStayDays}
-            workState={workState}
-            setWorkState={setWorkState}
-            miningState={miningState}
-            setMiningState={setMiningState}
-            roachLureState={roachLureState}
-            setRoachLureState={setRoachLureState}
-            habitatStayState={habitatStayState}
-            setHabitatStayState={setHabitatStayState}
-            hideoutStayState={hideoutStayState}
-            setHideoutStayState={setHideoutStayState}
-            altarRecruitDays={altarRecruitDays}
-            setAltarRecruitDays={setAltarRecruitDays}
-            altarRecruitState={altarRecruitState}
-            setAltarRecruitState={setAltarRecruitState}
-            forgeTroopIndex={forgeTroopIndex}
-            setForgeTroopIndex={setForgeTroopIndex}
-            forgeEnchantmentId={forgeEnchantmentId}
-            setForgeEnchantmentId={setForgeEnchantmentId}
-            undeadDialogue={undeadDialogue}
-            undeadChatInput={undeadChatInput}
-            setUndeadChatInput={setUndeadChatInput}
-            sendToUndead={sendToUndead}
-            isUndeadChatLoading={isUndeadChatLoading}
-            undeadChatListRef={undeadChatListRef}
-            altarDialogues={altarDialogues}
-            setAltarDialogues={setAltarDialogues}
-            altarDrafts={altarDrafts}
-            setAltarDrafts={setAltarDrafts}
-            altarProposals={altarProposals}
-            setAltarProposals={setAltarProposals}
-            isAltarLoading={isAltarLoading}
-            setIsAltarLoading={setIsAltarLoading}
-            applyAltarProposal={applyAltarProposal}
-            altarChatListRef={altarChatListRef}
-            getBelieverStats={getBelieverStats}
-            getMaxTroops={getMaxTroops}
-            getTroopTemplate={getTroopTemplate}
-            buildGarrisonTroops={buildGarrisonTroops}
-            getGarrisonCount={getGarrisonCount}
-            getGarrisonLimit={getGarrisonLimit}
-            getLocationDefenseDetails={getLocationDefenseDetails}
-            getSiegeEngineName={getSiegeEngineName}
-            siegeEngineOptions={siegeEngineOptions}
-            startSiegeBattle={startSiegeBattle}
-            handleRecruitOffer={handleRecruitOffer}
-            updateLocationState={updateLocationState}
-            setPlayer={setPlayer}
-            onRecruitHero={handleRecruitHeroRelation}
-            onLordProvoked={handleLordProvoked}
-            setActiveEnemy={setActiveEnemy}
-            setPendingBattleMeta={setPendingBattleMeta}
-            setPendingBattleIsTraining={setPendingBattleIsTraining}
-            onDefenseAidJoin={handleDefenseAidJoin}
-            onBackToMap={() => setView('MAP')}
-            onEnterBattle={() => setView('BATTLE')}
-            isBattling={isBattling}
-            calculatePower={calculatePower}
-            getHeroRoleLabel={getHeroRoleLabel}
-            enchantmentRecipes={ENCHANTMENT_RECIPES}
-            mineralMeta={MINERAL_META}
-            mineralPurityLabels={MINERAL_PURITY_LABELS}
-            mineConfigs={MINE_CONFIGS}
-            initialMinerals={INITIAL_PLAYER_STATE.minerals}
-            buildingOptions={buildingOptions}
-            getBuildingName={getBuildingName}
-            processDailyCycle={processDailyCycle}
-            updateLord={updateLord}
-            aiProvider={aiProvider}
-            doubaoApiKey={doubaoApiKey}
-            geminiApiKey={geminiApiKey}
-            openAIBaseUrl={openAIBaseUrl}
-            openAIKey={openAIKey}
-            openAIModel={openAIModel}
-            recentLogs={logs.slice(0, 12)}
-            playerReligionName={getPlayerReligion()?.religionName ?? null}
-            onPreachInCity={preachInCity}
-            onInspectHideout={(layerIndex) => {
-              const hideout = currentLocation?.hideout;
-              const maxLayer = Math.max(0, (hideout?.layers?.length ?? 1) - 1);
-              const safe = Math.max(0, Math.min(maxLayer, Math.floor(layerIndex || 0)));
-              setHideoutInspectLayerIndex(safe);
-              setView('HIDEOUT_INSPECT');
+            townState={{
+              currentLocation,
+              locations,
+              lords,
+              player,
+              heroes,
+              heroDialogue,
+              townTab,
+              workDays,
+              miningDays,
+              roachLureDays,
+              hideoutStayDays,
+              workState,
+              miningState,
+              roachLureState,
+              habitatStayState,
+              hideoutStayState,
+              altarRecruitDays,
+              altarRecruitState,
+              forgeTroopIndex,
+              forgeEnchantmentId,
+              undeadDialogue,
+              undeadChatInput,
+              isUndeadChatLoading,
+              altarDialogues,
+              altarDrafts,
+              altarProposals,
+              isAltarLoading,
+              aiProvider,
+              doubaoApiKey,
+              geminiApiKey,
+              openAIBaseUrl,
+              openAIKey,
+              openAIModel,
+              recentLogs: logs.slice(0, 12),
+              playerReligionName: getPlayerReligion()?.religionName ?? null
             }}
-            onConsumeRecompilerSoldier={consumeRecompilerSoldier}
+            townActions={{
+              setHeroDialogue,
+              setHeroes,
+              addLog,
+              setTownTab,
+              setWorkDays,
+              setMiningDays,
+              setRoachLureDays,
+              setHideoutStayDays,
+              setWorkState,
+              setMiningState,
+              setRoachLureState,
+              setHabitatStayState,
+              setHideoutStayState,
+              setAltarRecruitDays,
+              setAltarRecruitState,
+              setForgeTroopIndex,
+              setForgeEnchantmentId,
+              setUndeadChatInput,
+              sendToUndead,
+              setAltarDialogues,
+              setAltarDrafts,
+              setAltarProposals,
+              setIsAltarLoading,
+              applyAltarProposal,
+              startSiegeBattle,
+              handleRecruitOffer,
+              updateLocationState,
+              setPlayer,
+              onRecruitHero: handleRecruitHeroRelation,
+              onLordProvoked: handleLordProvoked,
+              setActiveEnemy,
+              setPendingBattleMeta,
+              setPendingBattleIsTraining,
+              onDefenseAidJoin: handleDefenseAidJoin,
+              onBackToMap: () => setView('MAP'),
+              onEnterBattle: () => setView('BATTLE'),
+              updateLord,
+              onPreachInCity: preachInCity,
+              onInspectHideout: (layerIndex) => {
+                const hideout = currentLocation?.hideout;
+                const maxLayer = Math.max(0, (hideout?.layers?.length ?? 1) - 1);
+                const safe = Math.max(0, Math.min(maxLayer, Math.floor(layerIndex || 0)));
+                setHideoutInspectLayerIndex(safe);
+                setView('HIDEOUT_INSPECT');
+              },
+              onConsumeRecompilerSoldier: consumeRecompilerSoldier
+            }}
+            townDerived={{
+              playerRef,
+              undeadChatListRef,
+              altarChatListRef,
+              getBelieverStats,
+              getMaxTroops,
+              getTroopTemplate,
+              buildGarrisonTroops,
+              getGarrisonCount,
+              getGarrisonLimit,
+              getLocationDefenseDetails,
+              getSiegeEngineName,
+              siegeEngineOptions,
+              isBattling,
+              calculatePower,
+              getHeroRoleLabel,
+              enchantmentRecipes: ENCHANTMENT_RECIPES,
+              mineralMeta: MINERAL_META,
+              mineralPurityLabels: MINERAL_PURITY_LABELS,
+              mineConfigs: MINE_CONFIGS,
+              initialMinerals: INITIAL_PLAYER_STATE.minerals,
+              buildingOptions,
+              getBuildingName,
+              processDailyCycle
+            }}
           />
         )}
         {view === 'HIDEOUT_INSPECT' && currentLocation && currentLocation.type === 'HIDEOUT' && (

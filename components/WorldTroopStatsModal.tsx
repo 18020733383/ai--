@@ -2,7 +2,7 @@ import React from 'react';
 import { Activity } from 'lucide-react';
 import { Button } from './Button';
 import { Troop, TroopTier, TroopRace } from '../types';
-import { getTroopRace, TROOP_RACE_LABELS } from '../constants';
+import { getTroopRace, TROOP_RACE_LABELS } from '../game/data';
 
 type WorldTroopStatsModalProps = {
   collectWorldTroops: () => Troop[];

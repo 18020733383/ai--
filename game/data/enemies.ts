@@ -1,0 +1,16 @@
+export const ENEMY_TYPES = [
+  { name: '劫匪', baseTroopId: 'peasant', countRange: [5, 15], difficulty: '简单' },
+  { name: '森林强盗', baseTroopId: 'hunter', countRange: [8, 18], difficulty: '中等' },
+  { name: '雪原掠夺者', baseTroopId: 'footman', countRange: [10, 20], difficulty: '困难' },
+  { name: '沙漠悍匪', baseTroopId: 'militia', countRange: [12, 25], difficulty: '中等' },
+  { name: '叛变骑士团', baseTroopId: 'knight', countRange: [5, 10], difficulty: '极难' },
+  { name: '火锅讨伐队', baseTroopId: 'meatball_soldier', countRange: [10, 20], difficulty: '美味' },
+  { name: '末日教团', baseTroopId: 'zealot', countRange: [15, 30], difficulty: '中等' },
+  { name: '兽王狩猎队', baseTroopId: 'wolf_rider', countRange: [6, 12], difficulty: '困难' },
+  { name: '失控机兵', baseTroopId: 'automaton', countRange: [3, 8], difficulty: '极难' },
+  { name: '亡灵大军', baseTroopId: 'skeleton_warrior', countRange: [20, 40], difficulty: '极难' },
+  { name: '深渊先锋', baseTroopId: 'void_caller', countRange: [2, 5], difficulty: '噩梦' },
+  { name: '出逃病患', baseTroopId: 'mad_patient', countRange: [10, 25], difficulty: '诡异' },
+  { name: '尸潮', baseTroopId: 'zombie', countRange: [30, 60], difficulty: '中等' },
+  { name: '幽灵巡逻队', baseTroopId: 'specter', countRange: [5, 10], difficulty: '困难' },
+];

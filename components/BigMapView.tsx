@@ -1,7 +1,7 @@
 import React from 'react';
 import { AlertTriangle, Brain, Coffee, Coins, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, Shield, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Utensils, Zap } from 'lucide-react';
 import { Location, MineralId, MineralPurity, PlayerState } from '../types';
-import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../constants';
+import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../game/data';
 import { Button } from './Button';
 
 type WorkState = {

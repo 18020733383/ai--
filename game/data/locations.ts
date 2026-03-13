@@ -1,0 +1,1 @@
+export { LOCATIONS } from '../../constants';
