@@ -860,6 +860,55 @@ export default function App() {
     };
   };
 
+  const preachInCity = (locationId: string) => {
+    const id = String(locationId ?? '').trim();
+    if (!id) return;
+    const religion = getPlayerReligion();
+    if (!religion) {
+      addLog('你还没有确立宗教。先去祭坛创建宗教。');
+      return;
+    }
+    const target = locations.find(l => l.id === id) ?? null;
+    if (!target || target.type !== 'CITY') return;
+    const relationValue = playerRef.current.locationRelations?.[id] ?? 0;
+    const plan = computePreachPlan(target, relationValue);
+    if (playerRef.current.gold < plan.cost) {
+      addLog('资金不足，无法传教。');
+      return;
+    }
+    const day = playerRef.current.day;
+    const rollInt = (min: number, max: number) => Math.floor(min + Math.random() * (max - min + 1));
+    const nextEventDay = (() => {
+      const current = target.religion?.nextEventDay;
+      if (typeof current === 'number' && current > day) return current;
+      return day + rollInt(7, 14);
+    })();
+    const nextFaith = Math.max(0, Math.min(100, plan.faith + plan.gain));
+    setPlayer(prev => ({ ...prev, gold: Math.max(0, prev.gold - plan.cost) }));
+    setLocations(prev => prev.map(l => {
+      if (l.id !== id) return l;
+      const currentFaith = Math.max(0, Math.min(100, Math.floor(l.religion?.faith ?? 0)));
+      const faithAfter = Math.max(0, Math.min(100, currentFaith + plan.gain));
+      return {
+        ...l,
+        religion: {
+          faith: faithAfter,
+          started: true,
+          lastEventDay: l.religion?.lastEventDay,
+          nextEventDay
+        }
+      };
+    }));
+    setCurrentLocation(prev => {
+      if (!prev || prev.id !== id) return prev;
+      const currentFaith = Math.max(0, Math.min(100, Math.floor(prev.religion?.faith ?? 0)));
+      const faithAfter = Math.max(0, Math.min(100, currentFaith + plan.gain));
+      return { ...prev, religion: { faith: faithAfter, started: true, lastEventDay: prev.religion?.lastEventDay, nextEventDay } };
+    });
+    addLog(`【传教】${target.name}：宣讲"${religion.religionName}"，+${plan.gain}%（花费 ${plan.cost}）。`);
+    addLocationLog(id, `传教活动推进：信教比例 +${plan.gain}%（现 ${nextFaith}%）。`, day);
+  };
+
   const handleRecruitHeroRelation = (hero: Hero) => {
     const race = hero.race ?? 'HUMAN';
     if (race === 'HUMAN') return;
