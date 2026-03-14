@@ -3299,16 +3299,16 @@ export const TownView = ({
             setHabitatStayDays={setHabitatStayDays}
             habitatStayStateActive={!!habitatStayState?.isActive}
             onStartHabitat={() => {
-              const days = Math.max(1, Math.min(1000, Math.floor(habitatStayDays || 1)));
-              setHabitatStayDays(days);
-              setHabitatStayState({
-                isActive: true,
-                locationId: currentLocation.id,
-                totalDays: days,
-                daysPassed: 0
-              });
-              onBackToMap();
-            }}
+                    const days = Math.max(1, Math.min(1000, Math.floor(habitatStayDays || 1)));
+                    setHabitatStayDays(days);
+                    setHabitatStayState({
+                      isActive: true,
+                      locationId: currentLocation.id,
+                      totalDays: days,
+                      daysPassed: 0
+                    });
+                    onBackToMap();
+                  }}
           />
         )}
 
@@ -3334,34 +3334,34 @@ export const TownView = ({
             coffeeGiftError={coffeeGiftError}
             clearCoffeeGiftError={() => setCoffeeGiftError(null)}
             onSubmitGift={() => {
-              const hero = heroes.find(h => h.id === coffeeGiftHeroId);
-              const item = coffeeGiftItems.find(i => i.id === coffeeGiftItemId);
-              if (!hero || !item) {
-                setCoffeeGiftError('请选择英雄与礼物。');
-                return;
-              }
-              if (player.gold < item.price) {
-                setCoffeeGiftError('金钱不足。');
-                return;
-              }
-              const record = {
-                id: `gift_${Date.now()}`,
-                day: player.day,
-                heroId: hero.id,
-                heroName: hero.name,
-                itemName: item.name,
-                itemType: item.itemType,
-                price: item.price,
-                sourceLocationName: currentLocation.name
-              };
-              setPlayer(prev => ({
-                ...prev,
-                gold: prev.gold - item.price,
-                giftRecords: [...(prev.giftRecords ?? []), record]
-              }));
-              addLog(`你在${currentLocation.name}花费 ${item.price} 第纳尔，送给 ${hero.name} 一份「${item.name}」。`);
-              setCoffeeGiftError(null);
-            }}
+                      const hero = heroes.find(h => h.id === coffeeGiftHeroId);
+                      const item = coffeeGiftItems.find(i => i.id === coffeeGiftItemId);
+                      if (!hero || !item) {
+                        setCoffeeGiftError('请选择英雄与礼物。');
+                        return;
+                      }
+                      if (player.gold < item.price) {
+                        setCoffeeGiftError('金钱不足。');
+                        return;
+                      }
+                      const record = {
+                        id: `gift_${Date.now()}`,
+                        day: player.day,
+                        heroId: hero.id,
+                        heroName: hero.name,
+                        itemName: item.name,
+                        itemType: item.itemType,
+                        price: item.price,
+                        sourceLocationName: currentLocation.name
+                      };
+                      setPlayer(prev => ({
+                        ...prev,
+                        gold: prev.gold - item.price,
+                        giftRecords: [...(prev.giftRecords ?? []), record]
+                      }));
+                      addLog(`你在${currentLocation.name}花费 ${item.price} 第纳尔，送给 ${hero.name} 一份「${item.name}」。`);
+                      setCoffeeGiftError(null);
+                    }}
             undeadDialogue={undeadDialogue}
             undeadChatListRef={undeadChatListRef}
             undeadChatInput={undeadChatInput}

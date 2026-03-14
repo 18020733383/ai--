@@ -19,6 +19,14 @@
 - `game/systems/garrisonHelpers`: `getGarrisonLimit`, `getGarrisonCount`, `mergeTroops`, `splitTroops`, `getFactionLocations`。
 - `game/systems/troopTraining`: `applyGarrisonTraining`。
 - `game/systems/imposterTroops`: `buildImposterTroops`, `pickImposterTarget`。
+- `game/systems/banditTroops`: `getBanditCampAge`, `buildBanditTroops`。
+- `game/systems/garrisonPresets`: `getLocationGarrison`。
+- `game/systems/randomUtils`: `rollMineralPurity`。
+- `features/hero/model/heroChatUtils`: `normalizeHeroChat`, `normalizeHeroMemory`, `normalizePartyDiary`, `normalizeMemoryEdits`, `normalizeDiaryEdits`, `applyMemoryEdits`, `applyPartyDiaryEdits`, `normalizeHeroEmotion`, `splitHeroReply`。
+- `features/battle/model/battleLayers`: `getTroopLayerDescriptor`, `getDefaultLayerId`。
+- `game/data/hideoutGov`: `HIDEOUT_GOV_EVENTS`。
+- `game/systems/xenoAcceptance`: `getXenoAcceptanceScore`。
+- `game/systems/dailyCycle`: `processCaravanMovement`, `processBanditSpawn`, `processCaravanSpawn`。
 - `game/data`: minerals、siegeEngines、buildings、heroes (HERO_EMOTIONS)。
 - `features/battle/model/resolveBattleProgrammatic`: 程序化战斗结算。
 - `app/providers/ai-settings`、`app/save-load`、`features/world-board/model`、`features/town`。

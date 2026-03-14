@@ -2,6 +2,7 @@ export * from './world';
 export * from './races';
 export * from './factions';
 export * from './flavor';
+export * from './hideoutGov';
 export * from './enemies';
 export * from './troops';
 export * from './heroes';
