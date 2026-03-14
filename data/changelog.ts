@@ -6,6 +6,16 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.0',
+    date: '2026-03-13',
+    items: [
+      '新增观海模式：主菜单独立入口，各势力按队列顺序调用 AI 决策',
+      '观海模式行程队列显示实际 API 调用顺序（XX决策中=正在调用该势力 API）',
+      '观海模式独立界面：隐藏顶部栏与日志，呈现完整观海体验',
+      '主菜单观海模式按钮移至独立行，避免与存档/结局 tab 混淆'
+    ]
+  },
+  {
     version: '0.12.0',
     date: '2026-03-04',
     items: [

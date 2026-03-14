@@ -66,10 +66,20 @@ export const MainMenuView = ({
             <Button variant={tab === 'ENDINGS' ? 'gold' : 'secondary'} onClick={() => setTab('ENDINGS')}>
               <Film size={16} className="inline mr-2" /> 达成结局
             </Button>
-            <Button variant="secondary" onClick={onObserverMode}>
-              <Eye size={16} className="inline mr-2" /> 观海模式
-            </Button>
           </div>
+        </div>
+        <div className="mb-4">
+          <Button
+            variant="secondary"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onObserverMode();
+            }}
+            className="w-full sm:w-auto border-amber-700/50 hover:border-amber-600 text-amber-200"
+          >
+            <Eye size={18} className="inline mr-2" /> 观海模式 — 各势力 AI 自主决策，旁观世界运转
+          </Button>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

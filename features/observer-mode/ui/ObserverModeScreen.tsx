@@ -76,7 +76,7 @@ export const ObserverModeScreen = ({ onBack, buildAIConfig }: ObserverModeScreen
             <Eye size={28} className="text-amber-400" />
             <div>
               <h1 className="text-2xl font-serif text-stone-200">观海模式</h1>
-              <p className="text-sm text-stone-500">各势力自主决策，世界自行运转</p>
+              <p className="text-sm text-stone-500">各势力自主决策，世界自行运转 · v0.13.0</p>
             </div>
           </div>
           <Button variant="secondary" onClick={onBack} disabled={isRunning}>
