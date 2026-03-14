@@ -16,7 +16,6 @@ type ObserverModeScreenProps = {
 };
 
 export const ObserverModeScreen = ({ onBack, buildAIConfig }: ObserverModeScreenProps) => {
-  console.log('[观海] ObserverModeScreen 已挂载/渲染');
   const [state, setState] = React.useState<ObserverModeState>(() => buildInitialObserverState());
   const [isRunning, setIsRunning] = React.useState(false);
 
@@ -69,7 +68,7 @@ export const ObserverModeScreen = ({ onBack, buildAIConfig }: ObserverModeScreen
   }, []);
 
   return (
-    <div className="fixed inset-0 z-50 min-h-screen bg-[#0a0a0f] text-stone-200 flex flex-col" data-observer-mode="true">
+    <div className="fixed inset-0 z-50 min-h-screen bg-[#0a0a0f] text-stone-200 flex flex-col">
       <div className="absolute inset-0 bg-gradient-to-b from-indigo-950/30 via-[#0a0a0f] to-amber-950/20 opacity-100 pointer-events-none" />
       <div className="relative flex-1 flex flex-col max-w-4xl mx-auto w-full p-6">
         <div className="flex items-center justify-between mb-6">

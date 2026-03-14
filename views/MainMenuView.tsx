@@ -74,9 +74,7 @@ export const MainMenuView = ({
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
-              console.log('[观海] 按钮被点击，即将调用 onObserverMode');
               onObserverMode();
-              console.log('[观海] onObserverMode 已调用');
             }}
             className="w-full sm:w-auto border-amber-700/50 hover:border-amber-600 text-amber-200"
           >
