@@ -4852,30 +4852,30 @@ export default function App() {
     try {
       const deploymentContext = buildDeploymentContext(currentPlayer, heroesRef.current, activeEnemy, battleTroops);
       const { finalResult, localRewards, shouldStep, firstRoundReady } = await runBattlePipeline({
-        battleTroops,
-        activeEnemy,
-        currentPlayer,
+            battleTroops,
+            activeEnemy,
+            currentPlayer,
         battleInfo,
         battleResolutionMode,
         battleStreamEnabled,
-        aiConfig,
+            aiConfig,
         isTraining,
         deploymentContext,
         resolveBattleProgrammatic,
         onStreamRound: (streamedRounds) => {
-          setBattleResult(prev => ({
-            rounds: streamedRounds,
-            outcome: prev?.outcome ?? 'A',
-            lootGold: prev?.lootGold ?? 0,
-            renownGained: prev?.renownGained ?? 0,
-            xpGained: prev?.xpGained ?? 0
-          }));
-          setCurrentRoundIndex(streamedRounds.length - 1);
+                setBattleResult(prev => ({
+                  rounds: streamedRounds,
+                  outcome: prev?.outcome ?? 'A',
+                  lootGold: prev?.lootGold ?? 0,
+                  renownGained: prev?.renownGained ?? 0,
+                  xpGained: prev?.xpGained ?? 0
+                }));
+                setCurrentRoundIndex(streamedRounds.length - 1);
         },
         onFirstRoundReady: () => {
-          setView('BATTLE_RESULT');
-          setIsBattling(false);
-        }
+                  setView('BATTLE_RESULT');
+                  setIsBattling(false);
+                }
       });
 
       setBattleResult(finalResult);
@@ -7110,14 +7110,14 @@ export default function App() {
 
   const renderWorldBoard = () => (
     <WorldBoardScreen
-      currentLocation={currentLocation}
+        currentLocation={currentLocation}
       locations={locations}
       lords={lords}
       player={player}
-      logs={logs}
-      worldBattleReports={worldBattleReports}
+        logs={logs}
+        worldBattleReports={worldBattleReports}
       worldDiplomacy={worldDiplomacy}
-      battleTimeline={battleTimeline}
+        battleTimeline={battleTimeline}
       customTroopTemplates={customTroopTemplates}
       siegeEngineOptions={siegeEngineOptions}
       siegeEngineCombatStats={siegeEngineCombatStats}
@@ -7126,9 +7126,9 @@ export default function App() {
       getGarrisonCount={getGarrisonCount}
       getLocationDefenseDetails={getLocationDefenseDetails}
       buildAIConfig={buildAIConfig}
-      onOpenTroopArchive={() => setView('TROOP_ARCHIVE')}
-      onBackToMap={() => setView('MAP')}
-      onExportMarkdown={exportWorldBoardMarkdown}
+        onOpenTroopArchive={() => setView('TROOP_ARCHIVE')}
+        onBackToMap={() => setView('MAP')}
+        onExportMarkdown={exportWorldBoardMarkdown}
     />
   );
 
@@ -7507,7 +7507,7 @@ export default function App() {
   );
 
   const renderDecisionModal = () => {
-    return (
+      return (
       <DecisionOverlay
         pendingDecisions={pendingDecisions}
         isBlockedByView={isBattling || view === 'BATTLE' || view === 'BATTLE_RESULT' || view === 'MAIN_MENU' || view === 'INTRO' || view === 'ENDING' || view === 'GAME_OVER'}
@@ -7617,17 +7617,17 @@ export default function App() {
           onCreateBlankSave: createBlankSaveSlot,
           endings: [...ENDING_LIST],
           onReplayEnding: (endingId) => {
-            setEndingReturnView('MAIN_MENU');
-            setPortalEndingChoiceMade(true);
-            setPlayer(prev => ({
-              ...prev,
-              story: {
-                ...(prev.story ?? {}),
-                endingId,
-                gameOverReason: endingId
-              }
-            }));
-            setView('ENDING');
+              setEndingReturnView('MAIN_MENU');
+              setPortalEndingChoiceMade(true);
+              setPlayer(prev => ({
+                ...prev,
+                story: {
+                  ...(prev.story ?? {}),
+                  endingId,
+                  gameOverReason: endingId
+                }
+              }));
+              setView('ENDING');
           },
           onObserverMode: () => {
             restartGame();
@@ -7676,18 +7676,18 @@ export default function App() {
           portalEndingChoiceMade,
           endingContent,
           onChooseNormal: () => {
-            setPortalEndingChoiceMade(true);
+                      setPortalEndingChoiceMade(true);
           },
           onChooseReligion: () => {
-            setPortalEndingChoiceMade(true);
-            setPlayer(prev => ({
-              ...prev,
-              story: {
-                ...(prev.story ?? {}),
-                endingId: 'NEW_COVENANT',
-                gameOverReason: 'NEW_COVENANT'
-              }
-            }));
+                      setPortalEndingChoiceMade(true);
+                      setPlayer(prev => ({
+                        ...prev,
+                        story: {
+                          ...(prev.story ?? {}),
+                          endingId: 'NEW_COVENANT',
+                          gameOverReason: 'NEW_COVENANT'
+                        }
+                      }));
           },
           onFinishEnding: () => setView(endingReturnView)
         }}
@@ -7812,18 +7812,18 @@ export default function App() {
         hideoutInspectLayerIndex={hideoutInspectLayerIndex}
         onHideoutLayerChange={(index) => {
           if (!currentLocation || currentLocation.type !== 'HIDEOUT') return;
-          const hideout = currentLocation.hideout;
-          if (!hideout) return;
-          const maxLayer = Math.max(0, (hideout.layers?.length ?? 1) - 1);
-          const safe = Math.max(0, Math.min(maxLayer, Math.floor(index || 0)));
-          setHideoutInspectLayerIndex(safe);
-          const nextHideout = { ...hideout, selectedLayer: safe };
-          updateLocationState({ ...currentLocation, hideout: nextHideout });
-        }}
+              const hideout = currentLocation.hideout;
+              if (!hideout) return;
+              const maxLayer = Math.max(0, (hideout.layers?.length ?? 1) - 1);
+              const safe = Math.max(0, Math.min(maxLayer, Math.floor(index || 0)));
+              setHideoutInspectLayerIndex(safe);
+              const nextHideout = { ...hideout, selectedLayer: safe };
+              updateLocationState({ ...currentLocation, hideout: nextHideout });
+            }}
         onHideoutBackToTown={() => {
-          setTownTab('HIDEOUT');
-          setView('TOWN');
-        }}
+              setTownTab('HIDEOUT');
+              setView('TOWN');
+            }}
         onHideoutBackToMap={() => setView('MAP')}
         renderBanditEncounter={renderBanditEncounter}
         renderAsylum={renderAsylum}
@@ -7842,7 +7842,70 @@ export default function App() {
           locations,
           onTargetsChange: (queue) => setObserverTargets(parseObserverTargets(queue, locations)),
           onFocusLocation: (loc) => focusCameraOnLocation(loc),
-          onApplyAction: (locationId, actionType) => {
+          onApplyAction: (locationId, actionType, factionId) => {
+            if (actionType === 'attack' && factionId) {
+              const target = locations.find(l => l.id === locationId);
+              if (!target) return;
+              const factionLocations = getFactionLocations(factionId, locations);
+              const source = [...factionLocations].sort((a, b) => getGarrisonCount(getLocationTroops(b)) - getGarrisonCount(getLocationTroops(a)))[0];
+              if (!source || source.factionRaidTargetId || source.factionRaidEtaDay || target.activeSiege || target.isUnderSiege) return;
+              const sourceTroops = getLocationTroops(source);
+              const { attackers, remaining } = splitTroops(sourceTroops, 0.5);
+              if (getGarrisonCount(attackers) < 30) return;
+              const faction = FACTIONS.find(f => f.id === factionId);
+              const marchDays = 2 + Math.floor(Math.random() * 2);
+              const nextDay = player.day + 1;
+              const etaDay = nextDay + marchDays;
+              const attackerName = faction ? `${faction.name}远征军` : '远征军';
+              const leaderName = source.lord ? `${source.lord.title}${source.lord.name}` : (faction ? `${faction.name}军官` : '军官');
+              const campId = `field_camp_obs_${source.id}_${target.id}_${Date.now()}`;
+              const dx = target.coordinates.x - source.coordinates.x;
+              const dy = target.coordinates.y - source.coordinates.y;
+              const distance = Math.hypot(dx, dy);
+              const fraction = distance > 0 ? Math.min(0.18, 1 / Math.max(2, Math.round(marchDays * 1.2))) : 0;
+              const initialCoordinates = { x: source.coordinates.x + dx * fraction, y: source.coordinates.y + dy * fraction };
+              const camp: Location = {
+                id: campId,
+                name: `${attackerName}·行军营地`,
+                type: 'FIELD_CAMP',
+                description: `一支正在行军的远征军临时扎营。目标：${target.name}。`,
+                coordinates: initialCoordinates,
+                terrain: source.terrain,
+                factionId,
+                lastRefreshDay: 0,
+                volunteers: [],
+                mercenaries: [],
+                owner: 'ENEMY',
+                isUnderSiege: false,
+                siegeProgress: 0,
+                siegeEngines: [],
+                garrison: attackers.map(t => ({ ...t })),
+                buildings: ['DEFENSE'],
+                constructionQueue: [],
+                siegeEngineQueue: [],
+                lastIncomeDay: 0,
+                camp: {
+                  kind: 'FACTION_RAID',
+                  sourceLocationId: source.id,
+                  targetLocationId: target.id,
+                  totalDays: marchDays,
+                  daysLeft: marchDays,
+                  attackerName,
+                  leaderName
+                },
+                lord: source.lord ? { ...source.lord } : undefined
+              };
+              setLocations(prev => {
+                const next = prev.map(l => {
+                  if (l.id === source.id) {
+                    return { ...l, garrison: remaining, factionRaidTargetId: target.id, factionRaidEtaDay: etaDay, factionRaidAttackerName: attackerName, factionRaidFactionId: factionId, factionRaidTroops: attackers };
+                  }
+                  return l;
+                });
+                return [...next, camp];
+              });
+              return;
+            }
             const loc = locations.find(l => l.id === locationId);
             if (!loc) return;
             if (actionType === 'recruit') {
@@ -7858,6 +7921,7 @@ export default function App() {
               }
             }
           },
+          onAdvanceDay: () => processDailyCycle(undefined, 0, 1, 0, true),
           onCurrentActionChange: setObserverCurrentAction
         }}
       />
@@ -7872,6 +7936,7 @@ export default function App() {
           location={observerLocationModal}
           onClose={() => setObserverLocationModal(null)}
           getTroopName={(id) => getTroopTemplate(id)?.name ?? id}
+          getLocationName={(id) => locations.find(l => l.id === id)?.name ?? id}
         />
       )}
       {isObserverNewspaperOpen && (
@@ -7880,13 +7945,13 @@ export default function App() {
       {isObserverRelationsOpen && (
         <div className="fixed inset-0 z-50 bg-stone-950 overflow-auto">
           <div className="sticky top-0 z-10 bg-stone-900 border-b border-stone-700 px-4 py-2 flex justify-end">
-            <button
+              <button 
               onClick={() => setIsObserverRelationsOpen(false)}
               className="text-stone-400 hover:text-white px-3 py-1 rounded"
-            >
+              >
               关闭
-            </button>
-          </div>
+              </button>
+           </div>
           <div className="max-w-6xl mx-auto p-4">
             <RelationsView
               locations={locations}
@@ -7894,7 +7959,7 @@ export default function App() {
               worldDiplomacy={worldDiplomacy}
               onBackToMap={() => setIsObserverRelationsOpen(false)}
             />
-          </div>
+           </div>
         </div>
       )}
 

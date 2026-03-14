@@ -11,13 +11,15 @@ type ObserverLocationModalProps = {
   location: Location;
   onClose: () => void;
   getTroopName: (id: string) => string;
+  getLocationName?: (id: string) => string;
 };
 
-export const ObserverLocationModal = ({ location, onClose, getTroopName }: ObserverLocationModalProps) => {
+export const ObserverLocationModal = ({ location, onClose, getTroopName, getLocationName }: ObserverLocationModalProps) => {
   const defense = getLocationDefenseDetails(location);
   const garrisonCount = getGarrisonCount(location.garrison ?? []);
   const garrison = (location.garrison ?? []).filter(t => t.count > 0);
   const stayParties = (location.stayParties ?? []).filter(p => p.troops.some(t => t.count > 0));
+  const camp = location.type === 'FIELD_CAMP' ? location.camp : null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
@@ -32,6 +34,16 @@ export const ObserverLocationModal = ({ location, onClose, getTroopName }: Obser
           </button>
         </div>
         <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {camp && (
+            <section>
+              <h4 className="text-sm font-semibold text-amber-400 mb-2">行军营地</h4>
+              <div className="text-xs text-stone-400 space-y-1">
+                <div>进攻方：{camp.attackerName}</div>
+                <div>目标：{getLocationName ? getLocationName(camp.targetLocationId) : camp.targetLocationId}</div>
+                <div>剩余行军：{camp.daysLeft ?? camp.totalDays ?? '?'} 天</div>
+              </div>
+            </section>
+          )}
           {location.lord && (
             <section>
               <h4 className="text-sm font-semibold text-stone-300 mb-2">领主</h4>

@@ -20,13 +20,14 @@ type ObserverOverlayProps = {
   locations?: Location[];
   onTargetsChange?: (queue: Array<{ actions?: string[] }>) => void;
   onFocusLocation?: (location: Location) => void;
-  onApplyAction?: (locationId: string, actionType: string) => void;
+  onApplyAction?: (locationId: string, actionType: string, factionId?: string) => void;
   onCurrentActionChange?: (action: { locationId: string; locationName: string; actionType: string; factionName: string } | null) => void;
+  onAdvanceDay?: () => void;
 };
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTargetsChange, onFocusLocation, onApplyAction, onCurrentActionChange }: ObserverOverlayProps) => {
+export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTargetsChange, onFocusLocation, onApplyAction, onCurrentActionChange, onAdvanceDay }: ObserverOverlayProps) => {
   const [state, setState] = React.useState<ObserverModeState>(() => buildInitialObserverState());
   const [isRunning, setIsRunning] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
@@ -78,7 +79,7 @@ export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTarge
           onFocusLocation(loc);
           onCurrentActionChange({ locationId, locationName, actionType, factionName: item.factionName });
           await sleep(ACTION_DURATION_MS);
-          onApplyAction(locationId, actionType);
+          onApplyAction(locationId, actionType, item.factionId);
           onCurrentActionChange(null);
           await sleep(400);
         }
@@ -94,9 +95,10 @@ export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTarge
       }
     }
 
+    onAdvanceDay?.();
     setState(s => ({ ...s, phase: 'day_end', activeIndex: -1, currentDay: s.currentDay + 1 }));
     setIsRunning(false);
-  }, [state.queue, buildAIConfig, locations, onFocusLocation, onApplyAction, onCurrentActionChange]);
+  }, [state.queue, buildAIConfig, locations, onFocusLocation, onApplyAction, onCurrentActionChange, onAdvanceDay]);
 
   const resetQueue = React.useCallback(() => {
     setState(buildInitialObserverState());
