@@ -3,7 +3,7 @@ import { AlertTriangle, Beer, Brain, Coins, Ghost, Hammer, History, Home, MapPin
 import { Button } from '../components/Button';
 import { ThinkingBubble } from '../components/ThinkingBubble';
 import { TroopCard } from '../components/TroopCard';
-import { AltarRecruitSection, AltarSection, CoffeeChatSection, ForgeSection, GarrisonSection, HabitatSection, MagicianLibrarySection, MiningSection, RecompilerSection, RecruitSection, RoachLureSection, TavernSection, WorkSection } from '../features/town';
+import { AltarRecruitSection, AltarSection, CoffeeChatSection, ForgeSection, GarrisonSection, HabitatSection, MagicianLibrarySection, MiningSection, RecompilerSection, RecruitSection, RoachLureSection, SealHabitatSection, TavernSection, WorkSection } from '../features/town';
 import { chatWithCampLeader, chatWithLord } from '../services/geminiService';
 import { ANOMALY_CATALOG } from '../constants';
 import { getTroopRace, TROOP_RACE_LABELS } from '../game/data';
@@ -233,6 +233,7 @@ export const TownView = ({
   const isHotpot = currentLocation.type === 'HOTPOT_RESTAURANT';
   const isCoffee = currentLocation.type === 'COFFEE';
   const isHabitat = currentLocation.type === 'HABITAT';
+  const isSealHabitat = currentLocation.type === 'SEAL_HABITAT';
   const isHideout = currentLocation.type === 'HIDEOUT';
   const isHeavyTrialGrounds = currentLocation.type === 'HEAVY_TRIAL_GROUNDS';
   const isImposterPortal = currentLocation.type === 'IMPOSTER_PORTAL';
@@ -243,7 +244,7 @@ export const TownView = ({
   const isMagicianLibrary = currentLocation.type === 'MAGICIAN_LIBRARY';
   const isRecompiler = currentLocation.type === 'SOURCE_RECOMPILER';
   const isFieldCamp = currentLocation.type === 'FIELD_CAMP';
-  const isSpecialLocation = isMine || isBlacksmith || isAltar || isMagicianLibrary || isRecompiler;
+  const isSpecialLocation = isMine || isBlacksmith || isAltar || isMagicianLibrary || isRecompiler || isSealHabitat;
   const isOwnedByPlayer = currentLocation.owner === 'PLAYER';
   const locationRelationValue = player.locationRelations?.[currentLocation.id] ?? 0;
   const isWantedHere = !isOwnedByPlayer && (isCity || isCastle || isVillage) && locationRelationValue <= -60;
@@ -251,7 +252,7 @@ export const TownView = ({
   const isRestricted = (currentLocation.sackedUntilDay ?? 0) >= player.day || isRestrictedEnemyHeld || !!currentLocation.isUnderSiege;
   const restrictedTabs = ['RECRUIT', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'OWNED', 'MINING', 'FORGE', 'ROACH_LURE', 'LORD', 'MAGICIAN_LIBRARY', 'RECOMPILER'];
   const specialHiddenTabs = ['RECRUIT', 'GARRISON', 'LOCAL_GARRISON', 'DEFENSE', 'SIEGE', 'OWNED', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'LORD'];
-  const specialFallbackTab = isMine ? 'MINING' : isBlacksmith ? 'FORGE' : isAltar ? 'ALTAR' : isMagicianLibrary ? 'MAGICIAN_LIBRARY' : isRecompiler ? 'RECOMPILER' : 'LOCAL_GARRISON';
+  const specialFallbackTab = isMine ? 'MINING' : isBlacksmith ? 'FORGE' : isAltar ? 'ALTAR' : isMagicianLibrary ? 'MAGICIAN_LIBRARY' : isRecompiler ? 'RECOMPILER' : isSealHabitat ? 'SEAL_HABITAT' : 'LOCAL_GARRISON';
   const activeTownTab = isHideout
     ? 'HIDEOUT'
     : (isOwnedByPlayer && townTab === 'LORD')
@@ -2232,6 +2233,14 @@ export const TownView = ({
             <MapPin size={16} className="inline mr-2" /> 栖息
           </button>
         )}
+        {isSealHabitat && (
+          <button
+            onClick={() => setTownTab('SEAL_HABITAT')}
+            className={`px-6 py-3 font-serif font-bold text-sm whitespace-nowrap ${activeTownTab === 'SEAL_HABITAT' ? 'bg-stone-800 text-cyan-300 border-t-2 border-cyan-500' : 'text-stone-500 hover:text-stone-300'}`}
+          >
+            <span className="inline mr-2">🦭</span> 海狮饲养
+          </button>
+        )}
         {isCity && !isRestricted && (
           <button
             onClick={() => setTownTab('TAVERN')}
@@ -3300,6 +3309,17 @@ export const TownView = ({
               });
               onBackToMap();
             }}
+          />
+        )}
+
+        {isSealHabitat && activeTownTab === 'SEAL_HABITAT' && (
+          <SealHabitatSection
+            location={currentLocation}
+            playerGold={player.gold}
+            playerDay={player.day}
+            onUpdateLocation={(updater) => updateLocationState(updater(currentLocation))}
+            setPlayer={setPlayer}
+            addLog={addLog}
           />
         )}
 

@@ -21,7 +21,8 @@ export type TownTab =
   | 'MAGICIAN_LIBRARY'
   | 'RECOMPILER'
   | 'HABITAT'
-  | 'HIDEOUT';
+  | 'HIDEOUT'
+  | 'SEAL_HABITAT';
 
 export type WorkState = {
   isActive: boolean;

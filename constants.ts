@@ -5826,6 +5826,22 @@ export const LOCATIONS: Location[] = [
     volunteers: [],
     mercenaries: []
   },
+  {
+    id: 'seal_habitat',
+    name: '海狮饲养场',
+    type: 'SEAL_HABITAT',
+    description: '僻静的海湾，适合饲养各种海狮与海豹。无驻军，不会被攻击。',
+    coordinates: { x: 420, y: 50 },
+    terrain: 'PLAINS',
+    lastRefreshDay: 0,
+    volunteers: [],
+    mercenaries: [],
+    sealHabitat: {
+      seals: [],
+      fishStock: 0,
+      lastFeedDay: 0
+    }
+  },
 
   // --- FAR CORNER (ASYLUM) ---
   {

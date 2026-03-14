@@ -5,7 +5,7 @@ import { BUILDING_OPTIONS, ENCHANTMENT_RECIPES, FACTIONS, getBuildingName, getSi
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
 import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
-import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, getLocationRecruitId, getLocationRelationTarget, getRecruitmentPool, getRelationScale, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, isCastleLikeLocation, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, randomInt, rollBinomial, seedStayParties, splitTroops, syncLordPresence } from './game/systems';
+import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, getLocationRecruitId, getLocationRelationTarget, getRecruitmentPool, getRelationScale, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, isCastleLikeLocation, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, processSealHabitatDaily, randomInt, rollBinomial, seedStayParties, splitTroops, syncLordPresence } from './game/systems';
 import { calculatePower } from './game/systems/combatPower';
 import { calculateXpGain } from './game/systems/xpGain';
 import { calculateFleeChance, calculateRearGuardPlan } from './features/battle/model/battleEscape';
@@ -2302,6 +2302,13 @@ export default function App() {
 
       const nextDay = nextPlayer.day + 1;
       newLocations = newLocations.map(loc => {
+        if (loc.type === 'SEAL_HABITAT') {
+          const { location: updated, starvedNames } = processSealHabitatDaily(loc, nextDay);
+          if (starvedNames.length > 0) {
+            logsToAdd.push(`【海狮饲养场】${starvedNames.join('、')} 因断粮饿死了。`);
+          }
+          return updated;
+        }
         if (loc.type !== 'CITY') return loc;
         const board = loc.workBoard;
         const last = typeof board?.lastRefreshDay === 'number' ? board.lastRefreshDay : 0;
@@ -4554,7 +4561,7 @@ export default function App() {
       enterLocation(finalLocation);
       return;
     }
-    if (!suppressEncounter && finalLocation && finalLocation.type !== 'TRAINING_GROUNDS' && finalLocation.type !== 'ASYLUM' && finalLocation.type !== 'CITY' && finalLocation.type !== 'MARKET' && finalLocation.type !== 'HOTPOT_RESTAURANT' && finalLocation.type !== 'BANDIT_CAMP' && finalLocation.type !== 'MYSTERIOUS_CAVE' && finalLocation.type !== 'COFFEE' && finalLocation.type !== 'IMPOSTER_PORTAL' && finalLocation.type !== 'WORLD_BOARD' && finalLocation.type !== 'ROACH_NEST' && finalLocation.type !== 'MAGICIAN_LIBRARY' && finalLocation.type !== 'HIDEOUT') {
+    if (!suppressEncounter && finalLocation && finalLocation.type !== 'TRAINING_GROUNDS' && finalLocation.type !== 'ASYLUM' && finalLocation.type !== 'CITY' && finalLocation.type !== 'MARKET' && finalLocation.type !== 'HOTPOT_RESTAURANT' && finalLocation.type !== 'BANDIT_CAMP' && finalLocation.type !== 'MYSTERIOUS_CAVE' && finalLocation.type !== 'COFFEE' && finalLocation.type !== 'IMPOSTER_PORTAL' && finalLocation.type !== 'WORLD_BOARD' && finalLocation.type !== 'ROACH_NEST' && finalLocation.type !== 'MAGICIAN_LIBRARY' && finalLocation.type !== 'HIDEOUT' && finalLocation.type !== 'SEAL_HABITAT') {
       const relationTarget = getLocationRelationTarget(finalLocation);
       const relationValue = relationTarget ? getRelationValue(playerRef.current, relationTarget.type, relationTarget.id) : 0;
       const encounterChance = getEncounterChance(0.18, relationValue);
@@ -5026,6 +5033,16 @@ export default function App() {
        setUndeadChatInput('');
        setUndeadDialogue([{ role: 'UNDEAD', text: '欢迎光临，咖啡不热，但记忆还在冒烟。' }]);
        setIsUndeadChatLoading(false);
+     }
+
+     if (location.type === 'SEAL_HABITAT') {
+       setCurrentLocation(location);
+       if (!workState?.isActive && !habitatStayState?.isActive && !hideoutStayState?.isActive) {
+         setView('TOWN');
+         setTownTab('SEAL_HABITAT');
+       }
+       addLog(`抵达了 ${location.name}。`);
+       return;
      }
 
      if (location.type === 'MYSTERIOUS_CAVE') {

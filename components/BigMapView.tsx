@@ -541,6 +541,7 @@ export const BigMapView = ({
                   loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={20} /> :
                   loc.type === 'SOURCE_RECOMPILER' ? <Brain className="text-fuchsia-300" size={20} /> :
                   loc.type === 'HABITAT' ? <MapPin className="text-emerald-300" size={20} /> :
+                  loc.type === 'SEAL_HABITAT' ? <span className="text-[20px] leading-none">🦭</span> :
                   loc.type === 'HIDEOUT' ? <Shield className="text-emerald-300" size={20} /> :
                   <Tent className="text-green-500" size={16} />}
                 {loc.factionId && loc.owner !== 'PLAYER' && (

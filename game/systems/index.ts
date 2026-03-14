@@ -7,6 +7,7 @@ export * from './locationDefense';
 export * from './mapMovement';
 export * from './randomUtils';
 export * from './recruitment';
+export * from './sealHabitat';
 export * from './troopTraining';
 export * from './relationHelpers';
 export * from './workContracts';

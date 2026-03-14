@@ -13,3 +13,4 @@ export { GarrisonSection } from './sections/GarrisonSection';
 export { RecompilerSection } from './sections/RecompilerSection';
 export { AltarSection } from './sections/AltarSection';
 export { AltarRecruitSection } from './sections/AltarRecruitSection';
+export { SealHabitatSection } from './sections/SealHabitatSection';

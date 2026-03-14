@@ -575,7 +575,7 @@ export type WorkBoard = {
 export interface Location {
   id: string;
   name: string;
-  type: 'VILLAGE' | 'CASTLE' | 'CITY' | 'RUINS' | 'TRAINING_GROUNDS' | 'ASYLUM' | 'GRAVEYARD' | 'MARKET' | 'HOTPOT_RESTAURANT' | 'BANDIT_CAMP' | 'MYSTERIOUS_CAVE' | 'COFFEE' | 'IMPOSTER_PORTAL' | 'WORLD_BOARD' | 'VOID_BUFFER_MINE' | 'MEMORY_OVERFLOW_MINE' | 'LOGIC_PARADOX_MINE' | 'HERO_CRYSTAL_MINE' | 'BLACKSMITH' | 'ROACH_NEST' | 'HEAVY_TRIAL_GROUNDS' | 'ALTAR' | 'MAGICIAN_LIBRARY' | 'SOURCE_RECOMPILER' | 'FIELD_CAMP' | 'HABITAT' | 'HIDEOUT';
+  type: 'VILLAGE' | 'CASTLE' | 'CITY' | 'RUINS' | 'TRAINING_GROUNDS' | 'ASYLUM' | 'GRAVEYARD' | 'MARKET' | 'HOTPOT_RESTAURANT' | 'BANDIT_CAMP' | 'MYSTERIOUS_CAVE' | 'COFFEE' | 'IMPOSTER_PORTAL' | 'WORLD_BOARD' | 'VOID_BUFFER_MINE' | 'MEMORY_OVERFLOW_MINE' | 'LOGIC_PARADOX_MINE' | 'HERO_CRYSTAL_MINE' | 'BLACKSMITH' | 'ROACH_NEST' | 'HEAVY_TRIAL_GROUNDS' | 'ALTAR' | 'MAGICIAN_LIBRARY' | 'SOURCE_RECOMPILER' | 'FIELD_CAMP' | 'HABITAT' | 'HIDEOUT' | 'SEAL_HABITAT';
   description: string;
   coordinates: { x: number; y: number };
   terrain: TerrainType;
@@ -634,7 +634,23 @@ export interface Location {
     hideoutLayerIndex?: number;
   };
   camp?: FieldCampMeta;
+  sealHabitat?: SealHabitatState;
 }
+
+export type SealSpecies = 'harbor_seal' | 'elephant_seal' | 'fur_seal' | 'leopard_seal';
+
+export type SealInstance = {
+  id: string;
+  species: SealSpecies;
+  name: string;
+  hungerDays: number;
+};
+
+export type SealHabitatState = {
+  seals: SealInstance[];
+  fishStock: number;
+  lastFeedDay: number;
+};
 
 export type WorldBattleReport = {
   id: string;
