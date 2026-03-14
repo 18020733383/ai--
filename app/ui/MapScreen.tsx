@@ -9,6 +9,8 @@ type MapScreenProps = {
   locations: Location[];
   player: PlayerState;
   isObserverMode?: boolean;
+  observerTargets?: Array<{ locationId: string; types: string[] }>;
+  onLocationSelect?: (location: Location) => void;
   workState: WorkState | null;
   miningState: MiningState | null;
   roachLureState: RoachLureState | null;
@@ -37,6 +39,8 @@ export const MapScreen = ({
   locations,
   player,
   isObserverMode,
+  observerTargets,
+  onLocationSelect,
   workState,
   miningState,
   roachLureState,
@@ -98,6 +102,8 @@ export const MapScreen = ({
       locations={locations}
       player={player}
       isObserverMode={isObserverMode}
+      observerTargets={observerTargets}
+      onLocationSelect={onLocationSelect}
       workState={workState}
       miningState={miningState}
       roachLureState={roachLureState}

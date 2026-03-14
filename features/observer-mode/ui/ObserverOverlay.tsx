@@ -8,17 +8,25 @@ import { Button } from '../../../components/Button';
 import { QueueDisplay } from './QueueDisplay';
 import { buildInitialObserverState } from '../model/initialState';
 import { decideFactionAction } from '../../../services/geminiService';
+import { parseObserverTargets } from '../utils/parseTargets';
 import type { ObserverModeState } from '../model/types';
+import type { Location } from '../../../types';
 
 type ObserverOverlayProps = {
   onBack: () => void;
   buildAIConfig: () => { baseUrl: string; apiKey: string; model: string; provider: string } | undefined;
+  locations?: Location[];
+  onTargetsChange?: (queue: Array<{ actions?: string[] }>) => void;
 };
 
-export const ObserverOverlay = ({ onBack, buildAIConfig }: ObserverOverlayProps) => {
+export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTargetsChange }: ObserverOverlayProps) => {
   const [state, setState] = React.useState<ObserverModeState>(() => buildInitialObserverState());
   const [isRunning, setIsRunning] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    onTargetsChange?.(state.queue);
+  }, [state.queue, onTargetsChange]);
 
   const runDecisionLoop = React.useCallback(async () => {
     setErrorMsg(null);
@@ -43,11 +51,10 @@ export const ObserverOverlay = ({ onBack, buildAIConfig }: ObserverOverlayProps)
 
       try {
         const { action, actions } = await decideFactionAction(item.factionId, item.factionName, aiConfig);
-        const message = actions?.length ? `${action}\n${actions.join('；')}` : action;
         setState(s => ({
           ...s,
           queue: s.queue.map((q, j) =>
-            j === i ? { ...q, status: 'done' as const, message } : q
+            j === i ? { ...q, status: 'done' as const, action, actions } : q
           )
         }));
       } catch (e: any) {

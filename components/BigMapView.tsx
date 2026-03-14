@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Brain, Coffee, Coins, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, Shield, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Utensils, Zap } from 'lucide-react';
+import { AlertTriangle, Brain, Coffee, Coins, Eye, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, Shield, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Users, Utensils, Zap } from 'lucide-react';
 import { Location, MineralId, MineralPurity, PlayerState } from '../types';
 import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../game/data';
 import { Button } from './Button';
@@ -51,6 +51,8 @@ type BigMapViewProps = {
   locations: Location[];
   player: PlayerState;
   isObserverMode?: boolean;
+  observerTargets?: Array<{ locationId: string; types: string[] }>;
+  onLocationSelect?: (location: Location) => void;
   workState: WorkState | null;
   miningState: MiningState | null;
   roachLureState: RoachLureState | null;
@@ -77,6 +79,8 @@ export const BigMapView = ({
   locations,
   player,
   isObserverMode,
+  observerTargets,
+  onLocationSelect,
   workState,
   miningState,
   roachLureState,
@@ -504,7 +508,10 @@ export const BigMapView = ({
             key={loc.id}
             onClick={(e) => {
               e.stopPropagation();
-              if (isObserverMode) return;
+              if (isObserverMode) {
+                onLocationSelect?.(loc);
+                return;
+              }
               if (isTimeSkipActive) return;
               moveTo(loc.coordinates.x, loc.coordinates.y, loc.id);
             }}
@@ -572,6 +579,15 @@ export const BigMapView = ({
                   <span className="absolute -bottom-1 -right-1 bg-stone-900 text-amber-400 rounded-full p-0.5 shadow">
                     <Skull size={10} />
                   </span>
+                )}
+                {isObserverMode && observerTargets?.some(t => t.locationId === loc.id) && (
+                  <div className="absolute -top-2 left-1/2 -translate-x-1/2 flex gap-0.5">
+                    {observerTargets.find(t => t.locationId === loc.id)?.types.map((type, k) => (
+                      type === 'recruit' ? <Users key={k} size={10} className="text-emerald-400 bg-black/60 rounded p-0.5" title="征兵" /> :
+                      type === 'scout' ? <Eye key={k} size={10} className="text-sky-400 bg-black/60 rounded p-0.5" title="侦察" /> :
+                      type === 'attack' ? <Swords key={k} size={10} className="text-red-400 bg-black/60 rounded p-0.5" title="进攻" /> : null
+                    ))}
+                  </div>
                 )}
               </div>
             </div>

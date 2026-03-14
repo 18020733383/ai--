@@ -3,6 +3,7 @@ import { Hammer, History, Scroll, Shield } from 'lucide-react';
 import { BattleResult, FactionSpecialization, Location, SiegeEngineType, WorldBattleReport } from '../types';
 import { Button } from '../components/Button';
 import { WorldNewspaperIssue } from '../services/geminiService';
+import { saveNewspaper } from '../features/observer-mode/ui/ObserverNewspaperModal';
 
 type WorldBoardViewProps = {
   currentLocation: Location | null;
@@ -260,6 +261,7 @@ export const WorldBoardView = ({
     try {
       const issue = await onGenerateNewspaper();
       setNewspaper(issue);
+      saveNewspaper(issue);
     } catch (e: any) {
       setPaperError(e?.message || '报纸生成失败。');
     } finally {

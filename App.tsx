@@ -31,6 +31,9 @@ import { DecisionOverlay } from './app/ui/DecisionOverlay';
 import { LogConsole } from './app/ui/LogConsole';
 import { WorldBoardScreen } from './features/world-board';
 import { RelationsView } from './features/relations';
+import { parseObserverTargets } from './features/observer-mode/utils/parseTargets';
+import { ObserverNavBar } from './features/observer-mode/ui/ObserverNavBar';
+import { ObserverLocationModal } from './features/observer-mode/ui/ObserverLocationModal';
 import { TroopArchiveView } from './views/TroopArchiveView';
 import { PartyView } from './views/PartyView';
 import { AsylumView } from './views/AsylumView';
@@ -210,6 +213,10 @@ export default function App() {
   const [isBattleResultFinal, setIsBattleResultFinal] = useState(true);
   const [isChangelogOpen, setIsChangelogOpen] = useState(false);
   const [isMapListOpen, setIsMapListOpen] = useState(false);
+  const [observerTargets, setObserverTargets] = useState<Array<{ locationId: string; types: string[] }>>([]);
+  const [observerLocationModal, setObserverLocationModal] = useState<Location | null>(null);
+  const [isObserverNewspaperOpen, setIsObserverNewspaperOpen] = useState(false);
+  const [isObserverRelationsOpen, setIsObserverRelationsOpen] = useState(false);
   const [mapListQuery, setMapListQuery] = useState('');
   const [mapListTypeFilter, setMapListTypeFilter] = useState<Location['type'] | 'ALL' | 'MINE'>('ALL');
   const [isWorldTroopStatsOpen, setIsWorldTroopStatsOpen] = useState(false);
@@ -7568,6 +7575,13 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-sans selection:bg-amber-900 selection:text-white overflow-hidden flex flex-col">
+      {view === 'OBSERVER_MODE' && (
+        <ObserverNavBar
+          onBack={() => setView('MAIN_MENU')}
+          onNewspaper={() => setIsObserverNewspaperOpen(true)}
+          onRelations={() => setIsObserverRelationsOpen(true)}
+        />
+      )}
       {view !== 'MAIN_MENU' && view !== 'INTRO' && view !== 'ENDING' && view !== 'GAME_OVER' && view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INSPECT' && view !== 'OBSERVER_MODE' && (
         <AppHeader
           player={player}
@@ -7642,6 +7656,8 @@ export default function App() {
           moveTo,
           setHoveredLocation,
           isObserverMode: view === 'OBSERVER_MODE',
+          observerTargets: view === 'OBSERVER_MODE' ? observerTargets : undefined,
+          onLocationSelect: view === 'OBSERVER_MODE' ? setObserverLocationModal : undefined,
           setPlayer,
           setWorkState,
           setMiningState,
@@ -7816,7 +7832,12 @@ export default function App() {
         renderBattle={renderBattle}
         renderBattleResult={renderBattleResult}
         renderGameOver={renderGameOver}
-        observerModeProps={{ onBack: () => setView('MAIN_MENU'), buildAIConfig }}
+        observerModeProps={{
+          onBack: () => setView('MAIN_MENU'),
+          buildAIConfig,
+          locations,
+          onTargetsChange: (queue) => setObserverTargets(parseObserverTargets(queue, locations))
+        }}
       />
 
       {isSettingsOpen && renderSettingsModal()}
@@ -7824,6 +7845,28 @@ export default function App() {
       {isMapListOpen && renderMapListModal()}
       {isWorldTroopStatsOpen && renderWorldTroopStatsModal()}
       {renderDecisionModal()}
+      {observerLocationModal && (
+        <ObserverLocationModal
+          location={observerLocationModal}
+          onClose={() => setObserverLocationModal(null)}
+          getTroopName={(id) => getTroopTemplate(id)?.name ?? id}
+        />
+      )}
+      {isObserverNewspaperOpen && (
+        <ObserverNewspaperModal onClose={() => setIsObserverNewspaperOpen(false)} />
+      )}
+      {isObserverRelationsOpen && (
+        <div className="fixed inset-0 z-50 bg-stone-950 overflow-auto">
+          <div className="max-w-6xl mx-auto p-4">
+            <RelationsView
+              locations={locations}
+              player={player}
+              worldDiplomacy={worldDiplomacy}
+              onBackToMap={() => setIsObserverRelationsOpen(false)}
+            />
+          </div>
+        </div>
+      )}
 
       {/* AI Simulation Overlay */}
       {(isBattling || battleError) && renderBattleSimulation()}

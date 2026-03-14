@@ -9,6 +9,11 @@ export type QueueItem = {
   factionId: string;
   factionName: string;
   status: QueueItemStatus;
+  /** 大方向，列表展示 */
+  action?: string;
+  /** 具体行为，点击展开 */
+  actions?: string[];
+  /** 兼容旧字段 */
   message?: string;
 };
 
