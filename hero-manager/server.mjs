@@ -164,17 +164,137 @@ const parseLocationsFromConstants = async () => {
       const m = chunk.match(new RegExp(`^\\s*${key}\\s*:\\s*(['"])(.*?)\\1`, 'm'));
       return m ? String(m[2] ?? '').trim() : '';
     };
-    return objects.map(chunk => ({
-      id: readString(chunk, 'id'),
-      name: readString(chunk, 'name'),
-      type: readString(chunk, 'type'),
-      description: readString(chunk, 'description'),
-      terrain: readString(chunk, 'terrain'),
-      factionId: readString(chunk, 'factionId')
-    })).filter(x => x.id);
+    const readCoords = (chunk) => {
+      const m = chunk.match(/coordinates\s*:\s*\{\s*x\s*:\s*(\d+)\s*,\s*y\s*:\s*(\d+)\s*\}/);
+      return m ? { x: Number(m[1]), y: Number(m[2]) } : null;
+    };
+    return objects.map(chunk => {
+      const id = readString(chunk, 'id');
+      if (!id) return null;
+      const coords = readCoords(chunk);
+      return {
+        id,
+        name: readString(chunk, 'name'),
+        type: readString(chunk, 'type'),
+        description: readString(chunk, 'description'),
+        terrain: readString(chunk, 'terrain'),
+        factionId: readString(chunk, 'factionId'),
+        coordinates: coords ?? { x: 480, y: 480 },
+        rawChunk: chunk
+      };
+    }).filter(Boolean);
   } catch {
     return [];
   }
+};
+
+const MAP_W = 960;
+const MAP_H = 960;
+const MIN_DIST = 48;
+const CX = MAP_W / 2;
+const CY = MAP_H / 2;
+
+const runRedistributeLocations = (locations) => {
+  const result = new Map();
+  const byFaction = new Map();
+  const special = [];
+  const rest = [];
+  for (const loc of locations) {
+    const c = loc.coordinates ?? { x: CX, y: CY };
+    if (loc.type === 'WORLD_BOARD' || loc.type === 'IMPOSTER_PORTAL') {
+      special.push(loc);
+    } else if (loc.factionId) {
+      const list = byFaction.get(loc.factionId) ?? [];
+      list.push(loc);
+      byFaction.set(loc.factionId, list);
+    } else {
+      rest.push(loc);
+    }
+  }
+  const used = [];
+  const clamp = (x, y) => ({
+    x: Math.max(20, Math.min(MAP_W - 20, Math.round(x))),
+    y: Math.max(20, Math.min(MAP_H - 20, Math.round(y)))
+  });
+  const dist = (a, b) => Math.hypot(b.x - a.x, b.y - a.y);
+  const tryPlace = (target) => {
+    let best = { ...target };
+    let bestScore = Infinity;
+    for (let dx = -60; dx <= 60; dx += 15) {
+      for (let dy = -60; dy <= 60; dy += 15) {
+        const cand = clamp(target.x + dx, target.y + dy);
+        if (used.some(o => dist(cand, o) < MIN_DIST)) continue;
+        const score = used.reduce((s, o) => s + 1 / Math.max(1, dist(cand, o)), 0);
+        if (score < bestScore) {
+          bestScore = score;
+          best = cand;
+        }
+      }
+    }
+    return best;
+  };
+  special.forEach((loc, i) => {
+    const angle = (i / Math.max(1, special.length)) * Math.PI * 0.5;
+    const pos = clamp(CX + Math.cos(angle) * 80, CY - 30 + Math.sin(angle) * 40);
+    result.set(loc.id, pos);
+    used.push(pos);
+  });
+  const factionIds = Array.from(byFaction.keys());
+  const sectorAngles = {};
+  factionIds.forEach((fid, i) => {
+    sectorAngles[fid] = (i / Math.max(1, factionIds.length)) * Math.PI * 2 - Math.PI / 2;
+  });
+  byFaction.forEach((locs, factionId) => {
+    const angle = sectorAngles[factionId] ?? 0;
+    const radius = 220 + Math.random() * 80;
+    const cx = CX + Math.cos(angle) * radius;
+    const cy = CY + Math.sin(angle) * radius;
+    locs.forEach((loc, i) => {
+      const jitter = 50 + (i % 3) * 35;
+      const a = angle + (i * 0.4) - 0.6;
+      const target = { x: cx + Math.cos(a) * jitter, y: cy + Math.sin(a) * jitter };
+      const pos = tryPlace(target);
+      result.set(loc.id, pos);
+      used.push(pos);
+    });
+  });
+  rest.forEach((loc, i) => {
+    const angle = (i / Math.max(1, rest.length)) * Math.PI * 2 + 1.2;
+    const radius = 280 + (i % 4) * 60;
+    const target = { x: CX + Math.cos(angle) * radius, y: CY + Math.sin(angle) * radius };
+    const pos = tryPlace(target);
+    result.set(loc.id, pos);
+    used.push(pos);
+  });
+  return result;
+};
+
+const updateConstantsWithNewCoordinates = async (locationChunks, newCoords) => {
+  const constantsPath = path.join(rootDir, 'constants.ts');
+  let text = await readFile(constantsPath, 'utf8');
+  const startKey = 'export const LOCATIONS';
+  const startIndex = text.indexOf(startKey);
+  if (startIndex < 0) throw new Error('LOCATIONS not found');
+  const listStart = text.indexOf('[', startIndex);
+  const listEnd = text.indexOf('];', listStart);
+  if (listStart < 0 || listEnd < 0) throw new Error('LOCATIONS block malformed');
+  const block = text.slice(listStart + 1, listEnd);
+  const objects = extractTopLevelObjects(block);
+  const updatedChunks = objects.map((chunk, i) => {
+    const idMatch = chunk.match(/^\s*id\s*:\s*(['"])(.*?)\1/m);
+    const id = idMatch ? idMatch[2].trim() : '';
+    const coords = newCoords.get(id);
+    if (!coords) return chunk;
+    return chunk.replace(
+      /coordinates\s*:\s*\{\s*x\s*:\s*\d+\s*,\s*y\s*:\s*\d+\s*\}\s*(?:\/\/[^\n]*)?/,
+      `coordinates: { x: ${coords.x}, y: ${coords.y} }`
+    );
+  });
+  const newBlock = '\n' + updatedChunks.join(',\n  ') + '\n';
+  const before = text.slice(0, listStart + 1);
+  const after = text.slice(listEnd);
+  text = before + newBlock + after;
+  await writeFile(constantsPath, text, 'utf8');
 };
 
 const extractTopLevelObjects = (text) => {
@@ -746,6 +866,17 @@ const server = http.createServer(async (req, res) => {
     const files = await readdir(publicLocationRoot, { withFileTypes: true }).catch(() => []);
     const existing = files.filter(e => e.isFile()).map(e => e.name.replace(/\.(png|jpg|jpeg)$/i, ''));
     return sendJson(res, 200, { locations, existing: Array.from(new Set(existing)).sort() });
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/locations/redistribute') {
+    try {
+      const locations = await parseLocationsFromConstants();
+      const newCoords = runRedistributeLocations(locations);
+      await updateConstantsWithNewCoordinates(null, newCoords);
+      return sendJson(res, 200, { ok: true, updated: newCoords.size });
+    } catch (e) {
+      return sendJson(res, 500, { error: String(e?.message ?? 'Redistribute failed') });
+    }
   }
 
   if (req.method === 'GET' && url.pathname.startsWith('/api/hero/')) {

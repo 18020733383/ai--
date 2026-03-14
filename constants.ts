@@ -5831,7 +5831,7 @@ export const LOCATIONS: Location[] = [
     name: '海狮饲养场',
     type: 'SEAL_HABITAT',
     description: '僻静的海湾，适合饲养各种海狮与海豹。无驻军，不会被攻击。',
-    coordinates: { x: 420, y: 50 },
+    coordinates: { x: 60, y: 50 },
     terrain: 'PLAINS',
     lastRefreshDay: 0,
     volunteers: [],

@@ -373,6 +373,14 @@
     <div class="card" id="locationPanel" style="display: none; margin-top: 16px;">
       <div class="row">
         <div>
+          <label>据点分布</label>
+          <div class="muted">同势力据点聚类、伪人传送门/公告栏居中、避免重叠。仅影响 constants.ts，新开档生效。</div>
+          <button id="locationRedistributeBtn" style="margin-top: 8px;">重新分布据点</button>
+          <span id="locationRedistributeStatus" class="muted" style="margin-left: 8px;"></span>
+        </div>
+      </div>
+      <div class="row">
+        <div>
           <label>据点</label>
           <select id="locationSelect"></select>
         </div>
@@ -462,6 +470,8 @@
       const heroStickerUseUploadBtn = document.getElementById('heroStickerUseUploadBtn');
       const locationSelect = document.getElementById('locationSelect');
       const locationStatus = document.getElementById('locationStatus');
+      const locationRedistributeBtn = document.getElementById('locationRedistributeBtn');
+      const locationRedistributeStatus = document.getElementById('locationRedistributeStatus');
       const locationGenBtn = document.getElementById('locationGenBtn');
       const locationSaveBtn = document.getElementById('locationSaveBtn');
       const locationPreview = document.getElementById('locationPreview');
@@ -1494,6 +1504,20 @@
         el.addEventListener('input', refreshHeroStickerSlices);
       });
       locationSelect.addEventListener('change', fetchLocationFiles);
+      locationRedistributeBtn.addEventListener('click', async () => {
+        locationRedistributeStatus.textContent = '处理中...';
+        locationRedistributeBtn.disabled = true;
+        try {
+          const res = await fetch('/api/locations/redistribute', { method: 'POST' });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || '失败');
+          locationRedistributeStatus.textContent = `已更新 ${data.updated ?? 0} 个据点坐标`;
+        } catch (e) {
+          locationRedistributeStatus.textContent = e.message || '失败';
+        } finally {
+          locationRedistributeBtn.disabled = false;
+        }
+      });
       locationGenBtn.addEventListener('click', generateLocationBackground);
       locationPromptBtn.addEventListener('click', async () => {
         try {
