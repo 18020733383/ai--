@@ -2684,12 +2684,14 @@ ${historyText || "（暂无）"}
 export const decideFactionAction = async (
   factionId: string,
   factionName: string,
-  openAI?: OpenAIConfig
+  openAI?: OpenAIConfig,
+  locationNames?: string[]
 ): Promise<{ action: string; actions?: string[] }> => {
+  const namesHint = locationNames?.length ? `\n可用据点名（必须原样使用）：${locationNames.join('、')}` : '';
   const prompt = `你是卡拉迪亚大陆的势力「${factionName}」的决策者。请基于当前局势，输出今日决策。
 必须返回 JSON，格式：{"action":"主要方向（20字内）","actions":["具体行为1","具体行为2",...]}
 - action: 战略大方向，如「巩固边境，优先发展弓骑兵」
-- actions: 具体执行动作列表，每条如「在XX据点扩军N人」「派兵侦察XX据点」「进攻XX据点」「向XX据点调兵」等，最多5条，必须具体到据点名或行动类型
+- actions: 具体执行动作列表，每条如「在XX据点扩军N人」「派兵侦察XX据点」「进攻XX据点」，必须使用上述据点名（原样）${namesHint}
 只返回 JSON，不要其他内容。`;
 
   const openAIConfig = requireOpenAIConfig(openAI);
@@ -2723,6 +2725,7 @@ export const decideFactionAction = async (
     const parsed = JSON.parse(text) as { action?: string; actions?: string[] };
     const action = String(parsed?.action ?? '待定').trim() || '待定';
     const actions = Array.isArray(parsed?.actions) ? parsed.actions.filter((a: unknown) => typeof a === 'string').slice(0, 5) : undefined;
+    console.log('[观海] AI 原始返回:', { factionName, raw: text, parsed: { action, actions } });
     return { action, actions };
   }
 
@@ -2738,5 +2741,6 @@ export const decideFactionAction = async (
   const parsed = JSON.parse(String(text)) as { action?: string; actions?: string[] };
   const action = String(parsed?.action ?? '待定').trim() || '待定';
   const actions = Array.isArray(parsed?.actions) ? parsed.actions.filter((a: unknown) => typeof a === 'string').slice(0, 5) : undefined;
+  console.log('[观海] AI 原始返回:', { factionName, raw: text, parsed: { action, actions } });
   return { action, actions };
 };

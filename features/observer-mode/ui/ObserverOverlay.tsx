@@ -57,7 +57,8 @@ export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTarge
       }));
 
       try {
-        const { action, actions } = await decideFactionAction(item.factionId, item.factionName, aiConfig);
+        const locationNames = locations.filter(l => l.type === 'CITY' || l.type === 'CASTLE' || l.type === 'VILLAGE').map(l => l.name);
+        const { action, actions } = await decideFactionAction(item.factionId, item.factionName, aiConfig, locationNames);
         setState(s => ({
           ...s,
           queue: s.queue.map((q, j) =>
@@ -65,10 +66,15 @@ export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTarge
           )
         }));
 
-        const actionList = parseActionsInOrder(actions ?? [], locations);
+        const actionList = parseActionsInOrder(actions ?? [], locations, item.factionId);
+        console.log('[观海] 解析行动:', { factionName: item.factionName, actions, actionList });
         for (const { locationId, locationName, actionType } of actionList) {
           const loc = locations.find(l => l.id === locationId);
-          if (!loc || !onFocusLocation || !onApplyAction || !onCurrentActionChange) continue;
+          if (!loc) continue;
+          if (!onFocusLocation || !onApplyAction || !onCurrentActionChange) {
+            console.warn('[观海] 缺少回调，跳过动画');
+            continue;
+          }
           onFocusLocation(loc);
           onCurrentActionChange({ locationId, locationName, actionType, factionName: item.factionName });
           await sleep(ACTION_DURATION_MS);
@@ -88,7 +94,7 @@ export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTarge
       }
     }
 
-    setState(s => ({ ...s, phase: 'day_end', activeIndex: -1 }));
+    setState(s => ({ ...s, phase: 'day_end', activeIndex: -1, currentDay: s.currentDay + 1 }));
     setIsRunning(false);
   }, [state.queue, buildAIConfig, locations, onFocusLocation, onApplyAction, onCurrentActionChange]);
 
