@@ -1,11 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, SoldierInstance, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
-import { BUILDING_OPTIONS, ENCHANTMENT_RECIPES, FACTIONS, getBuildingName, getSiegeEngineName, HIDEOUT_GOV_EVENTS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, SIEGE_ENGINE_COMBAT_STATS, SIEGE_ENGINE_OPTIONS, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, MINE_CONFIGS, MINERAL_META, MINERAL_PURITY_LABELS, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
+import { BUILDING_OPTIONS, ENCHANTMENT_RECIPES, ENDING_LIST, FACTIONS, getBuildingName, getSiegeEngineName, getEndingContent, getNewCovenantAvailable, HIDEOUT_GOV_EVENTS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, SIEGE_ENGINE_COMBAT_STATS, SIEGE_ENGINE_OPTIONS, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, MINE_CONFIGS, MINERAL_META, MINERAL_PURITY_LABELS, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
 import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
-import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationGarrison, getLocationRace, getLocationRecruitId, getLocationRelationTarget, getRecruitmentPool, getRelationScale, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, PRESTIGE, computeSealHabitatPrestige, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence } from './game/systems';
+import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildRandomizedHeroes, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, clampValue, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, buildGarrisonTroops as buildGarrisonTroopsImpl, getDefenderTroops as getDefenderTroopsImpl, getLocationRecruitId, getLocationRelationTarget, getPlayerReligion as getPlayerReligionFromLocations, getRecruitmentPool, getRelationScale, getRelationTone, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, PRESTIGE, computeSealHabitatPrestige, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence, buildTroopsFromSoldiers as buildTroopsFromSoldiersImpl, buildWoundedEntriesFromSoldiers as buildWoundedEntriesFromSoldiersImpl, normalizePlayerSoldiers as normalizePlayerSoldiersImpl, markSoldiersWounded as markSoldiersWoundedImpl, removeSoldiersById as removeSoldiersByIdImpl, buildRaceComposition } from './game/systems';
 import { calculatePower } from './game/systems/combatPower';
 import { calculateXpGain } from './game/systems/xpGain';
 import { calculateFleeChance, calculateRearGuardPlan } from './features/battle/model/battleEscape';
@@ -58,15 +58,6 @@ type NegotiationLine = { role: 'PLAYER' | 'ENEMY'; text: string };
 
 export default function App() {
   const initialWorld = React.useMemo(() => buildInitialWorld(), []);
-  const buildRandomizedHeroes = () => {
-    const cityIds = LOCATIONS.filter(l => l.type === 'CITY').map(l => l.id);
-    return INITIAL_HERO_ROSTER.map(hero => {
-      if (cityIds.length === 0 || Math.random() < 0.45) return { ...hero };
-      const cityId = cityIds[Math.floor(Math.random() * cityIds.length)];
-      const stayDays = Math.floor(Math.random() * 4) + 2;
-      return { ...hero, locationId: cityId, stayDays };
-    });
-  };
   const [player, setPlayer] = useState<PlayerState>(INITIAL_PLAYER_STATE);
   const [heroes, setHeroes] = useState<Hero[]>(() => buildRandomizedHeroes());
   const [locations, setLocations] = useState<Location[]>(() => initialWorld.locations.map(l => l.type === 'CITY' ? { ...l, workBoard: { lastRefreshDay: INITIAL_PLAYER_STATE.day, contracts: buildWorkContractsForCity(l, INITIAL_PLAYER_STATE.day) } } : l));
@@ -850,17 +841,7 @@ export default function App() {
     });
   };
 
-  const getPlayerReligion = (list: Location[] = locations) => {
-    const altars = (list ?? []).filter(l => l && l.type === 'ALTAR' && l.altar?.doctrine?.religionName);
-    if (altars.length === 0) return null;
-    const picked = altars.find(l => (l.altar?.troopIds ?? []).length > 0) ?? altars[0];
-    const doctrine = picked.altar?.doctrine;
-    if (!doctrine?.religionName) return null;
-    return {
-      religionName: doctrine.religionName,
-      troopIds: picked.altar?.troopIds ?? []
-    };
-  };
+  const getPlayerReligion = (list?: Location[]) => getPlayerReligionFromLocations(list ?? locations);
 
   const preachInCity = (locationId: string) => {
     const id = String(locationId ?? '').trim();
@@ -992,17 +973,6 @@ export default function App() {
     const delta = getDefenseAidRelationDelta(location, attacker);
     defenseAidMetaRef.current = { locationId: location.id, delta, ratio };
     addLocationLog(location.id, `${playerRef.current.name} 协助守城，守军战力比 ${ratio.toFixed(2)}。`);
-  };
-
-  const getRelationTone = (value: number) => {
-    if (value >= 60) return { label: '同盟', color: 'text-emerald-400' };
-    if (value >= 40) return { label: '友好', color: 'text-emerald-300' };
-    if (value >= 20) return { label: '缓和', color: 'text-emerald-200' };
-    if (value <= -60) return { label: '死敌', color: 'text-red-400' };
-    if (value <= -40) return { label: '敌对', color: 'text-red-300' };
-    if (value <= -20) return { label: '紧张', color: 'text-red-200' };
-    if (value >= -5 && value <= 5) return { label: '陌生', color: 'text-stone-300' };
-    return { label: '中立', color: 'text-stone-300' };
   };
 
   const buildUndeadReply = (question: string) => {
@@ -1286,6 +1256,22 @@ export default function App() {
     return customTroopTemplates[realId] ?? TROOP_TEMPLATES[realId];
   };
 
+  const buildTroopsFromSoldiers = (soldiers: SoldierInstance[]): Troop[] =>
+    buildTroopsFromSoldiersImpl(soldiers, getTroopTemplate);
+  const normalizePlayerSoldiers = (player: PlayerState): PlayerState =>
+    normalizePlayerSoldiersImpl(player, getTroopTemplate);
+  const buildWoundedEntriesFromSoldiers = (soldiers: SoldierInstance[], day: number) =>
+    buildWoundedEntriesFromSoldiersImpl(soldiers, day);
+  const markSoldiersWounded = (soldiers: SoldierInstance[], ids: string[], recoverDay: number, note: string) =>
+    markSoldiersWoundedImpl(soldiers, ids, recoverDay, note);
+  const removeSoldiersById = (soldiers: SoldierInstance[], ids: string[]) =>
+    removeSoldiersByIdImpl(soldiers, ids);
+
+  const buildGarrisonTroops = (location: Location) =>
+    buildGarrisonTroopsImpl(location, getTroopTemplate);
+  const getDefenderTroops = (location: Location) =>
+    getDefenderTroopsImpl(location, getTroopTemplate);
+
   const getUpgradeTargetOptions = (troopId: string): string[] => {
     const tmpl = getTroopTemplate(troopId);
     if (!tmpl) return [];
@@ -1342,136 +1328,10 @@ export default function App() {
     return Array.from(new Set([primary, ...picks])).slice(0, 3);
   };
 
-  const buildSoldierId = (seed: number) => `S${seed}`;
-
-  const buildTroopsFromSoldiers = (soldiers: SoldierInstance[]): Troop[] => {
-    const grouped = soldiers.reduce<Record<string, SoldierInstance[]>>((acc, s) => {
-      if (s.status !== 'ACTIVE') return acc;
-      (acc[s.troopId] ??= []).push(s);
-      return acc;
-    }, {});
-    return Object.entries(grouped)
-      .map(([troopId, list]) => {
-        const template = getTroopTemplate(troopId);
-        if (!template) return null;
-        const count = list.length;
-        const maxXpValue = count > 0 ? Math.max(...list.map(s => s.xp ?? 0)) : 0;
-        return { ...template, count, xp: maxXpValue };
-      })
-      .filter((t): t is Troop => !!t && t.count > 0);
-  };
-
-  const normalizePlayerSoldiers = (player: PlayerState): PlayerState => {
-    const troops = (Array.isArray(player.troops) ? player.troops : [])
-      .filter(t => !!getTroopTemplate(t.id));
-    const troopMap = new Map(troops.map(t => [t.id, t]));
-    let soldiers = Array.isArray(player.soldiers) ? player.soldiers.map(s => ({ ...s })) : [];
-    let nextId = typeof player.nextSoldierId === 'number' ? player.nextSoldierId : 1;
-    let changed = false;
-
-    soldiers = soldiers.filter(s => troopMap.has(s.troopId) || s.status === 'GARRISONED');
-    const activeSoldiers = soldiers.filter(s => (s.status ?? 'ACTIVE') === 'ACTIVE');
-    const woundedSoldiers = soldiers.filter(s => (s.status ?? 'ACTIVE') !== 'ACTIVE');
-
-    const byTroop = activeSoldiers.reduce<Record<string, SoldierInstance[]>>((acc, s) => {
-      (acc[s.troopId] ??= []).push(s);
-      return acc;
-    }, {});
-
-    troops.forEach(t => {
-      const template = getTroopTemplate(t.id);
-      if (!template) return;
-      const list = byTroop[t.id] ?? [];
-      const diff = t.count - list.length;
-      if (diff > 0) {
-        changed = true;
-        for (let i = 0; i < diff; i += 1) {
-          const id = buildSoldierId(nextId++);
-          const xp = Math.max(0, Math.min(template.maxXp, Math.floor(t.xp ?? 0)));
-          list.push({
-            id,
-            troopId: t.id,
-            name: template.name,
-            tier: template.tier,
-            xp,
-            maxXp: template.maxXp,
-            createdDay: player.day,
-            history: [`Day ${player.day} · 招募入伍`],
-            status: 'ACTIVE'
-          });
-        }
-        byTroop[t.id] = list;
-      } else if (diff < 0) {
-        changed = true;
-        byTroop[t.id] = list.slice(0, t.count);
-      }
-    });
-
-    soldiers = [...Object.values(byTroop).flat(), ...woundedSoldiers];
-    soldiers = soldiers.map(s => {
-      const tmpl = getTroopTemplate(s.troopId);
-      if (!tmpl) return s;
-      const nextXp = Math.max(0, Math.min(tmpl.maxXp, Math.floor(s.xp ?? 0)));
-      return {
-        ...s,
-        name: tmpl.name,
-        tier: tmpl.tier,
-        xp: nextXp,
-        maxXp: tmpl.maxXp,
-        status: s.status ?? 'ACTIVE'
-      };
-    });
-
-    const normalizedTroops = buildTroopsFromSoldiers(soldiers);
-    if (!changed && normalizedTroops.length === troops.length) {
-      const sameCounts = normalizedTroops.every(t => {
-        const raw = troopMap.get(t.id);
-        return raw && raw.count === t.count;
-      });
-      if (sameCounts && player.soldiers === soldiers && player.nextSoldierId === nextId) return player;
-    }
-
-    return { ...player, soldiers, nextSoldierId: nextId, troops: normalizedTroops, woundedTroops: buildWoundedEntriesFromSoldiers(soldiers, player.day) };
-  };
-
-  const buildWoundedEntriesFromSoldiers = (soldiers: SoldierInstance[], currentDay: number): WoundedTroopEntry[] => {
-    const map = new Map<string, WoundedTroopEntry>();
-    soldiers.forEach(s => {
-      if (s.status !== 'WOUNDED') return;
-      const recoverDay = Math.max(0, Math.floor(s.recoverDay ?? currentDay));
-      const key = `${s.troopId}__${recoverDay}`;
-      const cur = map.get(key);
-      if (cur) {
-        cur.count += 1;
-        if (cur.soldierIds) cur.soldierIds.push(s.id);
-      } else {
-        map.set(key, { troopId: s.troopId, count: 1, recoverDay, soldierIds: [s.id] });
-      }
-    });
-    return Array.from(map.values()).sort((a, b) => a.recoverDay - b.recoverDay);
-  };
-
   const getTroopSoldiers = (player: PlayerState, troopId: string) => {
     const roster = Array.isArray(player.soldiers) ? player.soldiers : [];
     return roster.filter(s => s.troopId === troopId);
   };
-
-  const markSoldiersWounded = (soldiers: SoldierInstance[], soldierIds: string[], recoverDay: number, note: string): SoldierInstance[] => {
-    const idSet = new Set(soldierIds);
-    return soldiers.map(s => {
-      if (!idSet.has(s.id)) return s;
-      const history = [...(s.history ?? []), note];
-      return { ...s, status: 'WOUNDED' as const, recoverDay, history };
-    });
-  };
-
-  const removeSoldiersById = (soldiers: SoldierInstance[], soldierIds: string[]) => {
-    if (soldierIds.length === 0) return soldiers;
-    const idSet = new Set(soldierIds);
-    return soldiers.filter(s => !idSet.has(s.id));
-  };
-
-  const clampValue = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
   const getDefaultLayerIdForTroop = (troop: Troop, layers: { id: string; name: string; hint: string }[]) =>
     getDefaultLayerId(troop, layers, getTroopTemplate);
@@ -4232,26 +4092,6 @@ export default function App() {
     });
   };
 
-  const buildGarrisonTroops = (location: Location) => {
-    return getLocationGarrison(location)
-      .map(unit => {
-        const troop = getTroopTemplate(unit.troopId);
-        return troop ? { ...troop, count: unit.count, xp: 0 } : null;
-      })
-      .filter(Boolean) as Troop[];
-  };
-
-  const getDefenderTroops = (location: Location) => {
-    const baseGarrison = (location.garrison ?? []).length > 0
-      ? (location.garrison ?? []).map(t => ({ ...t }))
-      : buildGarrisonTroops(location);
-    const stayParties = location.stayParties ?? [];
-    const stationedArmies = location.stationedArmies ?? [];
-    const stayTroops = stayParties.flatMap(party => party.troops.map(t => ({ ...t })));
-    const stationedTroops = stationedArmies.flatMap(army => army.troops.map(t => ({ ...t })));
-    return [...baseGarrison, ...stayTroops, ...stationedTroops];
-  };
-
   const enterLocation = (location: Location) => {
      if (location.type === 'FIELD_CAMP') {
        if (location.owner === 'ENEMY') {
@@ -4560,26 +4400,6 @@ export default function App() {
   };
 
   // --- Battle Logic ---
-
-  const buildRaceComposition = (troops: Troop[]) => {
-    const counts: Partial<Record<TroopRace, number>> = {};
-    let total = 0;
-    troops.forEach(troop => {
-      const count = troop.count ?? 0;
-      total += count;
-      const race = getTroopRace(troop, IMPOSTER_TROOP_IDS);
-      counts[race] = (counts[race] ?? 0) + count;
-    });
-    if (total <= 0) return '无';
-    return Object.entries(counts)
-      .sort((a, b) => Number(b[1]) - Number(a[1]))
-      .map(([race, count]) => {
-        const ratio = Math.round((Number(count) / total) * 100);
-        const label = TROOP_RACE_LABELS[race as TroopRace] ?? race;
-        return `${label}${count}(${ratio}%)`;
-      })
-      .join('，');
-  };
 
   const getBattleRelationValue = () => {
     if (!activeEnemy) return 0;
@@ -7708,84 +7528,9 @@ export default function App() {
   };
 
   const endingKey = player.story?.endingId ?? player.story?.gameOverReason ?? '';
-  const newCovenantAvailable = (() => {
-    const religion = getPlayerReligion();
-    if (!religion) return false;
-    const cities = (locations ?? []).filter(l => l && l.type === 'CITY');
-    if (cities.length === 0) return false;
-    return cities.every(c => (c.religion?.faith ?? 0) >= 90);
-  })();
-  const playerReligionName = getPlayerReligion()?.religionName ?? '';
-  const endingContent = (() => {
-    if (endingKey === 'NEW_COVENANT') {
-      return {
-        title: '终章：新约',
-        subtitle: `第 ${player.day} 天`,
-        lines: [
-          '门亮起的那一刻，你没有伸手。',
-          '你让火把从掌心熄灭，又在灰烬里点燃新的词。',
-          '城市的钟声被重新校准——它们不再为旧神敲响。',
-          `你把「${playerReligionName || '新约'}」写进每一块告示板，把恐惧换成秩序。`,
-          '裂隙仍在那里，但它不再是唯一的路。',
-          '诸神黄昏之后，你签下了新的契约。'
-        ]
-      };
-    }
-    if (endingKey === 'HIDEOUT_REBELLION') {
-      return {
-        title: '终章：叛军的灯火',
-        subtitle: `第 ${player.day} 天`,
-        lines: [
-          '地下的火把一盏盏熄灭，换成陌生的口号。',
-          '你以为自己在维持秩序——其实只是在透支它。',
-          '当稳定崩溃，生产与繁荣都变成了借口。',
-          '叛军冲进最深处时，没有谁愿意再为你挡门。',
-          '隐匿点被夺走，秘密被点燃成篝火。',
-          '你的故事以“叛乱”的名义结束。'
-        ]
-      };
-    }
-    if (endingKey === 'PORTAL_CLEARED') {
-      return {
-        title: '终章：门',
-        subtitle: `第 ${player.day} 天`,
-        lines: [
-          '裂隙在你面前缓慢收拢，像合上的伤口。',
-          '那些不该存在的回声逐渐沉寂，空气第一次变得干净。',
-          '你听见“回家”的字眼，从很远的地方重新响起。',
-          '门亮起时，英雄们都沉默了——没人知道下一步该站在哪一边。',
-          '你伸出手，指尖触到一阵熟悉的刺痛：现实的边界。',
-          '这是胜利，也是一场告别。'
-        ]
-      };
-    }
-    if (endingKey === 'HIDEOUT_FALLEN') {
-      return {
-        title: '终章：最后的退路',
-        subtitle: `第 ${player.day} 天`,
-        lines: [
-          '最深处的火把熄灭了。',
-          '石门被撞开时，你听见自己的呼吸像空洞回音。',
-          '隐匿点的结构开始崩塌——不是石头，而是“规则”。',
-          '你曾以为这里是退路，后来才明白：这里只是延迟。',
-          '异常吞没了路径，回家的门再也不会亮起。',
-          '你的故事在黑暗里结束。'
-        ]
-      };
-    }
-    return {
-      title: '终章：无名之死',
-      subtitle: `第 ${player.day} 天`,
-      lines: [
-        '最后一名士兵倒下时，风没有停。',
-        '地图仍在延伸，历史仍在继续，只是再也与你无关。',
-        '你想起很多名字，却没来得及说出口。',
-        '夜色把一切抹平。',
-        '你曾来过。',
-        '然后离开。'
-      ]
-    };
-  })();
+  const newCovenantAvailable = getNewCovenantAvailable(locations, getPlayerReligion());
+  const endingContent = getEndingContent(endingKey, player.day, getPlayerReligion()?.religionName ?? '');
+
 
   const handleIntroFinish = () => {
     const hideout = locations.find(l => l.id === 'hideout_underground') ?? null;
@@ -7842,13 +7587,7 @@ export default function App() {
           onNewGame: startNewGame,
           onContinue: (preferredId) => loadSaveSlot(preferredId),
           onCreateBlankSave: createBlankSaveSlot,
-          endings: [
-            { id: 'PORTAL_CLEARED', title: '封堵裂隙', subtitle: '你夺回了回家的门。' },
-            { id: 'NEW_COVENANT', title: '诸神黄昏后的新约', subtitle: '你把信仰写进废土。' },
-            { id: 'HIDEOUT_FALLEN', title: '隐匿点沦陷', subtitle: '最后退路被异常吞没。' },
-            { id: 'HIDEOUT_REBELLION', title: '叛军夺取隐匿点', subtitle: '内政失衡，地下燃起反旗。' },
-            { id: 'ALL_DIED', title: '无名之死', subtitle: '队伍覆灭，传说终止。' }
-          ],
+          endings: [...ENDING_LIST],
           onReplayEnding: (endingId) => {
             setEndingReturnView('MAIN_MENU');
             setPortalEndingChoiceMade(true);

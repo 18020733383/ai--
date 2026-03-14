@@ -1,5 +1,34 @@
 import type { Location, Troop } from '../../types';
 import { isCastleLikeLocation } from './worldInit';
+import { getLocationGarrison } from './garrisonPresets';
+
+export type GetTroopTemplate = (id: string) => Partial<Troop> & { id: string; name: string } | undefined;
+
+export function buildGarrisonTroops(
+  location: Location,
+  getTroopTemplate: GetTroopTemplate
+): Troop[] {
+  return getLocationGarrison(location)
+    .map(unit => {
+      const troop = getTroopTemplate(unit.troopId);
+      return troop ? { ...troop, count: unit.count, xp: 0 } : null;
+    })
+    .filter(Boolean) as Troop[];
+}
+
+export function getDefenderTroops(
+  location: Location,
+  getTroopTemplate: GetTroopTemplate
+): Troop[] {
+  const baseGarrison = (location.garrison ?? []).length > 0
+    ? (location.garrison ?? []).map(t => ({ ...t }))
+    : buildGarrisonTroops(location, getTroopTemplate);
+  const stayParties = location.stayParties ?? [];
+  const stationedArmies = location.stationedArmies ?? [];
+  const stayTroops = stayParties.flatMap(party => party.troops.map(t => ({ ...t })));
+  const stationedTroops = stationedArmies.flatMap(army => army.troops.map(t => ({ ...t })));
+  return [...baseGarrison, ...stayTroops, ...stationedTroops];
+}
 
 export function getGarrisonLimit(location: Location): number {
   const base =

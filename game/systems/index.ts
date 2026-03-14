@@ -18,3 +18,6 @@ export * from './worldInit';
 export * from './dailyCycle';
 export * from './xenoAcceptance';
 export * from './prestige';
+export * from './soldierUtils';
+export * from './troopRaceUtils';
+export * from './religionUtils';

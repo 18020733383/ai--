@@ -11,3 +11,4 @@ export * from './buildings';
 export * from './locations';
 export * from './minerals';
 export * from './siegeEngines';
+export * from './endings';

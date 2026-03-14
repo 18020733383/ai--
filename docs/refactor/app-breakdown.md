@@ -21,6 +21,14 @@
 - `game/systems/imposterTroops`: `buildImposterTroops`, `pickImposterTarget`。
 - `game/systems/banditTroops`: `getBanditCampAge`, `buildBanditTroops`。
 - `game/systems/garrisonPresets`: `getLocationGarrison`。
+- `game/systems/garrisonHelpers`: `buildGarrisonTroops`, `getDefenderTroops`（需传入 getTroopTemplate）。
+- `game/systems/soldierUtils`: `buildTroopsFromSoldiers`, `normalizePlayerSoldiers`, `buildWoundedEntriesFromSoldiers`, `markSoldiersWounded`, `removeSoldiersById`。
+- `game/data/endings`: `ENDING_LIST`, `getEndingContent`, `getNewCovenantAvailable`。
+- `game/systems/relationHelpers`: `getRelationTone`。
+- `game/systems/randomUtils`: `clampValue`。
+- `game/systems/troopRaceUtils`: `buildRaceComposition`。
+- `game/systems/religionUtils`: `getPlayerReligion`。
+- `game/systems/worldInit`: `buildRandomizedHeroes`。
 - `game/systems/randomUtils`: `rollMineralPurity`。
 - `features/hero/model/heroChatUtils`: `normalizeHeroChat`, `normalizeHeroMemory`, `normalizePartyDiary`, `normalizeMemoryEdits`, `normalizeDiaryEdits`, `applyMemoryEdits`, `applyPartyDiaryEdits`, `normalizeHeroEmotion`, `splitHeroReply`。
 - `features/battle/model/battleLayers`: `getTroopLayerDescriptor`, `getDefaultLayerId`。

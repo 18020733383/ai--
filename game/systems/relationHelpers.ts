@@ -116,6 +116,17 @@ export const normalizeRelationMatrix = (matrix?: PlayerState['relationMatrix']) 
   }
 });
 
+export const getRelationTone = (value: number): { label: string; color: string } => {
+  if (value >= 60) return { label: '同盟', color: 'text-emerald-400' };
+  if (value >= 40) return { label: '友好', color: 'text-emerald-300' };
+  if (value >= 20) return { label: '缓和', color: 'text-emerald-200' };
+  if (value <= -60) return { label: '死敌', color: 'text-red-400' };
+  if (value <= -40) return { label: '敌对', color: 'text-red-300' };
+  if (value <= -20) return { label: '紧张', color: 'text-red-200' };
+  if (value >= -5 && value <= 5) return { label: '陌生', color: 'text-stone-300' };
+  return { label: '中立', color: 'text-stone-300' };
+};
+
 export const getRelationValue = (state: PlayerState, targetType: 'FACTION' | 'RACE', targetId: string) => {
   const matrix = normalizeRelationMatrix(state.relationMatrix);
   if (targetType === 'FACTION') {

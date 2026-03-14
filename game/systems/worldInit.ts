@@ -1,5 +1,5 @@
-import type { Location, Lord, LordFocus, StayParty, Troop } from '../../types';
-import { FACTIONS, LOCATIONS, TROOP_TEMPLATES } from '../data';
+import type { Hero, Location, Lord, LordFocus, StayParty, Troop } from '../../types';
+import { FACTIONS, INITIAL_HERO_ROSTER, LOCATIONS, TROOP_TEMPLATES } from '../data';
 
 export const STAY_PARTY_LOCATION_TYPES: Location['type'][] = ['CITY', 'CASTLE', 'ROACH_NEST', 'IMPOSTER_PORTAL'];
 
@@ -351,6 +351,16 @@ export const syncLordPresence = (list: Location[], lords: Lord[]) => {
     return { ...loc, lord: owner, stayParties: [...preservedParties, ...lordParties] };
   });
 };
+
+export function buildRandomizedHeroes(): Hero[] {
+  const cityIds = LOCATIONS.filter(l => l.type === 'CITY').map(l => l.id);
+  return INITIAL_HERO_ROSTER.map(hero => {
+    if (cityIds.length === 0 || Math.random() < 0.45) return { ...hero };
+    const cityId = cityIds[Math.floor(Math.random() * cityIds.length)];
+    const stayDays = Math.floor(Math.random() * 4) + 2;
+    return { ...hero, locationId: cityId, stayDays };
+  });
+}
 
 export const buildInitialWorld = () => {
   const seeded = seedStayParties(LOCATIONS);
