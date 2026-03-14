@@ -1,15 +1,16 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, SoldierInstance, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
-import { BUILDING_OPTIONS, ENCHANTMENT_RECIPES, FACTIONS, getBuildingName, getSiegeEngineName, HERO_EMOTIONS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, SIEGE_ENGINE_COMBAT_STATS, SIEGE_ENGINE_OPTIONS, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, MINE_CONFIGS, MINERAL_META, MINERAL_PURITY_LABELS, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
+import { BUILDING_OPTIONS, ENCHANTMENT_RECIPES, FACTIONS, getBuildingName, getSiegeEngineName, HIDEOUT_GOV_EVENTS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, SIEGE_ENGINE_COMBAT_STATS, SIEGE_ENGINE_OPTIONS, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, MINE_CONFIGS, MINERAL_META, MINERAL_PURITY_LABELS, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
 import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
-import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, getLocationRecruitId, getLocationRelationTarget, getRecruitmentPool, getRelationScale, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, isCastleLikeLocation, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, processSealHabitatDaily, randomInt, rollBinomial, seedStayParties, splitTroops, syncLordPresence } from './game/systems';
+import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationGarrison, getLocationRace, getLocationRecruitId, getLocationRelationTarget, getRecruitmentPool, getRelationScale, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence } from './game/systems';
 import { calculatePower } from './game/systems/combatPower';
 import { calculateXpGain } from './game/systems/xpGain';
 import { calculateFleeChance, calculateRearGuardPlan } from './features/battle/model/battleEscape';
-import { DEFAULT_BATTLE_LAYERS } from './features/battle/model/battleLayers';
+import { DEFAULT_BATTLE_LAYERS, getDefaultLayerId } from './features/battle/model/battleLayers';
+import { applyMemoryEdits, applyPartyDiaryEdits, normalizeDiaryEdits, normalizeHeroChat, normalizeHeroEmotion, normalizeHeroMemory, normalizeMemoryEdits, normalizePartyDiary, splitHeroReply } from './features/hero/model/heroChatUtils';
 import { collectWorldTroops as collectWorldTroopsFromWorld, getBelieverStats as getBelieverStatsFromWorld } from './features/world-board/model/worldStats';
 import { runBattlePipeline } from './features/battle/model/battlePipeline';
 import { calculateLocalBattleRewards, computeBattleSettlement, computeTrainingXpRewards } from './features/battle/model/battleSettlement';
@@ -1016,154 +1017,6 @@ export default function App() {
     return `亡灵搅动冷咖啡，低声说：${prompt}最近发生的事我都知道：${recent}。你的队伍构成是：${troopSummary}。${parrotSummary}`;
   };
 
-  const normalizeHeroChat = (memory: HeroChatLine[], currentDay = player.day) => {
-    const minDay = Math.max(0, currentDay - 2);
-    return memory
-      .filter(line => line && (line.role === 'PLAYER' || line.role === 'HERO') && typeof line.text === 'string')
-      .map(line => ({
-        role: line.role,
-        text: String(line.text).trim(),
-        day: typeof line.day === 'number' ? line.day : currentDay
-      }))
-      .filter(line => line.text.length > 0 && line.day >= minDay)
-      .slice(-24);
-  };
-
-  const normalizeHeroMemory = (memory: HeroPermanentMemory[]) => (Array.isArray(memory) ? memory : [])
-    .map(item => ({
-      id: String(item?.id ?? '').trim() || `mem_${String(item?.createdAt ?? '').trim()}_${String(item?.roundIndex ?? '')}_${String(item?.text ?? '').trim()}`,
-      text: String(item?.text ?? '').trim(),
-      createdAt: String(item?.createdAt ?? '').trim(),
-      createdDay: typeof item?.createdDay === 'number' ? item.createdDay : 0,
-      roundIndex: typeof item?.roundIndex === 'number' ? item.roundIndex : 0
-    }))
-    .filter(item => item.text.length > 0)
-    .slice(-30);
-
-  const normalizePartyDiary = (entries: PartyDiaryEntry[], currentDay = player.day) => (Array.isArray(entries) ? entries : [])
-    .map(item => ({
-      id: String(item?.id ?? '').trim() || `diary_${String(item?.createdAt ?? '').trim()}_${String(item?.roundIndex ?? '')}_${String(item?.text ?? '').trim()}`,
-      text: String(item?.text ?? '').trim(),
-      authorId: String((item as any)?.authorId ?? '').trim(),
-      authorName: String((item as any)?.authorName ?? (item as any)?.author ?? '').trim() || '未知',
-      createdAt: String(item?.createdAt ?? '').trim(),
-      createdDay: typeof item?.createdDay === 'number' ? item.createdDay : currentDay,
-      roundIndex: typeof item?.roundIndex === 'number' ? item.roundIndex : 0
-    }))
-    .filter(item => item.text.length > 0)
-    .slice(-40);
-
-  const normalizeMemoryEdits = (raw: any) => (Array.isArray(raw) ? raw : [])
-    .map(item => ({
-      action: String(item?.action ?? '').trim().toUpperCase(),
-      id: String(item?.id ?? '').trim(),
-      text: String(item?.text ?? '').trim()
-    }))
-    .filter(item => item.action && (item.id || item.text));
-
-  const normalizeDiaryEdits = (raw: any) => (Array.isArray(raw) ? raw : [])
-    .map(item => ({
-      action: String(item?.action ?? '').trim().toUpperCase(),
-      id: String(item?.id ?? '').trim(),
-      text: String(item?.text ?? '').trim()
-    }))
-    .filter(item => item.action && (item.id || item.text));
-
-  const applyMemoryEdits = (
-    memory: HeroPermanentMemory[],
-    edits: { action: string; id?: string; text?: string }[],
-    nowText: string,
-    day: number,
-    roundIndex: number
-  ) => {
-    let next = [...memory];
-    edits.forEach(edit => {
-      if (edit.action === 'DELETE') {
-        if (edit.id) {
-          next = next.filter(item => item.id !== edit.id);
-        } else if (edit.text) {
-          next = next.filter(item => item.text !== edit.text);
-        }
-      }
-      if (edit.action === 'UPDATE') {
-        if (!edit.id || !edit.text) return;
-        const index = next.findIndex(item => item.id === edit.id);
-        if (index >= 0) {
-          next[index] = {
-            ...next[index],
-            text: edit.text,
-            createdAt: nowText,
-            createdDay: day,
-            roundIndex
-          };
-        }
-      }
-      if (edit.action === 'ADD') {
-        if (!edit.text) return;
-        if (next.some(item => item.text === edit.text)) return;
-        next.push({
-          id: `mem_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          text: edit.text,
-          createdAt: nowText,
-          createdDay: day,
-          roundIndex
-        });
-      }
-    });
-    return next.slice(-30);
-  };
-
-  const applyPartyDiaryEdits = (
-    entries: PartyDiaryEntry[],
-    edits: { action: string; id?: string; text?: string }[],
-    nowText: string,
-    day: number,
-    roundIndex: number,
-    authorName: string,
-    authorId?: string
-  ) => {
-    let next = [...entries];
-    edits.forEach(edit => {
-      if (edit.action === 'DELETE') {
-        if (edit.id) {
-          next = next.filter(item => item.id !== edit.id);
-        } else if (edit.text) {
-          next = next.filter(item => item.text !== edit.text);
-        }
-      }
-      if (edit.action === 'UPDATE') {
-        const targetId = edit.id || (edit.text ? next.find(item => item.text === edit.text)?.id : undefined);
-        if (!targetId || !edit.text) return;
-        const index = next.findIndex(item => item.id === targetId);
-        if (index >= 0) {
-          next[index] = {
-            ...next[index],
-            text: edit.text,
-            authorName,
-            authorId,
-            createdAt: nowText,
-            createdDay: day,
-            roundIndex
-          };
-        }
-      }
-      if (edit.action === 'ADD') {
-        if (!edit.text) return;
-        if (next.some(item => item.text === edit.text)) return;
-        next.push({
-          id: `diary_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-          text: edit.text,
-          authorName,
-          authorId,
-          createdAt: nowText,
-          createdDay: day,
-          roundIndex
-        });
-      }
-    });
-    return normalizePartyDiary(next, day);
-  };
-
   const addPartyDiaryEntry = (authorId: string, authorName: string, text: string, roundIndex: number, day: number) => {
     const nowText = new Date().toLocaleString('zh-CN', { hour12: false });
     const entry: PartyDiaryEntry = {
@@ -1193,34 +1046,6 @@ export default function App() {
 
   const deletePartyDiaryEntry = (entryId: string, day: number) => {
     setPartyDiary(prev => normalizePartyDiary((Array.isArray(prev) ? prev : []).filter(item => item.id !== entryId), day));
-  };
-
-  const normalizeHeroEmotion = (value?: string) => {
-    const raw = String(value || '').trim();
-    const upper = raw.toUpperCase();
-    if (HERO_EMOTIONS.includes(upper as Hero['currentExpression'])) return upper as Hero['currentExpression'];
-    const aliases: Record<string, Hero['currentExpression']> = {
-      '愤怒': 'ANGRY',
-      '空闲': 'IDLE',
-      '无语': 'SILENT',
-      '尴尬': 'AWKWARD',
-      '高兴': 'HAPPY',
-      '难过': 'SAD',
-      '害怕': 'AFRAID',
-      '惊讶': 'SURPRISED',
-      '生无可恋': 'DEAD'
-    };
-    return aliases[raw] ?? 'IDLE';
-  };
-
-  const splitHeroReply = (raw: string) => {
-    const text = String(raw ?? '').trim();
-    if (!text) return [];
-    const byLine = text.split(/\n+/).map(line => line.trim()).filter(Boolean);
-    if (byLine.length > 1) return byLine;
-    const parts = text.match(/[^。！？!?]+[。！？!?]?/g)?.map(line => line.trim()).filter(Boolean);
-    if (parts && parts.length > 1) return parts;
-    return [text];
   };
 
   const buildHeroReply = (hero: Hero, question: string) => {
@@ -1645,125 +1470,10 @@ export default function App() {
     return soldiers.filter(s => !idSet.has(s.id));
   };
 
-  const getBanditCampAge = (camp?: Location) => {
-    const spawnDay = camp?.banditSpawnDay ?? camp?.lastRefreshDay ?? player.day;
-    return Math.max(0, player.day - spawnDay);
-  };
-
-  const buildBanditTroops = () => {
-    const isGoblinCamp = !!currentLocation && currentLocation.type === 'BANDIT_CAMP' && currentLocation.id.startsWith('goblin_camp_');
-    const daysAlive = getBanditCampAge(currentLocation ?? undefined);
-    const growth = Math.floor(daysAlive / 3);
-    const troops: Troop[] = [];
-    if (isGoblinCamp) {
-      const goblinGrowth = Math.floor(daysAlive / 2);
-      const t1Count = randomInt(14, 22) + goblinGrowth;
-      const t1Pool = ['goblin_scavenger', 'goblin_spear_urchin', 'goblin_slinger', 'goblin_bomber', 'goblin_sneak', 'goblin_wolf_pup_rider', 'goblin_scrap_shield', 'goblin_hex_apprentice', 'goblin_fungal_picker'];
-      for (let i = 0; i < Math.max(3, Math.min(6, Math.floor(t1Count / 6))); i++) {
-        const id = t1Pool[(randomInt(0, 999) + i) % t1Pool.length];
-        troops.push({ ...TROOP_TEMPLATES[id], count: Math.max(2, Math.floor(t1Count / (i + 3))), xp: 0 });
-      }
-      const t2Chance = Math.min(0.55 + daysAlive * 0.012, 0.92);
-      if (Math.random() < t2Chance) {
-        const t2Pool = ['goblin_raider', 'goblin_pikeman', 'goblin_sling_leader', 'goblin_grenadier', 'goblin_cutthroat', 'goblin_wolf_rider', 'goblin_tower_shield', 'goblin_hexer', 'goblin_fungus_medic'];
-        const t2Count = randomInt(6, 12) + Math.floor(goblinGrowth / 2);
-        const picks = Math.max(2, Math.min(4, Math.floor(t2Count / 6)));
-        for (let i = 0; i < picks; i++) {
-          const id = t2Pool[(randomInt(0, 999) + i) % t2Pool.length];
-          troops.push({ ...TROOP_TEMPLATES[id], count: Math.max(1, Math.floor(t2Count / (i + 2))), xp: 0 });
-        }
-      }
-      const t3Chance = Math.min(0.2 + daysAlive * 0.012, 0.65);
-      if (Math.random() < t3Chance) {
-        const t3Pool = ['goblin_chain_reaver', 'goblin_hob_spear', 'goblin_stone_harrier', 'goblin_sapper', 'goblin_nightblade', 'goblin_warg_rider', 'goblin_scrap_guard', 'goblin_witch_doctor', 'goblin_plague_shaman'];
-        const t3Count = randomInt(2, 5) + Math.floor(goblinGrowth / 4);
-        const picks = Math.max(1, Math.min(3, t3Count));
-        for (let i = 0; i < picks; i++) {
-          const id = t3Pool[(randomInt(0, 999) + i) % t3Pool.length];
-          troops.push({ ...TROOP_TEMPLATES[id], count: 1 + Math.floor(t3Count / (i + 2)), xp: 0 });
-        }
-      }
-      const t4Chance = Math.min(0.07 + daysAlive * 0.006, 0.25);
-      if (Math.random() < t4Chance) {
-        const t4Pool = ['goblin_warlord', 'goblin_spear_chief', 'goblin_bombardier', 'goblin_shadow_lord', 'goblin_warg_alpha', 'goblin_witch_king'];
-        const t4Id = t4Pool[randomInt(0, t4Pool.length - 1)];
-        const t4Count = randomInt(1, 2) + Math.floor(goblinGrowth / 8);
-        troops.push({ ...TROOP_TEMPLATES[t4Id], count: Math.max(1, t4Count), xp: 0 });
-      }
-      const merged = troops.reduce((acc, t) => {
-        const existing = acc.get(t.id);
-        if (existing) acc.set(t.id, { ...existing, count: existing.count + t.count });
-        else acc.set(t.id, t);
-        return acc;
-      }, new Map<string, Troop>());
-      return Array.from(merged.values()).filter(t => t.count > 0);
-    }
-    const t1Count = randomInt(12, 20) + growth;
-    troops.push({ ...TROOP_TEMPLATES['peasant'], count: t1Count, xp: 0 });
-
-    if (Math.random() < 0.65) {
-      const t2Id = Math.random() < 0.5 ? 'militia' : 'hunter';
-      const t2Count = randomInt(3, 7) + Math.floor(growth / 2);
-      troops.push({ ...TROOP_TEMPLATES[t2Id], count: t2Count, xp: 0 });
-    }
-
-    const t3Chance = Math.min(0.15 + daysAlive * 0.01, 0.45);
-    if (Math.random() < t3Chance) {
-      const t3Id = Math.random() < 0.5 ? 'footman' : 'archer';
-      const t3Count = randomInt(1, 3) + Math.floor(growth / 3);
-      troops.push({ ...TROOP_TEMPLATES[t3Id], count: t3Count, xp: 0 });
-    }
-
-    const t4Chance = Math.min(0.05 + daysAlive * 0.005, 0.2);
-    if (Math.random() < t4Chance) {
-      const t4Id = Math.random() < 0.5 ? 'knight' : 'sharpshooter';
-      const t4Count = randomInt(1, 2) + Math.floor(growth / 6);
-      troops.push({ ...TROOP_TEMPLATES[t4Id], count: t4Count, xp: 0 });
-    }
-
-    return troops;
-  };
-
   const clampValue = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
 
-  const getTroopLayerDescriptor = (troop: Troop) => {
-    const template = getTroopTemplate(troop.id);
-    const source = template ?? troop;
-    const equipment = Array.isArray(source.equipment) ? source.equipment.join(' ') : '';
-    const description = source.description ?? '';
-    return `${troop.id} ${troop.name} ${equipment} ${description}`.toLowerCase();
-  };
-
-  const getDefaultLayerId = (troop: Troop, layers: { id: string; name: string; hint: string }[]) => {
-    const text = getTroopLayerDescriptor(troop);
-    const template = getTroopTemplate(troop.id);
-    const supportRole = template?.supportRole ?? troop.supportRole;
-    const isHeavy = (template?.category ?? troop.category) === 'HEAVY' || troop.id.startsWith('heavy_');
-    const isRanged = /archer|bow|crossbow|ranger|marksman|sharpshooter|弓|弩|游侠|神射|猎手|射/.test(text);
-    const isMage = /mage|wizard|sorcerer|法师|术士|巫师/.test(text);
-    const isBard = /bard|吟游/.test(text);
-    const isShield = /shield|盾|phalanx|wall|守护/.test(text);
-    const isCavalry = /cavalry|rider|horse|knight|paladin|骑/.test(text);
-    if (troop.id === 'player_main') return layers[1]?.id ?? layers[0]?.id;
-    if (isHeavy) {
-      if (supportRole === 'ARTILLERY' || supportRole === 'RADAR') return layers[3]?.id ?? layers[layers.length - 1]?.id;
-      if (supportRole === 'TANK') return layers[0]?.id ?? layers[1]?.id;
-      return layers[2]?.id ?? layers[1]?.id;
-    }
-    if (isRanged || isMage || isBard) return layers[3]?.id ?? layers[layers.length - 1]?.id;
-    if (isShield) return layers[0]?.id ?? layers[1]?.id;
-    if (isCavalry) return layers[1]?.id ?? layers[0]?.id;
-    return layers[1]?.id ?? layers[0]?.id;
-  };
-
-    const rollMineralPurity = (): MineralPurity => {
-    const roll = Math.random();
-    if (roll < 0.35) return 1;
-    if (roll < 0.65) return 2;
-    if (roll < 0.85) return 3;
-    if (roll < 0.95) return 4;
-    return 5;
-  };
+  const getDefaultLayerIdForTroop = (troop: Troop, layers: { id: string; name: string; hint: string }[]) =>
+    getDefaultLayerId(troop, layers, getTroopTemplate);
 
   useEffect(() => {
     sessionStorage.removeItem('game.logs');
@@ -1822,7 +1532,7 @@ export default function App() {
           assignments[troop.id] = existing;
           return;
         }
-        assignments[troop.id] = getDefaultLayerId(troop, layers);
+        assignments[troop.id] = getDefaultLayerIdForTroop(troop, layers);
       });
       const protectedTroopIds = prev.protectedTroopIds.filter(id => ids.has(id));
       return { ...prev, layers, assignments, protectedTroopIds };
@@ -2206,99 +1916,15 @@ export default function App() {
       return imposter / total >= 0.6;
     };
     for (let dayIndex = 0; dayIndex < days; dayIndex++) {
-      const caravanCamps = newLocations.filter(l => l.type === 'FIELD_CAMP' && l.owner === 'ENEMY' && l.camp?.kind === 'CARAVAN');
-      if (caravanCamps.length > 0) {
-        newLocations = newLocations.flatMap(loc => {
-          if (loc.type !== 'FIELD_CAMP' || loc.owner !== 'ENEMY' || loc.camp?.kind !== 'CARAVAN') return [loc];
-          const camp = loc.camp;
-          const daysLeft = Math.max(0, Math.floor((camp.daysLeft ?? 0) - 1));
-          if (daysLeft <= 0) return [];
-          const total = Math.max(1, Math.floor(camp.totalDays ?? 1));
-          const progressed = total - daysLeft;
-          const ratio = Math.max(0, Math.min(1, progressed / total));
-          const start = camp.routeStart ?? { x: 0, y: 80 };
-          const end = camp.routeEnd ?? { x: MAP_WIDTH, y: MAP_HEIGHT - 80 };
-          const x = Math.round(start.x + (end.x - start.x) * ratio);
-          const y = Math.round(start.y + (end.y - start.y) * ratio);
-          return [{ ...loc, coordinates: { x, y }, camp: { ...camp, daysLeft } }];
-        });
-      }
-      const banditCampCount = newLocations.filter(l => l.type === 'BANDIT_CAMP').length;
-      if (banditCampCount < 15 && Math.random() < 0.03) {
-        const spawnX = Math.floor(Math.random() * MAP_WIDTH);
-        const spawnY = Math.floor(Math.random() * MAP_HEIGHT);
-        const newCamp: Location = {
-          id: `bandit_camp_${Date.now()}_${dayIndex}`,
-          name: '劫匪窝点',
-          type: 'BANDIT_CAMP',
-          description: '一群法外之徒聚集的临时营地。',
-          coordinates: { x: spawnX, y: spawnY },
-          terrain: 'BANDIT_CAMP',
-          lastRefreshDay: 0,
-          banditSpawnDay: nextPlayer.day,
-          volunteers: [],
-          mercenaries: [],
-          owner: 'NEUTRAL',
-          isUnderSiege: false,
-          siegeProgress: 0,
-          siegeEngines: [],
-          garrison: [],
-          buildings: [],
-          constructionQueue: [],
-          siegeEngineQueue: [],
-          lastIncomeDay: 0
-        };
-        newLocations.push(newCamp);
-        logsToAdd.push("侦察兵报告：发现了一处新的劫匪窝点！");
-      }
+      newLocations = processCaravanMovement(newLocations, MAP_WIDTH, MAP_HEIGHT);
 
-      const activeCaravanCount = newLocations.filter(l => l.type === 'FIELD_CAMP' && l.owner === 'ENEMY' && l.camp?.kind === 'CARAVAN').length;
-      if (activeCaravanCount < 2 && Math.random() < 0.12) {
-        const spawnLeft = Math.random() < 0.5;
-        const startX = spawnLeft ? 8 : MAP_WIDTH - 8;
-        const endX = spawnLeft ? MAP_WIDTH - 8 : 8;
-        const startY = 20 + Math.floor(Math.random() * Math.max(1, MAP_HEIGHT - 40));
-        const endY = 20 + Math.floor(Math.random() * Math.max(1, MAP_HEIGHT - 40));
-        const totalDays = 7 + Math.floor(Math.random() * 7);
-        const goldMultiplier = 2.6 + Math.random() * 1.4;
-        const guards: Troop[] = [];
-        const addGuard = (id: string, count: number) => {
-          const tmpl = getTroopTemplate(id);
-          if (!tmpl) return;
-          guards.push({ ...tmpl, count, xp: 0 });
-        };
-        addGuard('militia', 10 + Math.floor(Math.random() * 6));
-        addGuard('archer', 6 + Math.floor(Math.random() * 4));
-        addGuard('footman', 3 + Math.floor(Math.random() * 3));
-        const caravan: Location = {
-          id: `caravan_${Date.now()}_${dayIndex}`,
-          name: '商队临时营地',
-          type: 'FIELD_CAMP',
-          description: '驮马与货车围成车阵，护卫警惕地守着箱笼。',
-          coordinates: { x: startX, y: startY },
-          terrain: 'PLAINS',
-          lastRefreshDay: 0,
-          volunteers: [],
-          mercenaries: [],
-          owner: 'ENEMY',
-          garrison: guards,
-          buildings: [],
-          camp: {
-            kind: 'CARAVAN',
-            sourceLocationId: 'caravan_route',
-            targetLocationId: 'caravan_route',
-            totalDays,
-            daysLeft: totalDays,
-            attackerName: '商队护卫',
-            leaderName: '押镖队长',
-            routeStart: { x: startX, y: startY },
-            routeEnd: { x: endX, y: endY },
-            goldMultiplier
-          }
-        };
-        newLocations.push(caravan);
-        logsToAdd.push("斥候报告：一支商队出现在地平线，正沿着道路缓慢行军。");
-      }
+      const banditResult = processBanditSpawn(newLocations, nextPlayer.day, dayIndex, MAP_WIDTH, MAP_HEIGHT);
+      newLocations = banditResult.locations;
+      if (banditResult.log) logsToAdd.push(banditResult.log);
+
+      const caravanResult = processCaravanSpawn(newLocations, nextPlayer.day, dayIndex, getTroopTemplate, MAP_WIDTH, MAP_HEIGHT);
+      newLocations = caravanResult.locations;
+      if (caravanResult.log) logsToAdd.push(caravanResult.log);
 
       const nextDay = nextPlayer.day + 1;
       newLocations = newLocations.map(loc => {
@@ -2374,48 +2000,6 @@ export default function App() {
       {
         const rollInt = (min: number, max: number) => Math.floor(min + Math.random() * (max - min + 1));
         const clampPct = (v: number) => Math.max(0, Math.min(100, Math.floor(v)));
-        const govEvents = [
-          {
-            id: 'tax_dispute',
-            title: '税吏争执',
-            lines: ['税吏与工坊主在税率上争执不休，工人开始停工。', '如果处理不当，生产会受到影响。']
-          },
-          {
-            id: 'smuggling',
-            title: '走私风波',
-            lines: ['巡逻发现走私货物流入市集，几方势力互相指责。', '放任会破坏秩序，但强硬会影响和谐。']
-          },
-          {
-            id: 'food_shortage',
-            title: '粮仓告急',
-            lines: ['储备粮损耗超出预期，居民开始抱怨配给。', '若不安抚，稳定性将下滑。']
-          },
-          {
-            id: 'craftsmen_guild',
-            title: '工匠纠纷',
-            lines: ['工匠行会要求更多资源与保护，否则将减少产出。', '这是提高生产力还是拖累繁荣的选择。']
-          },
-          {
-            id: 'watch_patrol',
-            title: '巡逻懈怠',
-            lines: ['巡逻队怠工导致盗窃事件增多，治安下滑。', '需要迅速整顿纪律。']
-          },
-          {
-            id: 'market_opportunity',
-            title: '流动市集',
-            lines: ['一批流动商队愿意暂驻据点，带来繁荣机会。', '也会增加据点暴露风险。']
-          },
-          {
-            id: 'water_supply',
-            title: '水源污染',
-            lines: ['地下水源出现异常气味，居民情绪不安。', '若不处理，和谐度将降低。']
-          },
-          {
-            id: 'militia_pressure',
-            title: '民兵诉求',
-            lines: ['民兵要求提升待遇与装备，否则将减少巡防力度。', '权衡成本与稳定性至关重要。']
-          }
-        ];
         const relationCandidates = (Object.keys(RACE_LABELS) as RaceId[]).filter(r => r !== 'HUMAN');
         newLocations = newLocations.map(loc => {
           if (loc.type !== 'HIDEOUT' || loc.owner !== 'PLAYER' || !loc.hideout) return loc;
@@ -2446,7 +2030,7 @@ export default function App() {
             nextEventDay = nextDay + rollInt(2, 4);
             return { ...loc, hideout: { ...loc.hideout, governance: { ...gov, ...nextGov, nextEventDay, lastEventDay } } };
           }
-          const evt = govEvents[Math.floor(Math.random() * govEvents.length)];
+          const evt = HIDEOUT_GOV_EVENTS[Math.floor(Math.random() * HIDEOUT_GOV_EVENTS.length)];
           const relationImpact = Math.random() < 0.45
             ? {
                 raceId: relationCandidates[Math.floor(Math.random() * relationCandidates.length)],
@@ -2625,34 +2209,6 @@ export default function App() {
         const pool = candidates.length > 0 ? candidates : cityIds;
         return pool[Math.floor(Math.random() * pool.length)];
       };
-      const getXenoAcceptanceScore = (temperament: string, traits: string[]) => {
-        const temperamentScores: Record<string, number> = {
-          强硬: -18,
-          稳重: 6,
-          多疑: -26,
-          豪爽: 18,
-          谨慎: 0,
-          冷峻: -22,
-          宽厚: 24,
-          冷静: 4
-        };
-        const traitScores: Record<string, number> = {
-          好战: -16,
-          务实: -2,
-          忠诚: 0,
-          谨慎: -6,
-          野心: -10,
-          仁慈: 18,
-          狡黠: -6,
-          守旧: -20,
-          热情: 12,
-          冷静: 0
-        };
-        const base = temperamentScores[temperament] ?? 0;
-        const traitSum = (traits || []).reduce((sum, trait) => sum + (traitScores[trait] ?? 0), 0);
-        return Math.max(-40, Math.min(30, base + traitSum));
-      };
-
       nextHeroes = nextHeroes.map(hero => {
         if (hero.recruited) {
           if (hero.currentHp < hero.maxHp) {
@@ -4666,301 +4222,7 @@ export default function App() {
     });
   };
 
-  const getLocationGarrison = (location: Location) => {
-    if (location.type === 'WORLD_BOARD') {
-      return [];
-    }
-    if (location.type === 'ALTAR') {
-      return [];
-    }
-    const factionId = location.factionId;
-    const isVerdant = factionId === 'VERDANT_COVENANT';
-    const isFrost = factionId === 'FROST_OATH';
-    const isRedDune = factionId === 'RED_DUNE';
-    if (location.type === 'ROACH_NEST') {
-      return [
-        { troopId: 'roach_brawler', count: 520 },
-        { troopId: 'roach_pikeman', count: 520 },
-        { troopId: 'roach_slinger', count: 520 },
-        { troopId: 'roach_shieldling', count: 520 },
-        { troopId: 'roach_aerial_duelist', count: 240 },
-        { troopId: 'roach_aerial_lancer', count: 240 },
-        { troopId: 'roach_aerial_harrier', count: 240 },
-        { troopId: 'roach_aerial_guard', count: 240 },
-        { troopId: 'roach_chitin_commander', count: 50 },
-        { troopId: 'roach_giant_halberdier', count: 60 },
-        { troopId: 'roach_giant_gunner', count: 60 },
-        { troopId: 'roach_carapace_titan', count: 40 }
-      ];
-    }
-    if (location.type === 'CITY') {
-      if (isVerdant) {
-        return [
-          { troopId: 'imperial_swordsman', count: 600 },
-          { troopId: 'imperial_shieldbearer', count: 420 },
-          { troopId: 'imperial_crossbowman', count: 420 },
-          { troopId: 'hunter', count: 320 },
-          { troopId: 'verdant_scout_archer', count: 280 },
-          { troopId: 'verdant_skybow', count: 120 },
-          { troopId: 'arcane_glider', count: 14 },
-          { troopId: 'arcane_biplane', count: 4 },
-          { troopId: 'arcane_airship', count: 1 }
-        ];
-      }
-      if (isFrost) {
-        return [
-          { troopId: 'footman', count: 520 },
-          { troopId: 'imperial_shieldbearer', count: 420 },
-          { troopId: 'imperial_swordsman', count: 380 },
-          { troopId: 'frost_oath_halberdier', count: 280 },
-          { troopId: 'frost_oath_bladeguard', count: 140 },
-          { troopId: 'imperial_crossbowman', count: 200 },
-          { troopId: 'arcane_glider', count: 10 },
-          { troopId: 'arcane_biplane', count: 3 },
-          { troopId: 'arcane_airship', count: 1 }
-        ];
-      }
-      if (isRedDune) {
-        return [
-          { troopId: 'imperial_light_cavalry', count: 360 },
-          { troopId: 'imperial_elite_knight', count: 200 },
-          { troopId: 'red_dune_lancer', count: 340 },
-          { troopId: 'red_dune_cataphract', count: 160 },
-          { troopId: 'imperial_horse_archer', count: 280 },
-          { troopId: 'imperial_shieldbearer', count: 240 },
-          { troopId: 'imperial_crossbowman', count: 200 },
-          { troopId: 'footman', count: 180 },
-          { troopId: 'arcane_glider', count: 12 },
-          { troopId: 'arcane_biplane', count: 3 },
-          { troopId: 'arcane_airship', count: 1 }
-        ];
-      }
-      return [
-        { troopId: 'imperial_swordsman', count: 820 },
-        { troopId: 'imperial_shieldbearer', count: 620 },
-        { troopId: 'imperial_crossbowman', count: 320 },
-        { troopId: 'knight', count: 180 },
-        { troopId: 'arcane_glider', count: 12 },
-        { troopId: 'arcane_biplane', count: 3 },
-        { troopId: 'arcane_airship', count: 1 }
-      ];
-    }
-    if (location.type === 'CASTLE') {
-      if (isVerdant) {
-        return [
-          { troopId: 'imperial_shieldbearer', count: 150 },
-          { troopId: 'imperial_crossbowman', count: 120 },
-          { troopId: 'verdant_scout_archer', count: 120 },
-          { troopId: 'hunter', count: 90 },
-          { troopId: 'footman', count: 90 },
-          { troopId: 'verdant_skybow', count: 30 },
-          { troopId: 'arcane_glider', count: 6 },
-          { troopId: 'arcane_biplane', count: 2 }
-        ];
-      }
-      if (isFrost) {
-        return [
-          { troopId: 'footman', count: 180 },
-          { troopId: 'imperial_shieldbearer', count: 150 },
-          { troopId: 'frost_oath_halberdier', count: 120 },
-          { troopId: 'imperial_crossbowman', count: 80 },
-          { troopId: 'frost_oath_bladeguard', count: 40 },
-          { troopId: 'imperial_swordsman', count: 30 },
-          { troopId: 'arcane_glider', count: 5 },
-          { troopId: 'arcane_biplane', count: 1 }
-        ];
-      }
-      if (isRedDune) {
-        return [
-          { troopId: 'imperial_light_cavalry', count: 140 },
-          { troopId: 'red_dune_lancer', count: 160 },
-          { troopId: 'imperial_horse_archer', count: 120 },
-          { troopId: 'red_dune_cataphract', count: 40 },
-          { troopId: 'footman', count: 70 },
-          { troopId: 'imperial_shieldbearer', count: 70 },
-          { troopId: 'arcane_glider', count: 5 },
-          { troopId: 'arcane_biplane', count: 1 }
-        ];
-      }
-      return [
-        { troopId: 'footman', count: 240 },
-        { troopId: 'imperial_shieldbearer', count: 180 },
-        { troopId: 'imperial_crossbowman', count: 120 },
-        { troopId: 'knight', count: 60 },
-        { troopId: 'arcane_glider', count: 5 },
-        { troopId: 'arcane_biplane', count: 1 }
-      ];
-    }
-    if (location.type === 'VILLAGE') {
-      if (isVerdant) {
-        return [
-          { troopId: 'militia', count: 40 },
-          { troopId: 'hunter', count: 25 },
-          { troopId: 'verdant_scout_archer', count: 12 }
-        ];
-      }
-      if (isFrost) {
-        return [
-          { troopId: 'militia', count: 45 },
-          { troopId: 'footman', count: 18 },
-          { troopId: 'frost_oath_halberdier', count: 8 }
-        ];
-      }
-      if (isRedDune) {
-        return [
-          { troopId: 'militia', count: 35 },
-          { troopId: 'imperial_light_cavalry', count: 12 },
-          { troopId: 'red_dune_lancer', count: 10 }
-        ];
-      }
-      return [
-        { troopId: 'militia', count: 45 },
-        { troopId: 'hunter', count: 22 }
-      ];
-    }
-    if (location.type === 'HOTPOT_RESTAURANT') {
-      return [
-        { troopId: 'meatball_soldier', count: 160 },
-        { troopId: 'tofu_shield', count: 90 },
-        { troopId: 'spicy_soup_mage', count: 40 }
-      ];
-    }
-    if (location.type === 'GRAVEYARD') {
-      return [
-        { troopId: 'zombie', count: 50 },
-        { troopId: 'skeleton_warrior', count: 30 },
-        { troopId: 'specter', count: 20 }
-      ];
-    }
-    if (location.type === 'COFFEE') {
-      return [
-        { troopId: 'zombie', count: 40 },
-        { troopId: 'skeleton_warrior', count: 28 }
-      ];
-    }
-    if (location.type === 'HABITAT') {
-      return [
-        { troopId: 'beast_roc_hatchling', count: 14 },
-        { troopId: 'beast_roc', count: 6 },
-        { troopId: 'beast_roc_alpha', count: 1 },
-        { troopId: 'beast_primate_juvenile_chimp', count: 12 },
-        { troopId: 'beast_primate_adult_gorilla', count: 6 },
-        { troopId: 'beast_primate_silverback', count: 2 },
-        { troopId: 'beast_primate_giant_legacy', count: 1 },
-
-        { troopId: 'beast_rhino_calf', count: 6 },
-        { troopId: 'beast_rhino_black_subadult', count: 3 },
-        { troopId: 'beast_rhino_white_warrior', count: 1 },
-
-        { troopId: 'beast_hippo_calf', count: 6 },
-        { troopId: 'beast_hippo_swamp', count: 3 },
-        { troopId: 'beast_hippo_raging_bull', count: 1 },
-
-        { troopId: 'beast_elephant_calf', count: 4 },
-        { troopId: 'beast_elephant_bush', count: 2 },
-        { troopId: 'beast_elephant_musth_bull', count: 1 },
-
-        { troopId: 'beast_lion_cub', count: 6 },
-        { troopId: 'beast_lion_wanderer', count: 3 },
-        { troopId: 'beast_lion_pride_king', count: 1 },
-
-        { troopId: 'beast_tiger_cub', count: 5 },
-        { troopId: 'beast_tiger_jungle_hunter', count: 2 },
-        { troopId: 'beast_tiger_siberian', count: 1 },
-
-        { troopId: 'beast_bear_cub', count: 6 },
-        { troopId: 'beast_bear_grizzly', count: 3 },
-        { troopId: 'beast_bear_kodiak', count: 1 },
-
-        { troopId: 'beast_wolf_grey', count: 10 },
-        { troopId: 'beast_wolf_king', count: 4 },
-        { troopId: 'beast_wolf_tundra_giant', count: 2 },
-
-        { troopId: 'beast_croc_nile_juvenile', count: 6 },
-        { troopId: 'beast_croc_wetland_giant', count: 3 },
-        { troopId: 'beast_croc_saltwater', count: 1 },
-
-        { troopId: 'beast_bison_calf', count: 6 },
-        { troopId: 'beast_bison_african_buffalo', count: 3 },
-        { troopId: 'beast_bison_rabid_king', count: 1 }
-      ];
-    }
-    if (location.type === 'RUINS') {
-      return [
-        { troopId: 'zealot', count: 70 },
-        { troopId: 'flagellant', count: 40 }
-      ];
-    }
-    if (location.type === 'BANDIT_CAMP') {
-      if (location.id.startsWith('goblin_camp_')) {
-        return [
-          { troopId: 'goblin_scavenger', count: 80 },
-          { troopId: 'goblin_spear_urchin', count: 70 },
-          { troopId: 'goblin_slinger', count: 60 },
-          { troopId: 'goblin_raider', count: 35 },
-          { troopId: 'goblin_pikeman', count: 25 }
-        ];
-      }
-      return [
-        { troopId: 'peasant', count: 60 },
-        { troopId: 'militia', count: 50 },
-        { troopId: 'hunter', count: 40 }
-      ];
-    }
-    if (location.type === 'IMPOSTER_PORTAL') {
-      return [
-        // Tier 1 (Total 14000)
-        { troopId: 'void_larva', count: 2000 },
-        { troopId: 'glitch_pawn', count: 2000 },
-        { troopId: 'static_noise_walker', count: 2000 },
-        { troopId: 'null_fragment', count: 2000 },
-        { troopId: 'imposter_light_infantry', count: 750 },
-        { troopId: 'imposter_spearman', count: 750 },
-        { troopId: 'imposter_short_bowman', count: 750 },
-        { troopId: 'imposter_slinger', count: 750 },
-        { troopId: 'imposter_shield_conscript', count: 750 },
-        { troopId: 'imposter_axeman', count: 750 },
-        { troopId: 'imposter_javelin_thrower', count: 750 },
-        { troopId: 'imposter_scout_rider', count: 750 },
-        // Tier 2 (Total 7200)
-        { troopId: 'entropy_acolyte', count: 1000 },
-        { troopId: 'pixel_shifter', count: 1000 },
-        { troopId: 'null_pointer_hound', count: 1000 },
-        { troopId: 'syntax_error_scout', count: 1000 },
-        { troopId: 'imposter_heavy_infantry', count: 400 },
-        { troopId: 'imposter_pikeman', count: 400 },
-        { troopId: 'imposter_swordsman', count: 400 },
-        { troopId: 'imposter_longbowman', count: 400 },
-        { troopId: 'imposter_crossbowman', count: 400 },
-        { troopId: 'imposter_halberdier', count: 400 },
-        { troopId: 'imposter_mace_guard', count: 400 },
-        { troopId: 'imposter_raider_rider', count: 400 },
-        // Tier 3 (Total 2800)
-        { troopId: 'imposter_stalker', count: 500 },
-        { troopId: 'memory_leak_mage', count: 500 },
-        { troopId: 'recursion_archer', count: 500 },
-        { troopId: 'deadlock_sentinel', count: 500 },
-        { troopId: 'imposter_heavy_knight', count: 200 },
-        { troopId: 'imposter_horse_archer', count: 200 },
-        { troopId: 'imposter_pike_guard', count: 200 },
-        { troopId: 'imposter_reaper_blade', count: 200 },
-        // Tier 4 (Total 800)
-        { troopId: 'blue_screen_golem', count: 200 },
-        { troopId: 'kernel_panic_knight', count: 200 },
-        { troopId: 'segmentation_fault_dragon', count: 200 },
-        { troopId: 'not_found_assassin', count: 200 },
-        // Tier 5 (Bosses)
-        { troopId: 'legacy_code_abomination', count: 50 },
-        { troopId: 'system_crash_titan', count: 50 },
-        { troopId: 'infinite_loop_devourer', count: 50 }
-      ];
-    }
-    return [
-      { troopId: 'militia', count: 80 }
-    ];
-  };
-
-    const buildGarrisonTroops = (location: Location) => {
+  const buildGarrisonTroops = (location: Location) => {
     return getLocationGarrison(location)
       .map(unit => {
         const troop = getTroopTemplate(unit.troopId);
@@ -5650,7 +4912,7 @@ export default function App() {
     const enemyTroops = enemyForce.troops ?? [];
     const defaultLayers = DEFAULT_BATTLE_LAYERS;
     const enemyAssignments = enemyTroops.reduce<Record<string, string | null>>((acc, troop) => {
-      acc[troop.id] = getDefaultLayerId(troop, defaultLayers);
+      acc[troop.id] = getDefaultLayerIdForTroop(troop, defaultLayers);
       return acc;
     }, {});
     const enemyCommander = enemyTroops.reduce<{ troop: Troop | null; score: number }>((best, troop) => {
@@ -6366,7 +5628,7 @@ export default function App() {
   const handleBanditAction = (action: 'ATTACK' | 'SNEAK') => {
       const isGoblinCamp = !!currentLocation && currentLocation.type === 'BANDIT_CAMP' && currentLocation.id.startsWith('goblin_camp_');
       if (action === 'ATTACK') {
-          const banditTroops = buildBanditTroops();
+          const banditTroops = buildBanditTroops(currentLocation ?? null, player.day);
           
           const enemy: EnemyForce = {
               name: isGoblinCamp ? '哥布林营地' : '劫匪大本营',
@@ -7576,8 +6838,11 @@ export default function App() {
       const mergedLocations = normalizedLocations.map(loc => {
         const template = locationTemplates.get(loc.id);
         const merged = template ? { ...template, ...loc } : loc;
+        // 始终使用 constants 中的坐标，确保旧存档也能获得新分布
+        const coords = template?.coordinates ?? merged.coordinates;
         const next = {
           ...merged,
+          coordinates: coords,
           volunteers: Array.isArray(merged.volunteers) ? merged.volunteers : (template?.volunteers ?? []),
           mercenaries: Array.isArray(merged.mercenaries) ? merged.mercenaries : (template?.mercenaries ?? []),
           buildings: Array.isArray(merged.buildings) ? merged.buildings : (template?.buildings ?? []),
