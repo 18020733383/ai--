@@ -71,11 +71,11 @@ export const AppMainContent = ({
   observerModeProps
 }: AppMainContentProps) => {
   return (
-    <main className={view === 'MAP' || view === 'HERO_CHAT' || view === 'MAIN_MENU' || view === 'OBSERVER_MODE' ? 'flex-1 w-full flex' : 'flex-1 container mx-auto pb-8 pt-4'}>
+    <main className={view === 'MAP' || view === 'HERO_CHAT' || view === 'MAIN_MENU' || view === 'OBSERVER_MODE' ? 'flex-1 w-full flex min-h-0' : 'flex-1 container mx-auto pb-8 pt-4'}>
       {view === 'MAIN_MENU' && <MainMenuView {...mainMenuProps} />}
       {view === 'OBSERVER_MODE' && (
         <div className="relative flex-1 w-full flex flex-col min-h-0 overflow-hidden">
-          <div className="flex-1 min-h-0">
+          <div className="flex-1 min-h-0 flex flex-col">
             <MapScreen {...mapProps} />
           </div>
           <ObserverOverlay {...observerModeProps} />
