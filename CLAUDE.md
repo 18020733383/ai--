@@ -1,5 +1,6 @@
 ## Development Environment
 - OS: Windows 10.0.26200
+- 部署前务必本地执行 `npm run build` 确认构建成功
 - Shell: Git Bash
 - Path format: Windows (use forward slashes in Git Bash)
 - File system: Case-insensitive
