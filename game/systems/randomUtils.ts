@@ -2,6 +2,15 @@ export function randomInt(min: number, max: number): number {
   return Math.floor(Math.random() * (max - min + 1)) + min;
 }
 
+export function rollMineralPurity(): 1 | 2 | 3 | 4 | 5 {
+  const roll = Math.random();
+  if (roll < 0.35) return 1;
+  if (roll < 0.65) return 2;
+  if (roll < 0.85) return 3;
+  if (roll < 0.95) return 4;
+  return 5;
+}
+
 /**
  * Simulates a binomial random variable: number of successes in n trials with probability p.
  * Uses normal approximation for n > 80 to avoid expensive loops.
