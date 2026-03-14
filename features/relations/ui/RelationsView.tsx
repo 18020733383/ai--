@@ -1,6 +1,6 @@
 import { Button } from '../../../components/Button';
 import { FACTIONS, RACE_LABELS } from '../../../game/data';
-import { clampRelation } from '../../../game/systems/diplomacy';
+import { clampRelation, getRelationStateLabel } from '../../../game/systems/diplomacy';
 import { Location, PlayerState, RaceId, WorldDiplomacyState } from '../../../types';
 
 type RelationsViewProps = {
@@ -34,16 +34,7 @@ export const RelationsView = ({
     return { backgroundColor: 'rgba(120,113,108,0.22)', color: '#e7e5e4' };
   };
 
-  const getTone = (value: number) => {
-    if (value >= 60) return '同盟';
-    if (value >= 30) return '友好';
-    if (value >= 10) return '缓和';
-    if (value <= -80) return '死敌';
-    if (value <= -60) return '战争';
-    if (value <= -30) return '敌对';
-    if (value <= -10) return '紧张';
-    return '中立';
-  };
+  const getTone = getRelationStateLabel;
 
   const lordItems = Array.from(new Map(
     locations
@@ -125,7 +116,7 @@ export const RelationsView = ({
               </tbody>
             </table>
           </div>
-          <div className="text-xs text-stone-500 mt-3">战争：≤ -60（议会出兵优先选择敌对目标）。</div>
+          <div className="text-xs text-stone-500 mt-3">关系状态：同盟/亲密/友好/缓和/中立/冷淡/猜忌/紧张/敌对/战争/死敌。初始均为 0，随攻城、外交等事件变化。</div>
         </div>
 
         <div className="bg-stone-900 border border-stone-700 rounded-lg p-4">

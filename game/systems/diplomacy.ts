@@ -13,47 +13,7 @@ export const buildInitialWorldDiplomacy = (): WorldDiplomacyState => {
     }, {} as Record<string, number>) as Record<typeof factionIds[number], number>;
     return acc;
   }, {} as Record<string, Record<string, number>>) as WorldDiplomacyState['factionRelations'];
-
-  if (factionIds.includes('VERDANT_COVENANT') && factionIds.includes('FROST_OATH')) {
-    (factionRelations as any).VERDANT_COVENANT.FROST_OATH = -18;
-    (factionRelations as any).FROST_OATH.VERDANT_COVENANT = -18;
-  }
-  if (factionIds.includes('VERDANT_COVENANT') && factionIds.includes('RED_DUNE')) {
-    (factionRelations as any).VERDANT_COVENANT.RED_DUNE = -10;
-    (factionRelations as any).RED_DUNE.VERDANT_COVENANT = -10;
-  }
-  if (factionIds.includes('FROST_OATH') && factionIds.includes('RED_DUNE')) {
-    (factionRelations as any).FROST_OATH.RED_DUNE = -22;
-    (factionRelations as any).RED_DUNE.FROST_OATH = -22;
-  }
-  if (factionIds.includes('AUREATE_LEAGUE') && factionIds.includes('VERDANT_COVENANT')) {
-    (factionRelations as any).AUREATE_LEAGUE.VERDANT_COVENANT = -8;
-    (factionRelations as any).VERDANT_COVENANT.AUREATE_LEAGUE = -8;
-  }
-  if (factionIds.includes('AUREATE_LEAGUE') && factionIds.includes('FROST_OATH')) {
-    (factionRelations as any).AUREATE_LEAGUE.FROST_OATH = -12;
-    (factionRelations as any).FROST_OATH.AUREATE_LEAGUE = -12;
-  }
-  if (factionIds.includes('AUREATE_LEAGUE') && factionIds.includes('RED_DUNE')) {
-    (factionRelations as any).AUREATE_LEAGUE.RED_DUNE = -6;
-    (factionRelations as any).RED_DUNE.AUREATE_LEAGUE = -6;
-  }
-  if (factionIds.includes('ARCANE_CONCORD') && factionIds.includes('VERDANT_COVENANT')) {
-    (factionRelations as any).ARCANE_CONCORD.VERDANT_COVENANT = -4;
-    (factionRelations as any).VERDANT_COVENANT.ARCANE_CONCORD = -4;
-  }
-  if (factionIds.includes('ARCANE_CONCORD') && factionIds.includes('FROST_OATH')) {
-    (factionRelations as any).ARCANE_CONCORD.FROST_OATH = -10;
-    (factionRelations as any).FROST_OATH.ARCANE_CONCORD = -10;
-  }
-  if (factionIds.includes('ARCANE_CONCORD') && factionIds.includes('RED_DUNE')) {
-    (factionRelations as any).ARCANE_CONCORD.RED_DUNE = -6;
-    (factionRelations as any).RED_DUNE.ARCANE_CONCORD = -6;
-  }
-  if (factionIds.includes('ARCANE_CONCORD') && factionIds.includes('AUREATE_LEAGUE')) {
-    (factionRelations as any).ARCANE_CONCORD.AUREATE_LEAGUE = 4;
-    (factionRelations as any).AUREATE_LEAGUE.ARCANE_CONCORD = 4;
-  }
+  // 势力关系初始均为 0，随攻城/外交等事件变化
 
   const raceRelations = raceIds.reduce((acc, a) => {
     acc[a] = raceIds.reduce((row, b) => {
@@ -123,6 +83,21 @@ export const normalizeWorldDiplomacy = (raw: any, currentDay: number): WorldDipl
   })).filter((e: any) => e.text);
 
   return next;
+};
+
+/** 根据关系数值返回状态标签 */
+export const getRelationStateLabel = (value: number): string => {
+  if (value >= 80) return '同盟';
+  if (value >= 60) return '亲密';
+  if (value >= 35) return '友好';
+  if (value >= 15) return '缓和';
+  if (value >= 5) return '中立';
+  if (value >= -5) return '冷淡';
+  if (value >= -15) return '猜忌';
+  if (value >= -35) return '紧张';
+  if (value >= -60) return '敌对';
+  if (value >= -80) return '战争';
+  return '死敌';
 };
 
 export const getWorldFactionRelation = (state: WorldDiplomacyState, a: string, b: string) => clampRelation(Number((state.factionRelations as any)?.[a]?.[b] ?? 0));

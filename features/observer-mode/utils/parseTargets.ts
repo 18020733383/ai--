@@ -2,25 +2,57 @@
  * 从 AI 决策的 actions 中解析出目标据点及操作类型
  */
 import type { Location } from '../../../types';
+import { FACTIONS } from '../../../game/data';
 
-export type ObserverTargetType = 'recruit' | 'scout' | 'attack';
+export type ObserverTargetType = 'recruit' | 'scout' | 'attack' | 'diplomacy';
 
 export type ObserverTarget = {
   locationId: string;
   types: ObserverTargetType[];
 };
 
+export type ParsedAction = 
+  | { locationId: string; locationName: string; actionType: 'recruit' | 'scout' | 'attack' }
+  | { locationId: string; locationName: string; actionType: 'diplomacy'; targetFactionId: string; targetFactionName: string };
+
 /** 按顺序解析 actions，返回 (locationId, actionType) 列表，用于动画执行 */
 export function parseActionsInOrder(
   actions: string[],
   locations: Location[],
   factionId?: string
-): Array<{ locationId: string; locationName: string; actionType: ObserverTargetType }> {
-  const result: Array<{ locationId: string; locationName: string; actionType: ObserverTargetType }> = [];
+): ParsedAction[] {
+  const result: ParsedAction[] = [];
   const factionLocs = factionId ? locations.filter(l => l.factionId === factionId && (l.type === 'CITY' || l.type === 'CASTLE' || l.type === 'VILLAGE')).sort((a, b) => (a.type === 'CITY' ? -1 : a.type === 'CASTLE' ? 0 : 1) - (b.type === 'CITY' ? -1 : b.type === 'CASTLE' ? 0 : 1)) : [];
   const fallbackLoc = factionLocs[0];
 
   for (const action of actions) {
+    const hasDiplomacy = /外交|会谈|结盟/.test(action);
+    if (hasDiplomacy && factionId) {
+      const otherFactions = FACTIONS.filter(f => f.id !== factionId);
+      for (const f of otherFactions) {
+        if (action.includes(f.shortName) || action.includes(f.name)) {
+          result.push({
+            locationId: fallbackLoc?.id ?? '',
+            locationName: fallbackLoc?.name ?? '',
+            actionType: 'diplomacy',
+            targetFactionId: f.id,
+            targetFactionName: f.shortName
+          });
+          break;
+        }
+      }
+      if (!otherFactions.some(f => action.includes(f.shortName) || action.includes(f.name)) && otherFactions.length > 0 && fallbackLoc) {
+        result.push({
+          locationId: fallbackLoc.id,
+          locationName: fallbackLoc.name,
+          actionType: 'diplomacy',
+          targetFactionId: otherFactions[0].id,
+          targetFactionName: otherFactions[0].shortName
+        });
+      }
+      continue;
+    }
+
     const hasRecruit = /扩军|征兵|募兵/.test(action);
     const hasScout = /侦察|探查/.test(action);
     const hasAttack = /进攻|攻打|围攻/.test(action);

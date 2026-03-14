@@ -7840,6 +7840,7 @@ export default function App() {
           onBack: () => setView('MAIN_MENU'),
           buildAIConfig,
           locations,
+          worldDiplomacy,
           onTargetsChange: (queue) => setObserverTargets(parseObserverTargets(queue, locations)),
           onFocusLocation: (loc) => focusCameraOnLocation(loc),
           onApplyAction: (locationId, actionType, factionId) => {
@@ -7922,6 +7923,95 @@ export default function App() {
             }
           },
           onAdvanceDay: () => processDailyCycle(undefined, 0, 1, 0, true),
+          onApplyDiplomacy: (factionAId, factionBId, decision, dialogue, relationDelta) => {
+            const factionA = FACTIONS.find(f => f.id === factionAId);
+            const factionB = FACTIONS.find(f => f.id === factionBId);
+            const nameA = factionA?.shortName ?? factionAId;
+            const nameB = factionB?.shortName ?? factionBId;
+            if (decision === 'IMPROVE_RELATIONS' && relationDelta) {
+              const delta = Math.max(5, Math.min(25, relationDelta));
+              setWorldDiplomacy(prev => {
+                let next = applyWorldDiplomacyDelta(prev, { kind: 'FACTION_FACTION', aId: factionAId, bId: factionBId, delta, text: `${nameA}与${nameB}外交会谈，关系改善`, day: player.day });
+                next = applyWorldDiplomacyDelta(next, { kind: 'FACTION_FACTION', aId: factionBId, bId: factionAId, delta, text: `${nameB}与${nameA}外交会谈，关系改善`, day: player.day });
+                return next;
+              });
+              return;
+            }
+            if (decision === 'REINFORCE') {
+              const besiegedByB = locations.filter(loc => loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE')
+                .filter(loc => loc.factionId === factionBId && loc.activeSiege && loc.isUnderSiege);
+              const target = besiegedByB[0];
+              if (!target) return;
+              const factionALocs = getFactionLocations(factionAId, locations);
+              const source = [...factionALocs].sort((a, b) => getGarrisonCount(getLocationTroops(b)) - getGarrisonCount(getLocationTroops(a)))[0];
+              if (!source || source.factionRaidTargetId || getGarrisonCount(getLocationTroops(source)) < 30) return;
+              const sourceTroops = getLocationTroops(source);
+              const { attackers, remaining } = splitTroops(sourceTroops, 0.4);
+              const marchDays = 2;
+              const nextDay = player.day + 1;
+              const etaDay = nextDay + marchDays;
+              const attackerName = `${nameA}援军`;
+              const campId = `field_camp_dip_${source.id}_${target.id}_${Date.now()}`;
+              const dx = target.coordinates.x - source.coordinates.x;
+              const dy = target.coordinates.y - source.coordinates.y;
+              const distance = Math.hypot(dx, dy);
+              const fraction = distance > 0 ? Math.min(0.18, 1 / 4) : 0;
+              const initialCoordinates = { x: source.coordinates.x + dx * fraction, y: source.coordinates.y + dy * fraction };
+              const camp: Location = {
+                id: campId,
+                name: `${attackerName}·行军营地`,
+                type: 'FIELD_CAMP',
+                description: `一支增援部队。目标：${target.name}。`,
+                coordinates: initialCoordinates,
+                terrain: source.terrain,
+                factionId: factionAId,
+                lastRefreshDay: 0,
+                volunteers: [],
+                mercenaries: [],
+                owner: 'ENEMY',
+                isUnderSiege: false,
+                siegeProgress: 0,
+                siegeEngines: [],
+                garrison: attackers.map(t => ({ ...t })),
+                buildings: ['DEFENSE'],
+                constructionQueue: [],
+                siegeEngineQueue: [],
+                lastIncomeDay: 0,
+                camp: {
+                  kind: 'FACTION_RAID',
+                  sourceLocationId: source.id,
+                  targetLocationId: target.id,
+                  totalDays: marchDays,
+                  daysLeft: marchDays,
+                  attackerName,
+                  leaderName: `${nameA}援军统领`
+                }
+              };
+              setLocations(prev => {
+                const next = prev.map(l => l.id === source.id ? { ...l, garrison: remaining, factionRaidTargetId: target.id, factionRaidEtaDay: etaDay, factionRaidAttackerName: attackerName, factionRaidFactionId: factionAId } : l);
+                return [...next, camp];
+              });
+              setWorldDiplomacy(prev => applyWorldDiplomacyDelta(prev, { kind: 'FACTION_FACTION', aId: factionAId, bId: factionBId, delta: 8, text: `${nameA}派兵增援${nameB}`, day: player.day }));
+              return;
+            }
+            if (decision === 'WITHDRAW') {
+              const attackingByA = locations.filter(loc => loc.activeSiege?.attackerFactionId === factionAId && loc.factionId === factionBId);
+              const target = attackingByA[0];
+              if (!target) return;
+              const campsToRemove = locations.filter(loc => loc.type === 'FIELD_CAMP' && loc.camp?.targetLocationId === target.id && loc.factionId === factionAId);
+              const sourceId = campsToRemove[0]?.camp?.sourceLocationId;
+              setLocations(prev => {
+                let next = prev.filter(loc => !campsToRemove.some(c => c.id === loc.id));
+                next = next.map(loc => {
+                  if (loc.id === target.id) return { ...loc, activeSiege: undefined, isUnderSiege: false };
+                  if (sourceId && loc.id === sourceId) return { ...loc, factionRaidTargetId: undefined, factionRaidEtaDay: undefined, factionRaidAttackerName: undefined, factionRaidFactionId: undefined };
+                  return loc;
+                });
+                return next;
+              });
+              setWorldDiplomacy(prev => applyWorldDiplomacyDelta(prev, { kind: 'FACTION_FACTION', aId: factionAId, bId: factionBId, delta: 5, text: `${nameA}从${target.name}撤军`, day: player.day }));
+            }
+          },
           onCurrentActionChange: setObserverCurrentAction
         }}
       />

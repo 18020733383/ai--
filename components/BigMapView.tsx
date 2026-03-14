@@ -614,21 +614,31 @@ export const BigMapView = ({
           </div>
         )}
         {isObserverMode && observerCurrentAction && (() => {
-          const loc = locations.find(l => l.id === observerCurrentAction!.locationId);
-          if (!loc) return null;
-          const actionLabel = observerCurrentAction!.actionType === 'recruit' ? '扩军中' : observerCurrentAction!.actionType === 'scout' ? '侦察中' : '进攻中';
+          const act = observerCurrentAction!;
+          const actionLabel = act.actionType === 'recruit' ? '扩军中' : act.actionType === 'scout' ? '侦察中' : act.actionType === 'attack' ? '进攻中' : '外交中';
+          const loc = locations.find(l => l.id === act.locationId);
+          const x = loc ? loc.coordinates.x * unitSize : unitSize * (MAP_WIDTH / 2);
+          const y = loc ? loc.coordinates.y * unitSize - 28 : unitSize * (MAP_HEIGHT / 2) - 28;
+          const dialogue = (act as any).dialogue as string[] | undefined;
           return (
             <div
               className="absolute z-50 pointer-events-none animate-pulse"
               style={{
-                left: `${loc.coordinates.x * unitSize}px`,
-                top: `${loc.coordinates.y * unitSize - 28}px`,
+                left: `${x}px`,
+                top: `${y}px`,
                 transform: 'translate(-50%, -50%)'
               }}
             >
               <div className="bg-amber-600/95 text-black px-3 py-1.5 rounded-lg shadow-lg text-sm font-bold whitespace-nowrap border-2 border-amber-400">
-                {observerCurrentAction!.factionName} · {actionLabel}
+                {act.factionName} · {actionLabel}
               </div>
+              {dialogue && dialogue.length > 0 && (
+                <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 w-64 max-w-[90vw] bg-stone-900/95 border border-amber-600/60 rounded-lg p-2 text-xs text-stone-200 shadow-xl">
+                  {dialogue.map((line, i) => (
+                    <div key={i} className="py-0.5">{line}</div>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })()}

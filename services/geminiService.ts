@@ -2,7 +2,7 @@
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, HeroRole, Location, Lord, NegotiationResult, PartyDiaryEntry, PlayerState, TerrainType, Troop, TroopAttributes, TroopRace } from '../types';
 import { normalizeOpenAIBattle, parseCasualties, parseInjuries, parseOutcome } from './battleParsing';
-import { WORLD_BOOK } from '../constants';
+import { WORLD_BOOK, FACTIONS } from '../constants';
 
 const getGeminiClient = (apiKey?: string) => new GoogleGenAI({ apiKey: apiKey?.trim() || process.env.API_KEY });
 
@@ -2688,10 +2688,12 @@ export const decideFactionAction = async (
   locationNames?: string[]
 ): Promise<{ action: string; actions?: string[] }> => {
   const namesHint = locationNames?.length ? `\n可用据点名（必须原样使用）：${locationNames.join('、')}` : '';
+  const factionNamesHint = FACTIONS.filter(f => f.id !== factionId).map(f => f.shortName).join('、');
   const prompt = `你是卡拉迪亚大陆的势力「${factionName}」的决策者。请基于当前局势，输出今日决策。
 必须返回 JSON，格式：{"action":"主要方向（20字内）","actions":["具体行为1","具体行为2",...]}
 - action: 战略大方向，如「巩固边境，优先发展弓骑兵」
-- actions: 具体执行动作列表，每条如「在XX据点扩军N人」「派兵侦察XX据点」「进攻XX据点」，必须使用上述据点名（原样）${namesHint}
+- actions: 具体执行动作列表，每条如「在XX据点扩军N人」「派兵侦察XX据点」「进攻XX据点」「与XX势力外交」，必须使用上述据点名（原样）${namesHint}
+- 外交：可写「与XX势力外交」，XX 须为其他势力简称之一：${factionNamesHint}
 只返回 JSON，不要其他内容。`;
 
   const openAIConfig = requireOpenAIConfig(openAI);
@@ -2743,4 +2745,82 @@ export const decideFactionAction = async (
   const actions = Array.isArray(parsed?.actions) ? parsed.actions.filter((a: unknown) => typeof a === 'string').slice(0, 5) : undefined;
   console.log('[观海] AI 原始返回:', { factionName, raw: text, parsed: { action, actions } });
   return { action, actions };
+};
+
+export type DiplomacyDecision = 'REINFORCE' | 'WITHDRAW' | 'IMPROVE_RELATIONS';
+
+export type DiplomacyMeetingResult = {
+  dialogue: string[];
+  decision: DiplomacyDecision;
+  relationDelta?: number;
+};
+
+/** 观海模式：两势力外交会议，生成对话与决策 */
+export const runDiplomacyMeeting = async (
+  factionAId: string,
+  factionBId: string,
+  relationAB: number,
+  openAI?: OpenAIConfig
+): Promise<DiplomacyMeetingResult> => {
+  const factionA = FACTIONS.find(f => f.id === factionAId);
+  const factionB = FACTIONS.find(f => f.id === factionBId);
+  const nameA = factionA?.shortName ?? factionAId;
+  const nameB = factionB?.shortName ?? factionBId;
+  const prompt = `「${nameA}」与「${nameB}」举行外交会议。当前双方关系值：${relationAB}（-100到100，负为敌对，正为友好）。
+请生成：
+1. dialogue: 2-4 句对话数组，双方各1-2句，格式 ["A方发言","B方发言",...]，用中文
+2. decision: 会议达成的具体决策，三选一：
+   - "REINFORCE": 派兵增援（A 派兵帮助 B 防守被围攻的据点）
+   - "WITHDRAW": 退兵（A 撤回正在围攻 B 据点的部队）
+   - "IMPROVE_RELATIONS": 增加关系（双方关系改善）
+3. relationDelta: 若 decision 为 IMPROVE_RELATIONS，填写关系变化量（5-25 的正数）
+只返回 JSON，格式：{"dialogue":["...","..."],"decision":"REINFORCE|WITHDRAW|IMPROVE_RELATIONS","relationDelta":15}`;
+
+  const openAIConfig = requireOpenAIConfig(openAI);
+  if (openAIConfig) {
+    const url = `${normalizeProviderBaseUrl(openAIConfig.provider, openAIConfig.baseUrl)}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openAIConfig.apiKey}`,
+      },
+      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+        model: openAIConfig.model,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: '只返回 JSON。' }
+        ],
+        temperature: 0.7,
+        jsonOnly: true
+      }))
+    });
+    if (!res.ok) throw new Error(`API 请求失败 (${res.status})`);
+    const json = await res.json().catch(() => null) as any;
+    const text = json?.choices?.[0]?.message?.content;
+    if (!text) throw new Error('API 返回为空');
+    const parsed = JSON.parse(text) as { dialogue?: string[]; decision?: string; relationDelta?: number };
+    const dialogue = Array.isArray(parsed?.dialogue) ? parsed.dialogue.filter((s: unknown) => typeof s === 'string') : [];
+    const decision = (parsed?.decision === 'REINFORCE' || parsed?.decision === 'WITHDRAW' || parsed?.decision === 'IMPROVE_RELATIONS')
+      ? parsed.decision
+      : 'IMPROVE_RELATIONS';
+    const relationDelta = decision === 'IMPROVE_RELATIONS' ? Math.max(5, Math.min(25, Math.floor(Number(parsed?.relationDelta ?? 15)))) : undefined;
+    return { dialogue, decision, relationDelta };
+  }
+
+  const model = 'gemini-3-flash-preview';
+  const response = await getGeminiClient(openAI?.provider === 'GEMINI' ? openAI?.apiKey : undefined).models.generateContent({
+    model,
+    contents: prompt,
+    config: { temperature: 0.7 },
+  });
+  const text = response.text;
+  if (!text) throw new Error('AI 返回为空');
+  const parsed = JSON.parse(String(text)) as { dialogue?: string[]; decision?: string; relationDelta?: number };
+  const dialogue = Array.isArray(parsed?.dialogue) ? parsed.dialogue.filter((s: unknown) => typeof s === 'string') : [];
+  const decision = (parsed?.decision === 'REINFORCE' || parsed?.decision === 'WITHDRAW' || parsed?.decision === 'IMPROVE_RELATIONS')
+    ? parsed.decision
+    : 'IMPROVE_RELATIONS';
+  const relationDelta = decision === 'IMPROVE_RELATIONS' ? Math.max(5, Math.min(25, Math.floor(Number(parsed?.relationDelta ?? 15)))) : undefined;
+  return { dialogue, decision, relationDelta };
 };

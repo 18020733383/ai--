@@ -7,10 +7,11 @@ import { Eye, ArrowLeft, Play } from 'lucide-react';
 import { Button } from '../../../components/Button';
 import { QueueDisplay } from './QueueDisplay';
 import { buildInitialObserverState } from '../model/initialState';
-import { decideFactionAction } from '../../../services/geminiService';
+import { decideFactionAction, runDiplomacyMeeting } from '../../../services/geminiService';
 import { parseObserverTargets, parseActionsInOrder } from '../utils/parseTargets';
 import type { ObserverModeState } from '../model/types';
 import type { Location } from '../../../types';
+import type { WorldDiplomacyState } from '../../../types';
 
 const ACTION_DURATION_MS = 1800;
 
@@ -18,16 +19,18 @@ type ObserverOverlayProps = {
   onBack: () => void;
   buildAIConfig: () => { baseUrl: string; apiKey: string; model: string; provider: string } | undefined;
   locations?: Location[];
+  worldDiplomacy?: WorldDiplomacyState;
   onTargetsChange?: (queue: Array<{ actions?: string[] }>) => void;
   onFocusLocation?: (location: Location) => void;
   onApplyAction?: (locationId: string, actionType: string, factionId?: string) => void;
-  onCurrentActionChange?: (action: { locationId: string; locationName: string; actionType: string; factionName: string } | null) => void;
+  onApplyDiplomacy?: (factionAId: string, factionBId: string, decision: 'REINFORCE' | 'WITHDRAW' | 'IMPROVE_RELATIONS', dialogue: string[], relationDelta?: number) => void;
+  onCurrentActionChange?: (action: { locationId: string; locationName: string; actionType: string; factionName: string; dialogue?: string[] } | null) => void;
   onAdvanceDay?: () => void;
 };
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
 
-export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTargetsChange, onFocusLocation, onApplyAction, onCurrentActionChange, onAdvanceDay }: ObserverOverlayProps) => {
+export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], worldDiplomacy, onTargetsChange, onFocusLocation, onApplyAction, onApplyDiplomacy, onCurrentActionChange, onAdvanceDay }: ObserverOverlayProps) => {
   const [state, setState] = React.useState<ObserverModeState>(() => buildInitialObserverState());
   const [isRunning, setIsRunning] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
@@ -69,7 +72,30 @@ export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTarge
 
         const actionList = parseActionsInOrder(actions ?? [], locations, item.factionId);
         console.log('[观海] 解析行动:', { factionName: item.factionName, actions, actionList });
-        for (const { locationId, locationName, actionType } of actionList) {
+        for (const parsed of actionList) {
+          const { locationId, locationName, actionType } = parsed;
+          if (actionType === 'diplomacy' && 'targetFactionId' in parsed) {
+            const { targetFactionId, targetFactionName } = parsed;
+            if (!onApplyDiplomacy || !onCurrentActionChange) continue;
+            const loc = locations.find(l => l.id === locationId) ?? locations.filter(l => l.factionId === item.factionId)[0];
+            if (loc) onFocusLocation?.(loc);
+            onCurrentActionChange({ locationId, locationName, actionType: 'diplomacy', factionName: item.factionName });
+            await sleep(ACTION_DURATION_MS);
+            try {
+              const { getWorldFactionRelation } = await import('../../../game/systems/diplomacy');
+              const relationAB = worldDiplomacy ? getWorldFactionRelation(worldDiplomacy, item.factionId, targetFactionId) : 0;
+              const { dialogue, decision, relationDelta } = await runDiplomacyMeeting(item.factionId, targetFactionId, relationAB, aiConfig);
+              onCurrentActionChange({ locationId, locationName, actionType: 'diplomacy', factionName: item.factionName, dialogue });
+              await sleep(1200);
+              onApplyDiplomacy(item.factionId, targetFactionId, decision, dialogue, relationDelta);
+            } catch (e: any) {
+              console.warn('[观海] 外交会议失败:', e);
+              onApplyDiplomacy(item.factionId, targetFactionId, 'IMPROVE_RELATIONS', ['会谈未能达成共识'], 10);
+            }
+            onCurrentActionChange(null);
+            await sleep(400);
+            continue;
+          }
           const loc = locations.find(l => l.id === locationId);
           if (!loc) continue;
           if (!onFocusLocation || !onApplyAction || !onCurrentActionChange) {
