@@ -30,7 +30,6 @@ import { BattleSimulationOverlay } from './app/ui/BattleSimulationOverlay';
 import { DecisionOverlay } from './app/ui/DecisionOverlay';
 import { LogConsole } from './app/ui/LogConsole';
 import { WorldBoardScreen } from './features/world-board';
-import { ObserverModeScreen } from './features/observer-mode';
 import { RelationsView } from './features/relations';
 import { TroopArchiveView } from './views/TroopArchiveView';
 import { PartyView } from './views/PartyView';
@@ -7567,15 +7566,6 @@ export default function App() {
     }
   };
 
-  if (view === 'OBSERVER_MODE') {
-    return (
-      <ObserverModeScreen
-        onBack={() => setView('MAIN_MENU')}
-        buildAIConfig={buildAIConfig}
-      />
-    );
-  }
-
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-sans selection:bg-amber-900 selection:text-white overflow-hidden flex flex-col">
       {view !== 'MAIN_MENU' && view !== 'INTRO' && view !== 'ENDING' && view !== 'GAME_OVER' && view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INSPECT' && (
@@ -7622,7 +7612,10 @@ export default function App() {
             }));
             setView('ENDING');
           },
-          onObserverMode: () => setView('OBSERVER_MODE')
+          onObserverMode: () => {
+            restartGame();
+            setView('OBSERVER_MODE');
+          }
         }}
         billsProps={{
           player,

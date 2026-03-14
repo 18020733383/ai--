@@ -4,7 +4,7 @@ import { HideoutInspectView } from '../../views/HideoutInspectView';
 import { IntroCinematicView } from '../../views/IntroCinematicView';
 import { MainMenuView } from '../../views/MainMenuView';
 import { TownView } from '../../features/town';
-import { ObserverModeScreen } from '../../features/observer-mode';
+import { ObserverOverlay } from '../../features/observer-mode';
 import { GameView, Hero, Location } from '../../types';
 import { EndingScreen } from './EndingScreen';
 import { MapScreen } from './MapScreen';
@@ -73,7 +73,14 @@ export const AppMainContent = ({
   return (
     <main className={view === 'MAP' || view === 'HERO_CHAT' || view === 'MAIN_MENU' || view === 'OBSERVER_MODE' ? 'flex-1 w-full flex' : 'flex-1 container mx-auto pb-8 pt-4'}>
       {view === 'MAIN_MENU' && <MainMenuView {...mainMenuProps} />}
-      {view === 'OBSERVER_MODE' && <ObserverModeScreen {...observerModeProps} />}
+      {view === 'OBSERVER_MODE' && (
+        <div className="relative flex-1 w-full flex flex-col min-h-0 overflow-hidden">
+          <div className="flex-1 min-h-0">
+            <MapScreen {...mapProps} />
+          </div>
+          <ObserverOverlay {...observerModeProps} />
+        </div>
+      )}
       {view === 'BILLS' && <BillsView {...billsProps} />}
       {view === 'MAP' && <MapScreen {...mapProps} />}
       {view === 'ENDING' && <EndingScreen {...endingProps} />}
