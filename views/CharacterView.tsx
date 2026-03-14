@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Sword, Shield, Heart, Flag, Activity, Anchor, Swords, EyeOff, Plus, MessageCircle, ShoppingBag } from 'lucide-react';
+import { User, Sword, Shield, Heart, Flag, Activity, Anchor, Swords, EyeOff, Plus, MessageCircle, ShoppingBag, Award } from 'lucide-react';
 import { PlayerAttributes, PlayerState } from '../types';
 import { Button } from '../components/Button';
 
@@ -29,6 +29,9 @@ export const CharacterView = ({ player, spendAttributePoint, onBackToMap }: Char
               状态: {player.status === 'INJURED' ? '重伤 (恢复中...)' : '健康'}
             </p>
             <p className="text-xs text-stone-400 mt-1">生命 {player.currentHp} / {player.maxHp}</p>
+            <p className={`text-xs mt-1 flex items-center gap-1 ${(player.prestige ?? 0) >= 0 ? 'text-amber-400' : 'text-red-400'}`}>
+              <Award size={12} /> 威望 {(player.prestige ?? 0)}
+            </p>
           </div>
           <div className="ml-auto text-right">
             <span className="block text-sm text-stone-500">可用属性点</span>

@@ -17,3 +17,4 @@ export * from './xpGain';
 export * from './worldInit';
 export * from './dailyCycle';
 export * from './xenoAcceptance';
+export * from './prestige';

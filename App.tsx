@@ -5,7 +5,7 @@ import { BUILDING_OPTIONS, ENCHANTMENT_RECIPES, FACTIONS, getBuildingName, getSi
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
 import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
-import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationGarrison, getLocationRace, getLocationRecruitId, getLocationRelationTarget, getRecruitmentPool, getRelationScale, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence } from './game/systems';
+import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationGarrison, getLocationRace, getLocationRecruitId, getLocationRelationTarget, getRecruitmentPool, getRelationScale, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, PRESTIGE, computeSealHabitatPrestige, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence } from './game/systems';
 import { calculatePower } from './game/systems/combatPower';
 import { calculateXpGain } from './game/systems/xpGain';
 import { calculateFleeChance, calculateRearGuardPlan } from './features/battle/model/battleEscape';
@@ -302,7 +302,8 @@ export default function App() {
         const finishTimer = setTimeout(() => {
           const earned = Math.max(0, Math.floor(workState.totalPay));
           if (earned > 0) setPlayer(prev => ({ ...prev, gold: prev.gold + earned }));
-          addLog(`委托完成，获得 ${earned} 第纳尔。`);
+          setPlayer(prev => ({ ...prev, prestige: (prev.prestige ?? 0) + PRESTIGE.WORK_CONTRACT_COMPLETE }));
+          addLog(`委托完成，获得 ${earned} 第纳尔，威望 +${PRESTIGE.WORK_CONTRACT_COMPLETE}。`);
           setWorkState(null);
           if (currentLocation) {
             setView('TOWN');
@@ -1932,6 +1933,15 @@ export default function App() {
           const { location: updated, starvedNames } = processSealHabitatDaily(loc, nextDay);
           if (starvedNames.length > 0) {
             logsToAdd.push(`【海狮饲养场】${starvedNames.join('、')} 因断粮饿死了。`);
+          }
+          const aliveCount = (updated.sealHabitat?.seals ?? []).filter(s => (s.hungerDays ?? 0) < 5).length;
+          const lastPrestige = updated.sealHabitat?.lastPrestigeDay;
+          const shouldAdd = lastPrestige == null || nextDay - lastPrestige >= 5;
+          if (aliveCount > 0 && shouldAdd) {
+            const gain = computeSealHabitatPrestige(aliveCount);
+            nextPlayer = { ...nextPlayer, prestige: (nextPlayer.prestige ?? 0) + gain };
+            logsToAdd.push(`【海狮饲养场】饲养 ${aliveCount} 只海狮/海豹，威望 +${gain}。`);
+            return { ...updated, sealHabitat: { ...updated.sealHabitat!, lastPrestigeDay: nextDay } };
           }
           return updated;
         }
@@ -5595,9 +5605,10 @@ export default function App() {
     // Check if we just defeated a Bandit Camp
     if (activeEnemy && currentLocation && currentLocation.type === 'BANDIT_CAMP' && battleResult?.outcome === 'A') {
         const isGoblinCamp = currentLocation.id.startsWith('goblin_camp_');
+        const prestigeGain = isGoblinCamp ? PRESTIGE.GOBLIN_CAMP_DESTROY : PRESTIGE.BANDIT_CAMP_DESTROY;
         setLocations(prev => prev.filter(l => l.id !== currentLocation.id));
+        setPlayer(p => ({ ...p, prestige: (p.prestige ?? 0) + prestigeGain }));
         addLog(isGoblinCamp ? "你成功捣毁了哥布林营地！这地方暂时安静了。" : "你成功捣毁了劫匪窝点！这地方以后安全了。");
-        // Extra loot logic could go here, but AI handles loot gold.
     }
 
     setBattleResult(null);
@@ -6710,6 +6721,7 @@ export default function App() {
       if (!Array.isArray(nextLocations)) throw new Error('存档缺少据点信息。');
     const normalizedPlayer = {
         ...nextPlayer,
+        prestige: typeof (nextPlayer as any)?.prestige === 'number' ? (nextPlayer as any).prestige : 0,
         attributes: {
           ...INITIAL_PLAYER_STATE.attributes,
           ...(nextPlayer.attributes ?? {})

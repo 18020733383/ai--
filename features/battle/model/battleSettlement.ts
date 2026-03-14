@@ -13,6 +13,7 @@ import {
   WorldBattleReport
 } from '../../../types';
 import { BattleEngagementMeta } from './battleRuntime';
+import { PRESTIGE, computeUnderdogBonus } from '../../../game/systems/prestige';
 
 export type LocalBattleRewards = { gold: number; renown: number; xp: number };
 
@@ -100,10 +101,37 @@ export function computeBattleSettlement(input: BattleSettlementInput): BattleSet
   const newGold = prev.gold + Math.floor(localRewards.gold * lootMultiplier);
   const newRenown = prev.renown + localRewards.renown;
 
+  const logsToAdd: string[] = [];
+  let prestigeDelta = 0;
+  const outcome = finalResult.outcome;
+  if (outcome === 'A') {
+    if (battleInfo.mode === 'DEFENSE_AID') {
+      prestigeDelta += PRESTIGE.DEFENSE_AID_SUCCESS;
+    }
+    const playerCount = battleTroops.reduce((s, t) => s + (t.count ?? 0), 0);
+    const enemyCount = (activeEnemy.troops ?? []).reduce((s, t) => s + (t.count ?? 0), 0);
+    prestigeDelta += computeUnderdogBonus(playerCount, enemyCount);
+    if (battleInfo.mode === 'SIEGE' && battleInfo.targetLocationId) {
+      const target = locations.find(l => l.id === battleInfo.targetLocationId);
+      if (target?.type === 'IMPOSTER_PORTAL') {
+        prestigeDelta += PRESTIGE.LIBERATE_SIEGE;
+      } else if (target?.factionId && (target.type === 'VILLAGE' || target.type === 'CASTLE' || target.type === 'CITY')) {
+        prestigeDelta += target.type === 'VILLAGE' ? PRESTIGE.SACK_VILLAGE : target.type === 'CASTLE' ? PRESTIGE.SACK_CASTLE : PRESTIGE.SACK_CITY;
+      }
+    }
+    const isCaravan = activeEnemy.difficulty === 'CARAVAN' || activeEnemy.baseTroopId === 'caravan';
+    if (isCaravan) {
+      prestigeDelta += PRESTIGE.RAID_CARAVAN;
+    }
+  }
+  const newPrestige = (prev.prestige ?? 0) + prestigeDelta;
+  if (prestigeDelta !== 0) {
+    logsToAdd.push(prestigeDelta > 0 ? `威望 +${prestigeDelta}` : `威望 ${prestigeDelta}`);
+  }
+
   const totalPlayerCasualties: Record<string, number> = {};
   const totalPlayerCasualtyDetails: Record<string, { count: number; causes: string[] }> = {};
   const newFallenRecords: FallenRecord[] = [];
-  const logsToAdd: string[] = [];
 
   const battleHeroNames = new Set(heroes.filter(canHeroBattle).map(h => h.name));
   const totalPlayerInjuries: Record<string, { hpLoss: number; causes: string[] }> = {};
@@ -439,6 +467,7 @@ export function computeBattleSettlement(input: BattleSettlementInput): BattleSet
     ...normalizedPlayer,
     gold: newGold,
     renown: newRenown,
+    prestige: newPrestige,
     soldiers: roster,
     troops: nextTroopsFromRoster,
     woundedTroops: buildWoundedEntriesFromSoldiers(roster, prev.day),

@@ -2173,6 +2173,7 @@ ${localText}
 【玩家信息】
 - 名字: ${player.name}
 - 等级: ${player.level}
+- 威望: ${player.prestige ?? 0}（越高领主越客气；为负时各地领主不欢迎）
 
 【玩家最近日志（从新到旧）】
 ${logsText}
@@ -2222,6 +2223,7 @@ ${localText}
 【玩家信息】
 - 名字: ${player.name}
 - 等级: ${player.level}
+- 威望: ${player.prestige ?? 0}（越高领主越客气；为负时各地领主不欢迎）
 
 【玩家最近日志（从新到旧）】
 ${logsText}
@@ -2271,6 +2273,7 @@ ${localText}
 【玩家信息】
 - 名字: ${player.name}
 - 等级: ${player.level}
+- 威望: ${player.prestige ?? 0}（越高领主越客气；为负时各地领主不欢迎）
 
 【玩家最近日志（从新到旧）】
 ${logsText}

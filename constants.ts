@@ -5117,6 +5117,7 @@ export const INITIAL_HERO_ROSTER: Hero[] = [
 export const INITIAL_PLAYER_STATE: PlayerState = {
   gold: 500,
   renown: 0,
+  prestige: 0,
   troops: [createTroop('peasant', 10)],
   soldiers: [],
   nextSoldierId: 1,

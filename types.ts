@@ -241,6 +241,7 @@ export type WoundedTroopEntry = {
 export interface PlayerState {
   gold: number;
   renown: number;
+  prestige: number; // 威望，影响领主态度，可为负
   troops: Troop[];
   soldiers?: SoldierInstance[];
   nextSoldierId?: number;
@@ -650,6 +651,7 @@ export type SealHabitatState = {
   seals: SealInstance[];
   fishStock: number;
   lastFeedDay: number;
+  lastPrestigeDay?: number;
 };
 
 export type WorldBattleReport = {
