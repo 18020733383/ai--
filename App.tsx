@@ -1852,8 +1852,8 @@ export default function App() {
         const centerX = rect.width / 2;
         const centerY = rect.height / 2;
         const nextCamera = {
-          x: centerX - (location.coordinates.x - 200) * unitSize,
-          y: centerY - (location.coordinates.y - 200) * unitSize
+          x: centerX - (location.coordinates.x - MAP_WIDTH / 2) * unitSize,
+          y: centerY - (location.coordinates.y - MAP_HEIGHT / 2) * unitSize
         };
         cameraRef.current = nextCamera;
         setCamera(nextCamera);

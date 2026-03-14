@@ -4,7 +4,10 @@ const FISH_PER_DAY: Record<SealSpecies, number> = {
   harbor_seal: 3,
   elephant_seal: 8,
   fur_seal: 5,
-  leopard_seal: 10
+  leopard_seal: 10,
+  california_sea_lion: 6,
+  stellers_sea_lion: 9,
+  australian_sea_lion: 5
 };
 
 const STARVE_DAYS = 5;

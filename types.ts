@@ -637,7 +637,7 @@ export interface Location {
   sealHabitat?: SealHabitatState;
 }
 
-export type SealSpecies = 'harbor_seal' | 'elephant_seal' | 'fur_seal' | 'leopard_seal';
+export type SealSpecies = 'harbor_seal' | 'elephant_seal' | 'fur_seal' | 'leopard_seal' | 'california_sea_lion' | 'stellers_sea_lion' | 'australian_sea_lion';
 
 export type SealInstance = {
   id: string;

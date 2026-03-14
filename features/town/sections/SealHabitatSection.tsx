@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Fish, Plus, ShoppingCart } from 'lucide-react';
 import { Button } from '../../../components/Button';
 import type { Location, SealInstance, SealSpecies } from '../../../types';
@@ -7,7 +7,10 @@ export const SEAL_SPECIES: { id: SealSpecies; name: string; price: number; fishP
   { id: 'harbor_seal', name: '港海豹', price: 80, fishPerDay: 3 },
   { id: 'elephant_seal', name: '象海豹', price: 200, fishPerDay: 8 },
   { id: 'fur_seal', name: '毛皮海豹', price: 150, fishPerDay: 5 },
-  { id: 'leopard_seal', name: '豹海豹', price: 250, fishPerDay: 10 }
+  { id: 'leopard_seal', name: '豹海豹', price: 250, fishPerDay: 10 },
+  { id: 'california_sea_lion', name: '加州海狮', price: 120, fishPerDay: 6 },
+  { id: 'stellers_sea_lion', name: '北海狮', price: 220, fishPerDay: 9 },
+  { id: 'australian_sea_lion', name: '澳洲海狮', price: 180, fishPerDay: 5 }
 ];
 
 export const FISH_PRICE = 5;
@@ -74,15 +77,56 @@ export const SealHabitatSection = ({
     addLog(`购买了 ${name}（花费 ${spec.price} 第纳尔）。`);
   };
 
+  const [tick, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 800);
+    return () => clearInterval(id);
+  }, []);
+
+  const aliveSeals = seals.filter((s) => s.hungerDays < STARVE_DAYS);
+
   return (
     <div className="space-y-6 animate-fade-in">
+      {aliveSeals.length > 0 && (
+        <div className="bg-stone-900/40 p-4 rounded border border-stone-800 overflow-hidden">
+          <div className="text-stone-200 font-bold mb-2">海边活动</div>
+          <div
+            className="relative h-32 rounded-lg border border-stone-700"
+            style={{
+              background: 'linear-gradient(180deg, #87CEEB 0%, #B0E0E6 40%, #F4E4BC 70%, #DEB887 100%)'
+            }}
+          >
+            {aliveSeals.map((seal, i) => {
+              const seed = seal.id.split('').reduce((s, c) => s + c.charCodeAt(0), 0);
+              const baseX = 15 + (seed % 70) + (i * 12) % 50;
+              const baseY = 50 + (seed % 40) + ((i * 7) % 30);
+              const dx = Math.sin((tick + seed) * 0.3) * 8;
+              const dy = Math.cos((tick + seed * 0.7) * 0.2) * 4;
+              return (
+                <div
+                  key={seal.id}
+                  className="absolute text-2xl select-none pointer-events-none transition-all duration-500"
+                  style={{
+                    left: `${Math.max(5, Math.min(85, baseX + dx))}%`,
+                    top: `${Math.max(20, Math.min(75, baseY + dy))}%`,
+                    transform: `scale(${0.9 + (i % 3) * 0.1})`
+                  }}
+                  title={seal.name}
+                >
+                  🦭
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
         <div className="flex items-center justify-between gap-3">
           <div className="text-stone-200 font-bold">海狮饲养场</div>
           <div className="text-xs text-stone-600">无驻军 · 不会被攻击</div>
         </div>
         <div className="text-sm text-stone-400 mt-2 leading-relaxed">
-          购买海狮/海豹需要花钱，鱼会随时间消耗。鱼耗尽后超过 {STARVE_DAYS} 天未喂食，海狮会饿死。
+          购买海狮/海豹需要花钱，鱼会随时间消耗。鱼耗尽后超过 {STARVE_DAYS} 天未喂食，动物会饿死。
         </div>
       </div>
 
@@ -107,7 +151,7 @@ export const SealHabitatSection = ({
       </div>
 
       <div className="bg-stone-900/40 p-4 rounded border border-stone-800 space-y-3">
-        <div className="text-stone-200 font-bold">购买海狮/海豹</div>
+        <div className="text-stone-200 font-bold">购买海狮与海豹</div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {SEAL_SPECIES.map((spec) => (
             <div
@@ -134,9 +178,9 @@ export const SealHabitatSection = ({
       </div>
 
       <div className="bg-stone-900/40 p-4 rounded border border-stone-800 space-y-3">
-        <div className="text-stone-200 font-bold">饲养中的海狮</div>
+        <div className="text-stone-200 font-bold">饲养中的海狮与海豹</div>
         {seals.length === 0 ? (
-          <div className="text-stone-500 text-sm">暂无饲养的海狮。购买后在此显示。</div>
+          <div className="text-stone-500 text-sm">暂无饲养的动物。购买后在此显示。</div>
         ) : (
           <div className="space-y-2">
             {seals.map((seal) => {
