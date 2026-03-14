@@ -38,39 +38,7 @@ export type ResolveBattleContext = {
   siegeEngineCombatStats: Record<SiegeEngineType, SiegeEngineCombatStats>;
 };
 
-const getTroopLayerDescriptor = (troop: Troop, getTroopTemplate: ResolveBattleContext['getTroopTemplate']) => {
-  const template = getTroopTemplate(troop.id);
-  const source = template ?? troop;
-  const equipment = Array.isArray(source.equipment) ? source.equipment.join(' ') : '';
-  const description = source.description ?? '';
-  return `${troop.id} ${troop.name} ${equipment} ${description}`.toLowerCase();
-};
-
-const getDefaultLayerId = (
-  troop: Troop,
-  layers: { id: string; name: string; hint: string }[],
-  getTroopTemplate: ResolveBattleContext['getTroopTemplate']
-) => {
-  const text = getTroopLayerDescriptor(troop, getTroopTemplate);
-  const template = getTroopTemplate(troop.id);
-  const supportRole = template?.supportRole ?? troop.supportRole;
-  const isHeavy = (template?.category ?? troop.category) === 'HEAVY' || troop.id.startsWith('heavy_');
-  const isRanged = /archer|bow|crossbow|ranger|marksman|sharpshooter|弓|弩|游侠|神射|猎手|射/.test(text);
-  const isMage = /mage|wizard|sorcerer|法师|术士|巫师/.test(text);
-  const isBard = /bard|吟游/.test(text);
-  const isShield = /shield|盾|phalanx|wall|守护/.test(text);
-  const isCavalry = /cavalry|rider|horse|knight|paladin|骑/.test(text);
-  if (troop.id === 'player_main') return layers[1]?.id ?? layers[0]?.id;
-  if (isHeavy) {
-    if (supportRole === 'ARTILLERY' || supportRole === 'RADAR') return layers[3]?.id ?? layers[layers.length - 1]?.id;
-    if (supportRole === 'TANK') return layers[0]?.id ?? layers[1]?.id;
-    return layers[2]?.id ?? layers[1]?.id;
-  }
-  if (isRanged || isMage || isBard) return layers[3]?.id ?? layers[layers.length - 1]?.id;
-  if (isShield) return layers[0]?.id ?? layers[1]?.id;
-  if (isCavalry) return layers[1]?.id ?? layers[0]?.id;
-  return layers[1]?.id ?? layers[0]?.id;
-};
+import { getDefaultLayerId } from './battleLayers';
 
 export function resolveBattleProgrammatic(
   battleTroops: Troop[],
