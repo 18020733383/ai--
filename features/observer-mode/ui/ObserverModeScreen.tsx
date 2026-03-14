@@ -16,6 +16,7 @@ type ObserverModeScreenProps = {
 };
 
 export const ObserverModeScreen = ({ onBack, buildAIConfig }: ObserverModeScreenProps) => {
+  console.log('[观海] ObserverModeScreen 已挂载/渲染');
   const [state, setState] = React.useState<ObserverModeState>(() => buildInitialObserverState());
   const [isRunning, setIsRunning] = React.useState(false);
 

@@ -7568,6 +7568,7 @@ export default function App() {
   };
 
   if (view === 'OBSERVER_MODE') {
+    console.log('[观海] App: view=OBSERVER_MODE，渲染观海模式全屏');
     return (
       <ObserverModeScreen
         onBack={() => setView('MAIN_MENU')}
@@ -7576,6 +7577,7 @@ export default function App() {
     );
   }
 
+  console.log('[观海] App: 当前 view=', view);
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-sans selection:bg-amber-900 selection:text-white overflow-hidden flex flex-col" data-view={view}>
       {view !== 'MAIN_MENU' && view !== 'INTRO' && view !== 'ENDING' && view !== 'GAME_OVER' && view !== 'BATTLE' && view !== 'BATTLE_RESULT' && view !== 'BANDIT_ENCOUNTER' && view !== 'HERO_CHAT' && view !== 'HIDEOUT_INSPECT' && (
@@ -7622,7 +7624,10 @@ export default function App() {
             }));
             setView('ENDING');
           },
-          onObserverMode: () => setView('OBSERVER_MODE')
+          onObserverMode: () => {
+            console.log('[观海] mainMenuProps.onObserverMode 被调用，执行 setView(OBSERVER_MODE)');
+            setView('OBSERVER_MODE');
+          }
         }}
         billsProps={{
           player,
