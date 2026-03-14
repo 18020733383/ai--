@@ -50,6 +50,7 @@ type BigMapViewProps = {
   camera: { x: number; y: number };
   locations: Location[];
   player: PlayerState;
+  isObserverMode?: boolean;
   workState: WorkState | null;
   miningState: MiningState | null;
   roachLureState: RoachLureState | null;
@@ -75,6 +76,7 @@ export const BigMapView = ({
   camera,
   locations,
   player,
+  isObserverMode,
   workState,
   miningState,
   roachLureState,
@@ -502,6 +504,7 @@ export const BigMapView = ({
             key={loc.id}
             onClick={(e) => {
               e.stopPropagation();
+              if (isObserverMode) return;
               if (isTimeSkipActive) return;
               moveTo(loc.coordinates.x, loc.coordinates.y, loc.id);
             }}
@@ -579,17 +582,19 @@ export const BigMapView = ({
             )}
           </div>
         ))}
-        <div
-          className="absolute transform -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"
-          style={{
-            left: `${player.position.x * unitSize}px`,
-            top: `${player.position.y * unitSize}px`
-          }}
-        >
-          <div className="text-red-700 animate-bounce drop-shadow-xl" style={{ transform: `scale(${zoom})` }}>
-            <MapPin size={48} fill="currentColor" stroke="white" strokeWidth={2} />
+        {!isObserverMode && (
+          <div
+            className="absolute transform -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"
+            style={{
+              left: `${player.position.x * unitSize}px`,
+              top: `${player.position.y * unitSize}px`
+            }}
+          >
+            <div className="text-red-700 animate-bounce drop-shadow-xl" style={{ transform: `scale(${zoom})` }}>
+              <MapPin size={48} fill="currentColor" stroke="white" strokeWidth={2} />
+            </div>
           </div>
-        </div>
+        )}
       </div>
       <div className="absolute top-4 left-4 bg-black/60 text-stone-300 p-2 rounded text-xs select-none pointer-events-none z-30">
         WASD 或 拖拽移动视野 | 滚轮缩放 ({Math.round(zoom * 100)}%) | 行军营地 {fieldCampCount}

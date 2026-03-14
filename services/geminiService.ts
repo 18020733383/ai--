@@ -2680,13 +2680,17 @@ ${historyText || "（暂无）"}
   }
 };
 
-/** 观海模式：势力 AI 决策，返回今日行动摘要 */
+/** 观海模式：势力 AI 决策，返回今日行动摘要与具体行为 */
 export const decideFactionAction = async (
   factionId: string,
   factionName: string,
   openAI?: OpenAIConfig
-): Promise<{ action: string }> => {
-  const prompt = `你是卡拉迪亚大陆的势力「${factionName}」的决策者。请基于当前局势，用一句话（20字内）描述今日主要决策方向。只返回 JSON：{"action":"决策摘要"}`;
+): Promise<{ action: string; actions?: string[] }> => {
+  const prompt = `你是卡拉迪亚大陆的势力「${factionName}」的决策者。请基于当前局势，输出今日决策。
+必须返回 JSON，格式：{"action":"主要方向（20字内）","actions":["具体行为1","具体行为2",...]}
+- action: 战略大方向，如「巩固边境，优先发展弓骑兵」
+- actions: 具体执行动作列表，每条如「在XX据点扩军N人」「派兵侦察XX据点」「进攻XX据点」「向XX据点调兵」等，最多5条，必须具体到据点名或行动类型
+只返回 JSON，不要其他内容。`;
 
   const openAIConfig = requireOpenAIConfig(openAI);
   if (openAIConfig) {
@@ -2716,8 +2720,10 @@ export const decideFactionAction = async (
     const json = await res.json().catch(() => null) as any;
     const text = json?.choices?.[0]?.message?.content;
     if (!text) throw new Error('API 返回为空');
-    const parsed = JSON.parse(text) as { action?: string };
-    return { action: String(parsed?.action ?? '待定').trim() || '待定' };
+    const parsed = JSON.parse(text) as { action?: string; actions?: string[] };
+    const action = String(parsed?.action ?? '待定').trim() || '待定';
+    const actions = Array.isArray(parsed?.actions) ? parsed.actions.filter((a: unknown) => typeof a === 'string').slice(0, 5) : undefined;
+    return { action, actions };
   }
 
   const model = 'gemini-3-flash-preview';
@@ -2729,6 +2735,8 @@ export const decideFactionAction = async (
 
   const text = response.text;
   if (!text) throw new Error('AI 返回为空');
-  const parsed = JSON.parse(String(text)) as { action?: string };
-  return { action: String(parsed?.action ?? '待定').trim() || '待定' };
+  const parsed = JSON.parse(String(text)) as { action?: string; actions?: string[] };
+  const action = String(parsed?.action ?? '待定').trim() || '待定';
+  const actions = Array.isArray(parsed?.actions) ? parsed.actions.filter((a: unknown) => typeof a === 'string').slice(0, 5) : undefined;
+  return { action, actions };
 };

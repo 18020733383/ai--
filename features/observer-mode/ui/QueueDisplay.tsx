@@ -34,19 +34,21 @@ export const QueueDisplay = ({ queue, activeIndex, phase }: QueueDisplayProps) =
           return (
             <div
               key={item.factionId}
-              className={`flex items-center gap-3 px-3 py-2 rounded border transition-colors ${
+              className={`flex gap-3 px-3 py-2 rounded border transition-colors ${
                 isActive ? 'border-amber-600 bg-amber-950/30' : isDone ? 'border-stone-700 bg-stone-900/30' : isError ? 'border-red-800 bg-red-950/20' : 'border-stone-800 bg-black/20'
               }`}
             >
               {isActive && (item.status === 'deciding' || item.status === 'acting') ? (
-                <Loader2 size={16} className="text-amber-400 animate-spin flex-shrink-0" />
+                <Loader2 size={16} className="text-amber-400 animate-spin flex-shrink-0 mt-0.5" />
               ) : (
-                <span className="w-4 h-4 flex-shrink-0 rounded-full border border-stone-600" />
+                <span className="w-4 h-4 flex-shrink-0 rounded-full border border-stone-600 mt-0.5" />
               )}
-              <span className="text-stone-200 font-medium flex-1">{item.factionName}</span>
-              <span className={`text-xs ${isActive ? 'text-amber-400' : isDone ? 'text-stone-500' : isError ? 'text-red-400' : 'text-stone-500'}`}>
-                {item.message ?? STATUS_LABELS[item.status]}
-              </span>
+              <div className="flex-1 min-w-0 flex flex-col gap-0.5">
+                <span className="text-stone-200 font-medium">{item.factionName}</span>
+                <span className={`text-xs text-left break-words whitespace-pre-wrap ${isActive ? 'text-amber-400' : isDone ? 'text-stone-500' : isError ? 'text-red-400' : 'text-stone-500'}`}>
+                  {item.message ?? STATUS_LABELS[item.status]}
+                </span>
+              </div>
             </div>
           );
         })}

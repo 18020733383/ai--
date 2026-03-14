@@ -8,6 +8,7 @@ type MapScreenProps = {
   camera: { x: number; y: number };
   locations: Location[];
   player: PlayerState;
+  isObserverMode?: boolean;
   workState: WorkState | null;
   miningState: MiningState | null;
   roachLureState: RoachLureState | null;
@@ -35,6 +36,7 @@ export const MapScreen = ({
   camera,
   locations,
   player,
+  isObserverMode,
   workState,
   miningState,
   roachLureState,
@@ -95,6 +97,7 @@ export const MapScreen = ({
       camera={camera}
       locations={locations}
       player={player}
+      isObserverMode={isObserverMode}
       workState={workState}
       miningState={miningState}
       roachLureState={roachLureState}

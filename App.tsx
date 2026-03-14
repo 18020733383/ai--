@@ -7641,6 +7641,7 @@ export default function App() {
           handleMouseUp,
           moveTo,
           setHoveredLocation,
+          isObserverMode: view === 'OBSERVER_MODE',
           setPlayer,
           setWorkState,
           setMiningState,

@@ -42,11 +42,12 @@ export const ObserverOverlay = ({ onBack, buildAIConfig }: ObserverOverlayProps)
       }));
 
       try {
-        const { action } = await decideFactionAction(item.factionId, item.factionName, aiConfig);
+        const { action, actions } = await decideFactionAction(item.factionId, item.factionName, aiConfig);
+        const message = actions?.length ? `${action}\n${actions.join('；')}` : action;
         setState(s => ({
           ...s,
           queue: s.queue.map((q, j) =>
-            j === i ? { ...q, status: 'done' as const, message: action } : q
+            j === i ? { ...q, status: 'done' as const, message } : q
           )
         }));
       } catch (e: any) {
