@@ -37,7 +37,7 @@ type AppMainContentProps = {
   renderBattle: () => React.ReactNode;
   renderBattleResult: () => React.ReactNode;
   renderGameOver: () => React.ReactNode;
-  observerModeProps: { onBack: () => void };
+  observerModeProps: { onBack: () => void; buildAIConfig: () => { baseUrl: string; apiKey: string; model: string; provider: string } | undefined };
 };
 
 export const AppMainContent = ({

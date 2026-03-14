@@ -2679,3 +2679,56 @@ ${historyText || "（暂无）"}
     };
   }
 };
+
+/** 观海模式：势力 AI 决策，返回今日行动摘要 */
+export const decideFactionAction = async (
+  factionId: string,
+  factionName: string,
+  openAI?: OpenAIConfig
+): Promise<{ action: string }> => {
+  const prompt = `你是卡拉迪亚大陆的势力「${factionName}」的决策者。请基于当前局势，用一句话（20字内）描述今日主要决策方向。只返回 JSON：{"action":"决策摘要"}`;
+
+  const openAIConfig = requireOpenAIConfig(openAI);
+  if (openAIConfig) {
+    const url = `${normalizeProviderBaseUrl(openAIConfig.provider, openAIConfig.baseUrl)}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${openAIConfig.apiKey}`,
+      },
+      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+        model: openAIConfig.model,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: '只返回 JSON。' }
+        ],
+        temperature: 0.7,
+        jsonOnly: true
+      }))
+    });
+
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`API 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 100)}` : ''}`.trim());
+    }
+
+    const json = await res.json().catch(() => null) as any;
+    const text = json?.choices?.[0]?.message?.content;
+    if (!text) throw new Error('API 返回为空');
+    const parsed = JSON.parse(text) as { action?: string };
+    return { action: String(parsed?.action ?? '待定').trim() || '待定' };
+  }
+
+  const model = 'gemini-3-flash-preview';
+  const response = await getGeminiClient(openAI?.provider === 'GEMINI' ? openAI?.apiKey : undefined).models.generateContent({
+    model,
+    contents: prompt,
+    config: { temperature: 0.7 },
+  });
+
+  const text = response.text;
+  if (!text) throw new Error('AI 返回为空');
+  const parsed = JSON.parse(String(text)) as { action?: string };
+  return { action: String(parsed?.action ?? '待定').trim() || '待定' };
+};

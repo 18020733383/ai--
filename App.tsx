@@ -7812,7 +7812,7 @@ export default function App() {
         renderBattle={renderBattle}
         renderBattleResult={renderBattleResult}
         renderGameOver={renderGameOver}
-        observerModeProps={{ onBack: () => setView('MAIN_MENU') }}
+        observerModeProps={{ onBack: () => setView('MAIN_MENU'), buildAIConfig }}
       />
 
       {isSettingsOpen && renderSettingsModal()}
