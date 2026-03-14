@@ -472,7 +472,7 @@ export interface SiegeEngineQueueItem {
   totalDays: number;
 }
 
-export type GameView = 'MAIN_MENU' | 'INTRO' | 'MAP' | 'TOWN' | 'HIDEOUT_INSPECT' | 'BATTLE' | 'BATTLE_RESULT' | 'ENDING' | 'GAME_OVER' | 'PARTY' | 'CHARACTER' | 'BILLS' | 'TRAINING' | 'ASYLUM' | 'MARKET' | 'BANDIT_ENCOUNTER' | 'CAVE' | 'HERO_CHAT' | 'WORLD_BOARD' | 'TROOP_ARCHIVE' | 'RELATIONS';
+export type GameView = 'MAIN_MENU' | 'INTRO' | 'MAP' | 'TOWN' | 'HIDEOUT_INSPECT' | 'BATTLE' | 'BATTLE_RESULT' | 'ENDING' | 'GAME_OVER' | 'PARTY' | 'CHARACTER' | 'BILLS' | 'TRAINING' | 'ASYLUM' | 'MARKET' | 'BANDIT_ENCOUNTER' | 'CAVE' | 'HERO_CHAT' | 'WORLD_BOARD' | 'TROOP_ARCHIVE' | 'RELATIONS' | 'OBSERVER_MODE';
 
 export interface RecruitOffer {
   troopId: string;

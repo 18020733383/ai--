@@ -1,5 +1,5 @@
 import React from 'react';
-import { Film, Play, Plus, Save, Skull, Trash2 } from 'lucide-react';
+import { Eye, Film, Play, Plus, Save, Skull, Trash2 } from 'lucide-react';
 import { Button } from '../components/Button';
 
 type SaveSlotMeta = {
@@ -30,6 +30,7 @@ type MainMenuViewProps = {
   onCreateBlankSave: () => void;
   endings: EndingMeta[];
   onReplayEnding: (endingId: string) => void;
+  onObserverMode: () => void;
 };
 
 export const MainMenuView = ({
@@ -41,7 +42,8 @@ export const MainMenuView = ({
   onContinue,
   onCreateBlankSave,
   endings,
-  onReplayEnding
+  onReplayEnding,
+  onObserverMode
 }: MainMenuViewProps) => {
   const [tab, setTab] = React.useState<'SAVES' | 'ENDINGS'>('SAVES');
   const safeSaves = Array.isArray(saves) ? saves.slice().sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)) : [];
@@ -63,6 +65,9 @@ export const MainMenuView = ({
             </Button>
             <Button variant={tab === 'ENDINGS' ? 'gold' : 'secondary'} onClick={() => setTab('ENDINGS')}>
               <Film size={16} className="inline mr-2" /> 达成结局
+            </Button>
+            <Button variant="secondary" onClick={onObserverMode}>
+              <Eye size={16} className="inline mr-2" /> 观海模式
             </Button>
           </div>
         </div>

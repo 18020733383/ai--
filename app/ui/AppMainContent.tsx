@@ -4,6 +4,7 @@ import { HideoutInspectView } from '../../views/HideoutInspectView';
 import { IntroCinematicView } from '../../views/IntroCinematicView';
 import { MainMenuView } from '../../views/MainMenuView';
 import { TownView } from '../../features/town';
+import { ObserverModeScreen } from '../../features/observer-mode';
 import { GameView, Hero, Location } from '../../types';
 import { EndingScreen } from './EndingScreen';
 import { MapScreen } from './MapScreen';
@@ -36,6 +37,7 @@ type AppMainContentProps = {
   renderBattle: () => React.ReactNode;
   renderBattleResult: () => React.ReactNode;
   renderGameOver: () => React.ReactNode;
+  observerModeProps: { onBack: () => void };
 };
 
 export const AppMainContent = ({
@@ -65,11 +67,13 @@ export const AppMainContent = ({
   renderTraining,
   renderBattle,
   renderBattleResult,
-  renderGameOver
+  renderGameOver,
+  observerModeProps
 }: AppMainContentProps) => {
   return (
-    <main className={view === 'MAP' || view === 'HERO_CHAT' || view === 'MAIN_MENU' ? 'flex-1 w-full flex' : 'flex-1 container mx-auto pb-8 pt-4'}>
+    <main className={view === 'MAP' || view === 'HERO_CHAT' || view === 'MAIN_MENU' || view === 'OBSERVER_MODE' ? 'flex-1 w-full flex' : 'flex-1 container mx-auto pb-8 pt-4'}>
       {view === 'MAIN_MENU' && <MainMenuView {...mainMenuProps} />}
+      {view === 'OBSERVER_MODE' && <ObserverModeScreen {...observerModeProps} />}
       {view === 'BILLS' && <BillsView {...billsProps} />}
       {view === 'MAP' && <MapScreen {...mapProps} />}
       {view === 'ENDING' && <EndingScreen {...endingProps} />}

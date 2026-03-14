@@ -6310,7 +6310,7 @@ export default function App() {
   const normalizeView = (raw: unknown, hasLocation: boolean): GameView => {
     const value = typeof raw === 'string' ? raw : 'MAP';
     const safe = value as GameView;
-    const allowed: GameView[] = ['MAIN_MENU', 'INTRO', 'MAP', 'TOWN', 'HIDEOUT_INSPECT', 'PARTY', 'CHARACTER', 'BILLS', 'TRAINING', 'ASYLUM', 'MARKET', 'BANDIT_ENCOUNTER', 'CAVE', 'BATTLE', 'BATTLE_RESULT', 'ENDING', 'GAME_OVER', 'HERO_CHAT', 'WORLD_BOARD', 'TROOP_ARCHIVE', 'RELATIONS'];
+    const allowed: GameView[] = ['MAIN_MENU', 'INTRO', 'MAP', 'TOWN', 'HIDEOUT_INSPECT', 'PARTY', 'CHARACTER', 'BILLS', 'TRAINING', 'ASYLUM', 'MARKET', 'BANDIT_ENCOUNTER', 'CAVE', 'BATTLE', 'BATTLE_RESULT', 'ENDING', 'GAME_OVER', 'HERO_CHAT', 'WORLD_BOARD', 'TROOP_ARCHIVE', 'RELATIONS', 'OBSERVER_MODE'];
     if (!allowed.includes(safe)) return 'MAP';
     if (safe === 'ENDING' || safe === 'GAME_OVER' || safe === 'BATTLE' || safe === 'BATTLE_RESULT') return 'MAP';
     if (safe === 'TOWN' && !hasLocation) return 'MAP';
@@ -6818,29 +6818,40 @@ export default function App() {
       const importedProfiles = Array.isArray(save?.settings?.openAIProfiles)
         ? save.settings.openAIProfiles.filter((p: any) => p && typeof p.id === 'string')
         : [];
+      const currentOpenAIKey = localStorage.getItem('openai.key') ?? openAIKey;
+      const currentDoubaoKey = localStorage.getItem('doubao.key') ?? doubaoApiKey;
+      const currentGeminiKey = localStorage.getItem('gemini.key') ?? geminiApiKey;
+      const preserveKeyIfEmpty = (imported: string | undefined, current: string) =>
+        (typeof imported === 'string' && imported.trim().length > 0) ? imported.trim() : current;
       if (importedProfiles.length > 0) {
         const importedActiveId = typeof save?.settings?.openAIActiveProfileId === 'string' ? save.settings.openAIActiveProfileId : null;
         const activeProfile = importedProfiles.find((p: any) => p.id === importedActiveId) ?? importedProfiles[0];
-        setOpenAIProfiles(importedProfiles);
+        const keyToUse = preserveKeyIfEmpty(activeProfile.key, currentOpenAIKey);
+        const profilesWithPreservedKeys = importedProfiles.map((p: any) =>
+          p.id === activeProfile.id && (!p.key || !String(p.key).trim())
+            ? { ...p, key: keyToUse }
+            : { ...p, key: preserveKeyIfEmpty(p.key, currentOpenAIKey) }
+        );
+        setOpenAIProfiles(profilesWithPreservedKeys);
         setActiveOpenAIProfileId(activeProfile.id);
         setOpenAIProfileName(activeProfile.name ?? '默认');
         setOpenAIBaseUrl(activeProfile.baseUrl ?? openAIBaseUrl);
-        setOpenAIKey(activeProfile.key ?? openAIKey);
+        setOpenAIKey(keyToUse);
         setOpenAIModel(activeProfile.model ?? openAIModel);
-        localStorage.setItem('openai.profiles', JSON.stringify(importedProfiles));
+        localStorage.setItem('openai.profiles', JSON.stringify(profilesWithPreservedKeys));
         localStorage.setItem('openai.profile.active', activeProfile.id);
         localStorage.setItem('openai.baseUrl', String(activeProfile.baseUrl ?? '').trim());
-        localStorage.setItem('openai.key', String(activeProfile.key ?? '').trim());
+        localStorage.setItem('openai.key', keyToUse);
         localStorage.setItem('openai.model', String(activeProfile.model ?? '').trim());
       } else if (save?.settings?.openAI) {
         const baseUrl = typeof save.settings.openAI.baseUrl === 'string' ? save.settings.openAI.baseUrl : openAIBaseUrl;
-        const key = typeof save.settings.openAI.key === 'string' ? save.settings.openAI.key : openAIKey;
+        const key = preserveKeyIfEmpty(save.settings.openAI.key, currentOpenAIKey);
         const model = typeof save.settings.openAI.model === 'string' ? save.settings.openAI.model : openAIModel;
         setOpenAIBaseUrl(baseUrl);
         setOpenAIKey(key);
         setOpenAIModel(model);
         localStorage.setItem('openai.baseUrl', baseUrl.trim());
-        localStorage.setItem('openai.key', key.trim());
+        localStorage.setItem('openai.key', key);
         localStorage.setItem('openai.model', model.trim());
       }
       const importedProvider = typeof save?.settings?.aiProvider === 'string' ? save.settings.aiProvider : aiProvider;
@@ -6849,12 +6860,12 @@ export default function App() {
         : 'CUSTOM';
       setAIProvider(normalizedProvider as AIProvider);
       localStorage.setItem('ai.provider', normalizedProvider);
-      const importedDoubaoKey = typeof save?.settings?.doubaoApiKey === 'string' ? save.settings.doubaoApiKey : doubaoApiKey;
-      const importedGeminiKey = typeof save?.settings?.geminiApiKey === 'string' ? save.settings.geminiApiKey : geminiApiKey;
+      const importedDoubaoKey = preserveKeyIfEmpty(save?.settings?.doubaoApiKey, currentDoubaoKey);
+      const importedGeminiKey = preserveKeyIfEmpty(save?.settings?.geminiApiKey, currentGeminiKey);
       setDoubaoApiKey(importedDoubaoKey);
       setGeminiApiKey(importedGeminiKey);
-      localStorage.setItem('doubao.key', String(importedDoubaoKey ?? '').trim());
-      localStorage.setItem('gemini.key', String(importedGeminiKey ?? '').trim());
+      localStorage.setItem('doubao.key', importedDoubaoKey);
+      localStorage.setItem('gemini.key', importedGeminiKey);
       if (typeof save?.settings?.battleStreamEnabled === 'boolean') {
         setBattleStreamEnabled(save.settings.battleStreamEnabled);
         localStorage.setItem('battle.stream', save.settings.battleStreamEnabled ? '1' : '0');
@@ -7600,7 +7611,8 @@ export default function App() {
               }
             }));
             setView('ENDING');
-          }
+          },
+          onObserverMode: () => setView('OBSERVER_MODE')
         }}
         billsProps={{
           player,
@@ -7800,6 +7812,7 @@ export default function App() {
         renderBattle={renderBattle}
         renderBattleResult={renderBattleResult}
         renderGameOver={renderGameOver}
+        observerModeProps={{ onBack: () => setView('MAIN_MENU') }}
       />
 
       {isSettingsOpen && renderSettingsModal()}
