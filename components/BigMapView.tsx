@@ -52,6 +52,7 @@ type BigMapViewProps = {
   player: PlayerState;
   isObserverMode?: boolean;
   observerTargets?: Array<{ locationId: string; types: string[] }>;
+  observerCurrentAction?: { locationId: string; locationName: string; actionType: string; factionName: string } | null;
   onLocationSelect?: (location: Location) => void;
   workState: WorkState | null;
   miningState: MiningState | null;
@@ -80,6 +81,7 @@ export const BigMapView = ({
   player,
   isObserverMode,
   observerTargets,
+  observerCurrentAction,
   onLocationSelect,
   workState,
   miningState,
@@ -615,6 +617,25 @@ export const BigMapView = ({
       <div className="absolute top-4 left-4 bg-black/60 text-stone-300 p-2 rounded text-xs select-none pointer-events-none z-30">
         WASD 或 拖拽移动视野 | 滚轮缩放 ({Math.round(zoom * 100)}%) | 行军营地 {fieldCampCount}
       </div>
+      {isObserverMode && observerCurrentAction && (() => {
+        const loc = locations.find(l => l.id === observerCurrentAction.locationId);
+        if (!loc) return null;
+        const actionLabel = observerCurrentAction.actionType === 'recruit' ? '扩军中' : observerCurrentAction.actionType === 'scout' ? '侦察中' : '进攻中';
+        return (
+          <div
+            className="absolute z-50 pointer-events-none animate-pulse"
+            style={{
+              left: `${loc.coordinates.x * unitSize}px`,
+              top: `${loc.coordinates.y * unitSize - 24}px`,
+              transform: 'translate(-50%, -50%)'
+            }}
+          >
+            <div className="bg-amber-600/95 text-black px-3 py-1.5 rounded-lg shadow-lg text-sm font-bold whitespace-nowrap border-2 border-amber-400">
+              {observerCurrentAction.factionName} · {actionLabel}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

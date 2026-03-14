@@ -8,18 +8,25 @@ import { Button } from '../../../components/Button';
 import { QueueDisplay } from './QueueDisplay';
 import { buildInitialObserverState } from '../model/initialState';
 import { decideFactionAction } from '../../../services/geminiService';
-import { parseObserverTargets } from '../utils/parseTargets';
+import { parseObserverTargets, parseActionsInOrder } from '../utils/parseTargets';
 import type { ObserverModeState } from '../model/types';
 import type { Location } from '../../../types';
+
+const ACTION_DURATION_MS = 1800;
 
 type ObserverOverlayProps = {
   onBack: () => void;
   buildAIConfig: () => { baseUrl: string; apiKey: string; model: string; provider: string } | undefined;
   locations?: Location[];
   onTargetsChange?: (queue: Array<{ actions?: string[] }>) => void;
+  onFocusLocation?: (location: Location) => void;
+  onApplyAction?: (locationId: string, actionType: string) => void;
+  onCurrentActionChange?: (action: { locationId: string; locationName: string; actionType: string; factionName: string } | null) => void;
 };
 
-export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTargetsChange }: ObserverOverlayProps) => {
+const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+
+export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTargetsChange, onFocusLocation, onApplyAction, onCurrentActionChange }: ObserverOverlayProps) => {
   const [state, setState] = React.useState<ObserverModeState>(() => buildInitialObserverState());
   const [isRunning, setIsRunning] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
@@ -57,6 +64,18 @@ export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTarge
             j === i ? { ...q, status: 'done' as const, action, actions } : q
           )
         }));
+
+        const actionList = parseActionsInOrder(actions ?? [], locations);
+        for (const { locationId, locationName, actionType } of actionList) {
+          const loc = locations.find(l => l.id === locationId);
+          if (!loc || !onFocusLocation || !onApplyAction || !onCurrentActionChange) continue;
+          onFocusLocation(loc);
+          onCurrentActionChange({ locationId, locationName, actionType, factionName: item.factionName });
+          await sleep(ACTION_DURATION_MS);
+          onApplyAction(locationId, actionType);
+          onCurrentActionChange(null);
+          await sleep(400);
+        }
       } catch (e: any) {
         const msg = e?.message || '请求失败';
         setState(s => ({
@@ -71,7 +90,7 @@ export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], onTarge
 
     setState(s => ({ ...s, phase: 'day_end', activeIndex: -1 }));
     setIsRunning(false);
-  }, [state.queue, buildAIConfig]);
+  }, [state.queue, buildAIConfig, locations, onFocusLocation, onApplyAction, onCurrentActionChange]);
 
   const resetQueue = React.useCallback(() => {
     setState(buildInitialObserverState());

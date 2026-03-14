@@ -1,5 +1,6 @@
 import type { Hero, Location, Lord, LordFocus, StayParty, Troop } from '../../types';
 import { FACTIONS, INITIAL_HERO_ROSTER, LOCATIONS, TROOP_TEMPLATES } from '../data';
+import { buildGarrisonTroops } from './garrisonHelpers';
 
 export const STAY_PARTY_LOCATION_TYPES: Location['type'][] = ['CITY', 'CASTLE', 'ROACH_NEST', 'IMPOSTER_PORTAL'];
 
@@ -362,6 +363,8 @@ export function buildRandomizedHeroes(): Hero[] {
   });
 }
 
+const getTroopTemplateForInit = (id: string) => TROOP_TEMPLATES[id];
+
 export const buildInitialWorld = () => {
   const seeded = seedStayParties(LOCATIONS);
   const withLords = ensureLocationLords(seeded);
@@ -371,5 +374,10 @@ export const buildInitialWorld = () => {
     if (loc.factionId) return { ...loc, claimFactionId: loc.factionId };
     return loc;
   });
-  return { locations: syncedLocations, lords };
+  const withGarrison = syncedLocations.map(loc => {
+    if ((loc.garrison ?? []).length > 0) return loc;
+    const garrison = buildGarrisonTroops(loc, getTroopTemplateForInit);
+    return garrison.length > 0 ? { ...loc, garrison } : loc;
+  });
+  return { locations: withGarrison, lords };
 };

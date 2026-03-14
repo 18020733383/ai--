@@ -10,6 +10,7 @@ type MapScreenProps = {
   player: PlayerState;
   isObserverMode?: boolean;
   observerTargets?: Array<{ locationId: string; types: string[] }>;
+  observerCurrentAction?: { locationId: string; locationName: string; actionType: string; factionName: string } | null;
   onLocationSelect?: (location: Location) => void;
   workState: WorkState | null;
   miningState: MiningState | null;
@@ -40,6 +41,7 @@ export const MapScreen = ({
   player,
   isObserverMode,
   observerTargets,
+  observerCurrentAction,
   onLocationSelect,
   workState,
   miningState,
@@ -103,6 +105,7 @@ export const MapScreen = ({
       player={player}
       isObserverMode={isObserverMode}
       observerTargets={observerTargets}
+      observerCurrentAction={observerCurrentAction}
       onLocationSelect={onLocationSelect}
       workState={workState}
       miningState={miningState}

@@ -3,7 +3,7 @@ import { Hammer, History, Scroll, Shield } from 'lucide-react';
 import { BattleResult, FactionSpecialization, Location, SiegeEngineType, WorldBattleReport } from '../types';
 import { Button } from '../components/Button';
 import { WorldNewspaperIssue } from '../services/geminiService';
-import { saveNewspaper } from '../features/observer-mode/ui/ObserverNewspaperModal';
+import { saveNewspaper } from '../features/observer-mode/utils/newspaperStorage';
 
 type WorldBoardViewProps = {
   currentLocation: Location | null;

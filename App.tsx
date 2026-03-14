@@ -34,6 +34,7 @@ import { RelationsView } from './features/relations';
 import { parseObserverTargets } from './features/observer-mode/utils/parseTargets';
 import { ObserverNavBar } from './features/observer-mode/ui/ObserverNavBar';
 import { ObserverLocationModal } from './features/observer-mode/ui/ObserverLocationModal';
+import { ObserverNewspaperModal } from './features/observer-mode/ui/ObserverNewspaperModal';
 import { TroopArchiveView } from './views/TroopArchiveView';
 import { PartyView } from './views/PartyView';
 import { AsylumView } from './views/AsylumView';
@@ -215,6 +216,7 @@ export default function App() {
   const [isMapListOpen, setIsMapListOpen] = useState(false);
   const [observerTargets, setObserverTargets] = useState<Array<{ locationId: string; types: string[] }>>([]);
   const [observerLocationModal, setObserverLocationModal] = useState<Location | null>(null);
+  const [observerCurrentAction, setObserverCurrentAction] = useState<{ locationId: string; locationName: string; actionType: string; factionName: string } | null>(null);
   const [isObserverNewspaperOpen, setIsObserverNewspaperOpen] = useState(false);
   const [isObserverRelationsOpen, setIsObserverRelationsOpen] = useState(false);
   const [mapListQuery, setMapListQuery] = useState('');
@@ -1700,17 +1702,12 @@ export default function App() {
     setTargetPosition({ x: targetX, y: targetY });
   };
 
-  const focusLocationOnMap = (location: Location) => {
-    setIsMapListOpen(false);
-    setView('MAP');
-
-    const desiredZoom = 1.4;
+  const focusCameraOnLocation = (location: Location, desiredZoom = 1.4) => {
     zoomAnchorRef.current = null;
     zoomRef.current = desiredZoom;
     targetZoomRef.current = desiredZoom;
     setZoom(desiredZoom);
     setTargetZoom(desiredZoom);
-
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const el = mapRef.current;
@@ -1727,6 +1724,12 @@ export default function App() {
         setCamera(nextCamera);
       });
     });
+  };
+
+  const focusLocationOnMap = (location: Location) => {
+    setIsMapListOpen(false);
+    setView('MAP');
+    focusCameraOnLocation(location);
   };
 
   // Modified to accept arrivalPos explicitly to avoid stale state closure issues
@@ -7657,6 +7660,7 @@ export default function App() {
           setHoveredLocation,
           isObserverMode: view === 'OBSERVER_MODE',
           observerTargets: view === 'OBSERVER_MODE' ? observerTargets : undefined,
+          observerCurrentAction: view === 'OBSERVER_MODE' ? observerCurrentAction : undefined,
           onLocationSelect: view === 'OBSERVER_MODE' ? setObserverLocationModal : undefined,
           setPlayer,
           setWorkState,
@@ -7836,7 +7840,25 @@ export default function App() {
           onBack: () => setView('MAIN_MENU'),
           buildAIConfig,
           locations,
-          onTargetsChange: (queue) => setObserverTargets(parseObserverTargets(queue, locations))
+          onTargetsChange: (queue) => setObserverTargets(parseObserverTargets(queue, locations)),
+          onFocusLocation: (loc) => focusCameraOnLocation(loc),
+          onApplyAction: (locationId, actionType) => {
+            const loc = locations.find(l => l.id === locationId);
+            if (!loc) return;
+            if (actionType === 'recruit') {
+              const garrison = (loc.garrison ?? []).length > 0 ? [...loc.garrison] : buildGarrisonTroops(loc);
+              const recruitId = loc.type === 'CITY' || loc.type === 'CASTLE' ? 'footman' : 'militia';
+              const template = getTroopTemplate(recruitId);
+              if (template) {
+                const addCount = Math.floor(15 + Math.random() * 25);
+                const existing = garrison.find(t => t.id === recruitId);
+                if (existing) existing.count += addCount;
+                else garrison.push({ ...template, count: addCount, xp: 0 });
+                updateLocationState({ ...loc, garrison });
+              }
+            }
+          },
+          onCurrentActionChange: setObserverCurrentAction
         }}
       />
 
@@ -7857,6 +7879,14 @@ export default function App() {
       )}
       {isObserverRelationsOpen && (
         <div className="fixed inset-0 z-50 bg-stone-950 overflow-auto">
+          <div className="sticky top-0 z-10 bg-stone-900 border-b border-stone-700 px-4 py-2 flex justify-end">
+            <button
+              onClick={() => setIsObserverRelationsOpen(false)}
+              className="text-stone-400 hover:text-white px-3 py-1 rounded"
+            >
+              关闭
+            </button>
+          </div>
           <div className="max-w-6xl mx-auto p-4">
             <RelationsView
               locations={locations}
