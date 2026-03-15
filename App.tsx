@@ -3722,6 +3722,9 @@ export default function App() {
           if (!currentLoc) return lord;
           let nextLord = { ...lord };
           if (nextLord.travelDaysLeft && nextLord.targetLocationId) {
+            if (nextLord.currentLocationId === nextLord.targetLocationId) {
+              nextLord = { ...nextLord, travelDaysLeft: undefined, targetLocationId: undefined, travelPurpose: undefined };
+            } else {
             const remaining = nextLord.travelDaysLeft - 1;
             if (remaining <= 0) {
               const purpose = nextLord.travelPurpose;
@@ -3740,6 +3743,7 @@ export default function App() {
               }
             } else {
               return { ...nextLord, travelDaysLeft: remaining };
+            }
             }
           }
           const partyCount = getTroopCount(nextLord.partyTroops);
@@ -3886,7 +3890,7 @@ export default function App() {
       const lordCamps = lordTravelers.map(lord => {
         const from = findLocationById(lord.currentLocationId) ?? findLocationById(lord.fiefId);
         const target = findLocationById(lord.targetLocationId ?? '');
-        if (!from || !target) return null;
+        if (!from || !target || from.id === target.id) return null;
         const existing = lordCampMap.get(lord.id);
         const totalDays = existing?.camp?.totalDays ?? Math.max(1, Math.floor(lord.travelDaysLeft ?? 1));
         const daysLeft = Math.max(1, Math.floor(lord.travelDaysLeft ?? 1));
