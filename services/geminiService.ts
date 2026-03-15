@@ -2685,11 +2685,13 @@ export const decideFactionAction = async (
   factionId: string,
   factionName: string,
   openAI?: OpenAIConfig,
-  locationNames?: string[]
+  locationNames?: string[],
+  lordDialogueContext?: string
 ): Promise<{ action: string; actions?: string[] }> => {
   const namesHint = locationNames?.length ? `\n可用据点名（必须原样使用）：${locationNames.join('、')}` : '';
   const factionNamesHint = FACTIONS.filter(f => f.id !== factionId).map(f => f.shortName).join('、');
-  const prompt = `你是卡拉迪亚大陆的势力「${factionName}」的决策者。请基于当前局势，输出今日决策。
+  const lordHint = lordDialogueContext ? `\n【领主意见】该势力据点领主近日表示：\n${lordDialogueContext}\n请适当参考领主意见做出决策。` : '';
+  const prompt = `你是卡拉迪亚大陆的势力「${factionName}」的决策者。请基于当前局势，输出今日决策。${lordHint}
 必须返回 JSON，格式：{"action":"主要方向（20字内）","actions":["具体行为1","具体行为2",...]}
 - action: 战略大方向，如「巩固边境，优先发展弓骑兵」
 - actions: 具体执行动作列表，每条如「在XX据点扩军N人」「派兵侦察XX据点」「进攻XX据点」「与XX势力外交」，必须使用上述据点名（原样）${namesHint}
@@ -2823,4 +2825,91 @@ export const runDiplomacyMeeting = async (
     : 'IMPROVE_RELATIONS';
   const relationDelta = decision === 'IMPROVE_RELATIONS' ? Math.max(5, Math.min(25, Math.floor(Number(parsed?.relationDelta ?? 15)))) : undefined;
   return { dialogue, decision, relationDelta };
+};
+
+/** 观海模式：与据点领主对话 */
+export const chatWithLordForObserver = async (
+  lord: { id: string; name: string; title: string; focus?: string },
+  locationName: string,
+  factionName: string,
+  dialogue: Array<{ role: 'player' | 'lord'; text: string }>,
+  openAI?: OpenAIConfig
+): Promise<string> => {
+  const focusLabel = lord.focus === 'WAR' ? '扩张' : lord.focus === 'TRADE' ? '贸易' : lord.focus === 'DEFENSE' ? '防御' : lord.focus === 'DIPLOMACY' ? '外交' : '';
+  const prompt = `你是卡拉迪亚大陆${locationName}的领主「${lord.title}${lord.name}」，隶属势力「${factionName}」。${focusLabel ? `你倾向${focusLabel}。` : ''}
+观海者与你对话。请以领主身份回复，简短自然（1-3句），可表达对局势的看法、倾向或建议。
+${dialogue.length > 0 ? `近期对话：\n${dialogue.slice(-6).map(d => `${d.role === 'player' ? '观海者' : '领主'}: ${d.text}`).join('\n')}\n\n请回复：` : '请先打招呼或简述当前想法：'}
+只返回回复内容，不要 JSON 或其他格式。`;
+
+  const openAIConfig = requireOpenAIConfig(openAI);
+  if (openAIConfig) {
+    const url = `${normalizeProviderBaseUrl(openAIConfig.provider, openAIConfig.baseUrl)}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAIConfig.apiKey}` },
+      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+        model: openAIConfig.model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.8
+      }))
+    });
+    if (!res.ok) throw new Error(`API 请求失败 (${res.status})`);
+    const json = await res.json().catch(() => null) as any;
+    const text = json?.choices?.[0]?.message?.content;
+    return String(text ?? '').trim() || '领主点了点头。';
+  }
+  const response = await getGeminiClient(openAI?.provider === 'GEMINI' ? openAI?.apiKey : undefined).models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: prompt,
+    config: { temperature: 0.8 },
+  });
+  return String(response.text ?? '').trim() || '领主点了点头。';
+};
+
+/** 观海模式：围攻结算，AI 判定进攻方或防守方获胜 */
+export const resolveSiegeOutcome = async (
+  attackerName: string,
+  attackerTroops: Troop[],
+  defenderName: string,
+  defenderTroops: Troop[],
+  locationName: string,
+  openAI?: OpenAIConfig
+): Promise<'attacker' | 'defender'> => {
+  const attCount = attackerTroops.reduce((s, t) => s + (t.count ?? 0), 0);
+  const defCount = defenderTroops.reduce((s, t) => s + (t.count ?? 0), 0);
+  const prompt = `围攻 ${locationName}：进攻方「${attackerName}」${attCount}人 vs 防守方「${defenderName}」${defCount}人。
+请判定围攻结果，返回 JSON：{"outcome":"attacker"|"defender"}
+- attacker: 进攻方攻陷据点
+- defender: 防守方击退进攻
+只返回 JSON。`;
+
+  const openAIConfig = requireOpenAIConfig(openAI);
+  if (openAIConfig) {
+    const url = `${normalizeProviderBaseUrl(openAIConfig.provider, openAIConfig.baseUrl)}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAIConfig.apiKey}` },
+      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+        model: openAIConfig.model,
+        messages: [{ role: 'system', content: prompt }, { role: 'user', content: '只返回 JSON。' }],
+        temperature: 0.5,
+        jsonOnly: true
+      }))
+    });
+    if (!res.ok) throw new Error(`API 请求失败 (${res.status})`);
+    const json = await res.json().catch(() => null) as any;
+    const text = json?.choices?.[0]?.message?.content;
+    if (!text) throw new Error('API 返回为空');
+    const parsed = JSON.parse(text) as { outcome?: string };
+    return parsed?.outcome === 'defender' ? 'defender' : 'attacker';
+  }
+  const response = await getGeminiClient(openAI?.provider === 'GEMINI' ? openAI?.apiKey : undefined).models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: prompt,
+    config: { temperature: 0.5 },
+  });
+  const text = response.text;
+  if (!text) throw new Error('AI 返回为空');
+  const parsed = JSON.parse(String(text)) as { outcome?: string };
+  return parsed?.outcome === 'defender' ? 'defender' : 'attacker';
 };

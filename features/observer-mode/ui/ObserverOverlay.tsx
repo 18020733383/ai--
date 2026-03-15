@@ -34,6 +34,7 @@ export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], worldDi
   const [state, setState] = React.useState<ObserverModeState>(() => buildInitialObserverState());
   const [isRunning, setIsRunning] = React.useState(false);
   const [errorMsg, setErrorMsg] = React.useState<string | null>(null);
+  const [autoContinue, setAutoContinue] = React.useState(false);
 
   React.useEffect(() => {
     onTargetsChange?.(state.queue);
@@ -124,7 +125,11 @@ export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], worldDi
     onAdvanceDay?.();
     setState(s => ({ ...s, phase: 'day_end', activeIndex: -1, currentDay: s.currentDay + 1 }));
     setIsRunning(false);
-  }, [state.queue, buildAIConfig, locations, onFocusLocation, onApplyAction, onCurrentActionChange, onAdvanceDay]);
+    if (autoContinue) {
+      await sleep(2000);
+      runDecisionLoop();
+    }
+  }, [state.queue, buildAIConfig, locations, onFocusLocation, onApplyAction, onApplyDiplomacy, onCurrentActionChange, onAdvanceDay, autoContinue]);
 
   const resetQueue = React.useCallback(() => {
     setState(buildInitialObserverState());
@@ -156,6 +161,16 @@ export const ObserverOverlay = ({ onBack, buildAIConfig, locations = [], worldDi
             重置
           </Button>
         </div>
+        <label className="flex items-center gap-2 text-xs text-stone-400 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={autoContinue}
+            onChange={e => setAutoContinue(e.target.checked)}
+            disabled={isRunning}
+            className="rounded accent-amber-500"
+          />
+          <span>自动继续下一回合</span>
+        </label>
         <div className="text-xs text-stone-500">
           第 {state.currentDay} 天 · {state.phase === 'idle' ? '准备中' : state.phase === 'running' ? '运行中' : '本日完成'}
         </div>

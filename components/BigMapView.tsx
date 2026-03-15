@@ -1,6 +1,6 @@
 import React from 'react';
 import { AlertTriangle, Brain, Coffee, Coins, Eye, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, Shield, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Users, Utensils, Zap } from 'lucide-react';
-import { Location, MineralId, MineralPurity, PlayerState } from '../types';
+import { Location, MineralId, MineralPurity, PlayerState, WorldDiplomacyState } from '../types';
 import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../game/data';
 import { Button } from './Button';
 
@@ -53,6 +53,7 @@ type BigMapViewProps = {
   isObserverMode?: boolean;
   observerTargets?: Array<{ locationId: string; types: string[] }>;
   observerCurrentAction?: { locationId: string; locationName: string; actionType: string; factionName: string } | null;
+  worldDiplomacy?: WorldDiplomacyState;
   onLocationSelect?: (location: Location) => void;
   workState: WorkState | null;
   miningState: MiningState | null;
@@ -82,6 +83,7 @@ export const BigMapView = ({
   isObserverMode,
   observerTargets,
   observerCurrentAction,
+  worldDiplomacy,
   onLocationSelect,
   workState,
   miningState,
@@ -172,6 +174,39 @@ export const BigMapView = ({
     }];
   });
   const factionRaidTargets = new Set(factionRaidPaths.map(path => path.targetId));
+
+  // 结盟箭头：当天外交改善关系的势力对，绿色箭头 + 🤝（每天最多一个）
+  const alliancePath = (() => {
+    if (!worldDiplomacy?.events?.length) return null;
+    const todayEvent = worldDiplomacy.events.find(
+      e => e.kind === 'FACTION_FACTION' && (e.delta ?? 0) > 0 && e.day === player.day
+    );
+    if (!todayEvent?.aId || !todayEvent?.bId) return null;
+    const locA = locations.filter(l => l.factionId === todayEvent.aId && (l.type === 'CITY' || l.type === 'CASTLE' || l.type === 'VILLAGE'))[0];
+    const locB = locations.filter(l => l.factionId === todayEvent.bId && (l.type === 'CITY' || l.type === 'CASTLE' || l.type === 'VILLAGE'))[0];
+    if (!locA || !locB) return null;
+    const startX = locA.coordinates.x * unitSize;
+    const startY = locA.coordinates.y * unitSize;
+    const endX = locB.coordinates.x * unitSize;
+    const endY = locB.coordinates.y * unitSize;
+    const dx = endX - startX;
+    const dy = endY - startY;
+    const length = Math.max(40, Math.hypot(dx, dy));
+    const nx = length > 0 ? -dy / length : 0;
+    const ny = length > 0 ? dx / length : 0;
+    const curveOffset = Math.max(24 * zoom, Math.min(80 * zoom, length * 0.2));
+    return {
+      id: `alliance_${todayEvent.aId}_${todayEvent.bId}`,
+      startX, startY, endX, endY,
+      controlX: (startX + endX) / 2 + nx * curveOffset,
+      controlY: (startY + endY) / 2 + ny * curveOffset,
+      headSize: Math.max(8, 12 * zoom),
+      lineWidth: Math.max(2.5, 3.5 * zoom),
+      dashLength: Math.max(6, 10 * zoom),
+      dashGap: Math.max(5, 7 * zoom),
+      color: '#22c55e'
+    };
+  })();
 
   return (
     <div
@@ -503,6 +538,49 @@ export const BigMapView = ({
                 markerEnd={`url(#faction-raid-arrowhead-${path.id})`}
               />
             ))}
+          </svg>
+        )}
+        {alliancePath && (
+          <svg
+            className="absolute left-0 top-0 pointer-events-none z-20"
+            width={MAP_WIDTH * unitSize}
+            height={MAP_HEIGHT * unitSize}
+            viewBox={`0 0 ${MAP_WIDTH * unitSize} ${MAP_HEIGHT * unitSize}`}
+          >
+            <defs>
+              <marker
+                id="alliance-arrowhead"
+                markerWidth={alliancePath.headSize}
+                markerHeight={alliancePath.headSize}
+                refX={alliancePath.headSize * 0.4}
+                refY={alliancePath.headSize * 0.4}
+                orient="auto"
+                markerUnits="userSpaceOnUse"
+              >
+                <path d={`M0,0 L${alliancePath.headSize},${alliancePath.headSize * 0.4} L0,${alliancePath.headSize * 0.8}`} fill={alliancePath.color} />
+              </marker>
+            </defs>
+            <path
+              d={`M ${alliancePath.startX} ${alliancePath.startY} Q ${alliancePath.controlX} ${alliancePath.controlY} ${alliancePath.endX} ${alliancePath.endY}`}
+              fill="none"
+              stroke={alliancePath.color}
+              strokeWidth={alliancePath.lineWidth}
+              strokeLinecap="round"
+              strokeDasharray={`${alliancePath.dashLength} ${alliancePath.dashGap}`}
+              style={{ animation: 'faction-raid-dash 1.2s linear infinite', filter: 'drop-shadow(0 0 6px rgba(34,197,94,0.6))' }}
+              markerEnd="url(#alliance-arrowhead)"
+            />
+            <text
+              x={(alliancePath.startX + alliancePath.endX) / 2}
+              y={(alliancePath.startY + alliancePath.endY) / 2}
+              textAnchor="middle"
+              dominantBaseline="middle"
+              fontSize={20 * zoom}
+              fill="#22c55e"
+              style={{ filter: 'drop-shadow(0 0 4px rgba(0,0,0,0.8))' }}
+            >
+              🤝
+            </text>
           </svg>
         )}
         {locations.map(loc => (

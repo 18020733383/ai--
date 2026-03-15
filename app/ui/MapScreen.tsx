@@ -1,6 +1,6 @@
 import React from 'react';
 import { BigMapView } from '../../features/world-map';
-import { Location, PlayerState } from '../../types';
+import { Location, PlayerState, WorldDiplomacyState } from '../../types';
 import type { HabitatStayState, HideoutStayState, MiningState, RoachLureState, WorkState } from '../../features/town/model/types';
 
 type MapScreenProps = {
@@ -11,6 +11,7 @@ type MapScreenProps = {
   isObserverMode?: boolean;
   observerTargets?: Array<{ locationId: string; types: string[] }>;
   observerCurrentAction?: { locationId: string; locationName: string; actionType: string; factionName: string } | null;
+  worldDiplomacy?: WorldDiplomacyState;
   onLocationSelect?: (location: Location) => void;
   workState: WorkState | null;
   miningState: MiningState | null;
@@ -42,6 +43,7 @@ export const MapScreen = ({
   isObserverMode,
   observerTargets,
   observerCurrentAction,
+  worldDiplomacy,
   onLocationSelect,
   workState,
   miningState,
@@ -106,6 +108,7 @@ export const MapScreen = ({
       isObserverMode={isObserverMode}
       observerTargets={observerTargets}
       observerCurrentAction={observerCurrentAction}
+      worldDiplomacy={worldDiplomacy}
       onLocationSelect={onLocationSelect}
       workState={workState}
       miningState={miningState}

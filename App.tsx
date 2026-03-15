@@ -33,7 +33,7 @@ import { WorldBoardScreen } from './features/world-board';
 import { RelationsView } from './features/relations';
 import { parseObserverTargets } from './features/observer-mode/utils/parseTargets';
 import { ObserverNavBar } from './features/observer-mode/ui/ObserverNavBar';
-import { ObserverLocationModal } from './features/observer-mode/ui/ObserverLocationModal';
+import { ObserverLocationModal, ObserverSiegeModal } from './features/observer-mode';
 import { ObserverNewspaperModal } from './features/observer-mode/ui/ObserverNewspaperModal';
 import { TroopArchiveView } from './views/TroopArchiveView';
 import { PartyView } from './views/PartyView';
@@ -216,6 +216,16 @@ export default function App() {
   const [isMapListOpen, setIsMapListOpen] = useState(false);
   const [observerTargets, setObserverTargets] = useState<Array<{ locationId: string; types: string[] }>>([]);
   const [observerLocationModal, setObserverLocationModal] = useState<Location | null>(null);
+  const [observerLordDialogue, setObserverLordDialogue] = useState<Record<string, Array<{ role: 'player' | 'lord'; text: string }>>>({});
+  const [observerSiegeModal, setObserverSiegeModal] = useState<{
+    loc: Location;
+    siege: NonNullable<Location['activeSiege']>;
+    attackerName: string;
+    attackerTroops: Troop[];
+    defenderName: string;
+    defenderTroops: Troop[];
+    onResolve: (outcome: 'attacker' | 'defender') => void;
+  } | null>(null);
   const [observerCurrentAction, setObserverCurrentAction] = useState<{ locationId: string; locationName: string; actionType: string; factionName: string } | null>(null);
   const [isObserverNewspaperOpen, setIsObserverNewspaperOpen] = useState(false);
   const [isObserverRelationsOpen, setIsObserverRelationsOpen] = useState(false);
@@ -1758,7 +1768,7 @@ export default function App() {
     return (loc.garrison && loc.garrison.length > 0 ? loc.garrison : buildGarrisonTroops(loc)).map(t => ({ ...t }));
   };
 
-  const processDailyCycle = (location?: Location, rentCost: number = 0, days: number = 1, workIncomePerDay: number = 0, suppressEncounter: boolean = false) => {
+  const processDailyCycle = (location?: Location, rentCost: number = 0, days: number = 1, workIncomePerDay: number = 0, suppressEncounter: boolean = false, options?: { skipSiegeProcessing?: boolean }): Location[] | void => {
     let newLocations = [...locations];
     let nextPlayer = { ...playerRef.current };
     let nextHeroes = heroesRef.current.map(h => ({ ...h }));
@@ -2539,6 +2549,7 @@ export default function App() {
       // Process Active Sieges (Daily Auto-Resolve)
       newLocations = newLocations.map(loc => {
          if (!loc.activeSiege) return loc;
+         if (options?.skipSiegeProcessing) return loc;
          
          const siege = { ...loc.activeSiege };
          const defenderFactionId = loc.factionId;
@@ -4081,6 +4092,7 @@ export default function App() {
 
       enterLocation(finalLocation);
     }
+    if (options?.skipSiegeProcessing) return syncedLocations;
   };
 
   const updateLocationState = (updatedLocation: Location) => {
@@ -7645,6 +7657,7 @@ export default function App() {
           camera,
           locations,
           player,
+          worldDiplomacy,
           workState,
           miningState,
           roachLureState,
@@ -7922,7 +7935,63 @@ export default function App() {
               }
             }
           },
-          onAdvanceDay: () => processDailyCycle(undefined, 0, 1, 0, true),
+          onAdvanceDay: async () => {
+            const locs = processDailyCycle(undefined, 0, 1, 0, true, { skipSiegeProcessing: true });
+            if (!locs || locs.length === 0) return;
+            const sieges = locs.filter(l => l.activeSiege);
+            for (const loc of sieges) {
+              const siege = loc.activeSiege!;
+              const defenderTroops = [
+                ...(loc.garrison ?? []),
+                ...(loc.stayParties ?? []).flatMap(p => p.troops),
+                ...(loc.stationedArmies ?? []).flatMap(a => a.troops)
+              ].filter(t => (t.count ?? 0) > 0);
+              const attackerTroops = (siege.troops ?? []).filter(t => (t.count ?? 0) > 0);
+              const attackerName = siege.attackerName ?? '进攻方';
+              const defenderName = FACTIONS.find(f => f.id === loc.factionId)?.name ?? loc.name;
+              const outcome = await new Promise<'attacker' | 'defender'>(r => {
+                setObserverSiegeModal({
+                  loc,
+                  siege,
+                  attackerName,
+                  attackerTroops,
+                  defenderName,
+                  defenderTroops,
+                  onResolve: (o) => { r(o); setObserverSiegeModal(null); }
+                });
+              });
+              const defenderFactionId = loc.factionId;
+              const attackerFactionId = siege.attackerFactionId;
+              const claimFactionId = loc.claimFactionId ?? loc.factionId;
+              const nextDay = player.day + 1;
+              if (outcome === 'attacker') {
+                setLocations(prev => prev.map(l => l.id !== loc.id ? l : {
+                  ...l,
+                  owner: attackerFactionId ? undefined : 'ENEMY',
+                  factionId: attackerFactionId ?? undefined,
+                  claimFactionId: attackerFactionId ?? claimFactionId,
+                  garrison: siege.troops ?? [],
+                  stayParties: [],
+                  stationedArmies: [],
+                  activeSiege: undefined,
+                  isUnderSiege: false,
+                  sackedUntilDay: undefined,
+                  lastRefreshDay: nextDay,
+                  volunteers: [],
+                  mercenaries: [],
+                  lord: undefined
+                }));
+                if (attackerFactionId && defenderFactionId && attackerFactionId !== defenderFactionId) {
+                  setWorldDiplomacy(prev => {
+                    let next = applyWorldDiplomacyDelta(prev, { kind: 'FACTION_FACTION', aId: attackerFactionId, bId: defenderFactionId, delta: -18, text: `占领 ${loc.name}`, day: nextDay });
+                    return applyWorldDiplomacyDelta(next, { kind: 'FACTION_FACTION', aId: defenderFactionId, bId: attackerFactionId, delta: -26, text: `失去 ${loc.name}`, day: nextDay });
+                  });
+                }
+              } else {
+                setLocations(prev => prev.map(l => l.id !== loc.id ? l : { ...l, activeSiege: undefined, isUnderSiege: false }));
+              }
+            }
+          },
           onApplyDiplomacy: (factionAId, factionBId, decision, dialogue, relationDelta) => {
             const factionA = FACTIONS.find(f => f.id === factionAId);
             const factionB = FACTIONS.find(f => f.id === factionBId);
@@ -8027,6 +8096,33 @@ export default function App() {
           onClose={() => setObserverLocationModal(null)}
           getTroopName={(id) => getTroopTemplate(id)?.name ?? id}
           getLocationName={(id) => locations.find(l => l.id === id)?.name ?? id}
+          lordDialogue={observerLordDialogue[observerLocationModal.id] ?? []}
+          onLordDialogue={(lines) => setObserverLordDialogue(prev => ({ ...prev, [observerLocationModal.id]: lines }))}
+          onChatWithLord={async (locationId, lord, dialogue) => {
+            const { chatWithLordForObserver } = await import('./services/geminiService');
+            const config = buildAIConfigFromSettings();
+            const aiConfig = config ? { baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model, provider: config.provider } : undefined;
+            const loc = locations.find(l => l.id === locationId);
+            const factionName = loc?.factionId ? (FACTIONS.find(f => f.id === loc.factionId)?.name ?? '') : '';
+            return chatWithLordForObserver(
+              { id: lord.id, name: lord.name, title: lord.title, focus: lord.focus },
+              loc?.name ?? '',
+              factionName,
+              dialogue,
+              aiConfig
+            );
+          }}
+        />
+      )}
+      {observerSiegeModal && (
+        <ObserverSiegeModal
+          location={observerSiegeModal.loc}
+          attackerName={observerSiegeModal.attackerName}
+          attackerTroops={observerSiegeModal.attackerTroops}
+          defenderName={observerSiegeModal.defenderName}
+          defenderTroops={observerSiegeModal.defenderTroops}
+          onResolve={observerSiegeModal.onResolve}
+          getTroopName={(id) => getTroopTemplate(id)?.name ?? id}
         />
       )}
       {isObserverNewspaperOpen && (

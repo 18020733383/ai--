@@ -3,6 +3,8 @@
  */
 export { ObserverModeScreen } from './ui/ObserverModeScreen';
 export { ObserverOverlay } from './ui/ObserverOverlay';
+export { ObserverLocationModal } from './ui/ObserverLocationModal';
+export { ObserverSiegeModal } from './ui/ObserverSiegeModal';
 export { QueueDisplay } from './ui/QueueDisplay';
 export type { ObserverModeState, QueueItem, QueueItemStatus } from './model/types';
 export { buildInitialObserverState, buildInitialQueue } from './model/initialState';
