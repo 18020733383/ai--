@@ -49,48 +49,60 @@ export type MapSeason = 'spring' | 'summer' | 'autumn' | 'winter';
 
 const MAP_SEASON_STYLES: Record<MapSeason, {
   bg: string;
-  patternColor: string;
-  patternOpacity: number;
+  /** 主纹理 SVG data URL（随季节变化：春草地/夏麦田/秋落叶/冬雪地） */
+  patternSvg: string;
+  patternSize: number;
+  /** 次要叠层（增加层次感） */
+  overlaySvg?: string;
+  overlayOpacity?: number;
   mountain: { color: string; opacity: number };
   trees: { color: string; opacity: number };
   snowflake: { color: string; opacity: number };
   sun: { color: string; opacity: number };
 }> = {
   spring: {
-    bg: '#a8c9a0',
-    patternColor: '4a6b3f',
-    patternOpacity: 0.12,
-    mountain: { color: '#6b8c64', opacity: 0.22 },
-    trees: { color: '#4a7c3f', opacity: 0.35 },
-    snowflake: { color: '#94a3b8', opacity: 0.08 },
-    sun: { color: '#fbbf24', opacity: 0.15 }
+    bg: '#7cb86c',
+    patternSvg: "data:image/svg+xml,%3Csvg width='48' height='48' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%233d6b34' fill-opacity='0.2'%3E%3Ccircle cx='8' cy='8' r='2'/%3E%3Ccircle cx='24' cy='16' r='1.5'/%3E%3Ccircle cx='40' cy='8' r='2'/%3E%3Ccircle cx='16' cy='32' r='1.5'/%3E%3Ccircle cx='32' cy='40' r='2'/%3E%3C/g%3E%3C/svg%3E",
+    patternSize: 48,
+    overlaySvg: "data:image/svg+xml,%3Csvg width='96' height='96' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%235a8c4a' fill-opacity='0.08'%3E%3Cellipse cx='20' cy='20' rx='12' ry='6'/%3E%3Cellipse cx='60' cy='50' rx='15' ry='7'/%3E%3Cellipse cx='40' cy='80' rx='10' ry='5'/%3E%3C/g%3E%3C/svg%3E",
+    overlayOpacity: 1,
+    mountain: { color: '#5a7c52', opacity: 0.22 },
+    trees: { color: '#3d7c3d', opacity: 0.4 },
+    snowflake: { color: '#94a3b8', opacity: 0.05 },
+    sun: { color: '#facc15', opacity: 0.18 }
   },
   summer: {
-    bg: '#e6d5a7',
-    patternColor: '5c4d3c',
-    patternOpacity: 0.1,
-    mountain: { color: '#8c7b64', opacity: 0.2 },
-    trees: { color: '#6b8c64', opacity: 0.2 },
-    snowflake: { color: '#a5b4fc', opacity: 0.2 },
-    sun: { color: '#fb923c', opacity: 0.28 }
+    bg: '#8fbc7a',
+    patternSvg: "data:image/svg+xml,%3Csvg width='56' height='56' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%235a7c4a' fill-opacity='0.15'%3E%3Crect x='4' y='4' width='8' height='2' rx='1' transform='rotate(-15 8 5)'/%3E%3Crect x='28' y='12' width='6' height='2' rx='1' transform='rotate(10 31 13)'/%3E%3Crect x='44' y='36' width='8' height='2' rx='1' transform='rotate(-5 48 37)'/%3E%3Crect x='12' y='44' width='6' height='2' rx='1' transform='rotate(8 15 45)'/%3E%3C/g%3E%3C/svg%3E",
+    patternSize: 56,
+    overlaySvg: "data:image/svg+xml,%3Csvg width='80' height='80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%236b9c5a' fill-opacity='0.1'%3E%3Ccircle cx='40' cy='40' r='25'/%3E%3Ccircle cx='70' cy='20' r='15'/%3E%3Ccircle cx='15' cy='65' r='18'/%3E%3C/g%3E%3C/svg%3E",
+    overlayOpacity: 1,
+    mountain: { color: '#6b8c5c', opacity: 0.22 },
+    trees: { color: '#4a7c44', opacity: 0.28 },
+    snowflake: { color: '#93c5fd', opacity: 0.12 },
+    sun: { color: '#f59e0b', opacity: 0.35 }
   },
   autumn: {
-    bg: '#c9a66b',
-    patternColor: '6b5344',
-    patternOpacity: 0.14,
-    mountain: { color: '#7d6b5c', opacity: 0.2 },
-    trees: { color: '#a67c3c', opacity: 0.4 },
-    snowflake: { color: '#94a3b8', opacity: 0.06 },
-    sun: { color: '#ea580c', opacity: 0.18 }
+    bg: '#a67c4a',
+    patternSvg: "data:image/svg+xml,%3Csvg width='52' height='52' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%238b6914' fill-opacity='0.25'%3E%3Cellipse cx='10' cy='12' rx='6' ry='4' transform='rotate(-20 10 12)'/%3E%3Cellipse cx='36' cy='8' rx='5' ry='3' transform='rotate(15 36 8)'/%3E%3Cellipse cx='42' cy='38' rx='7' ry='4' transform='rotate(-10 42 38)'/%3E%3Cellipse cx='14' cy='42' rx='5' ry='3' transform='rotate(5 14 42)'/%3E%3C/g%3E%3C/svg%3E",
+    patternSize: 52,
+    overlaySvg: "data:image/svg+xml,%3Csvg width='88' height='88' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23c4956a' fill-opacity='0.12'%3E%3Cpath d='M20 40 Q35 20 50 40 Q40 55 20 40'/%3E%3Cpath d='M55 60 Q68 45 80 60 Q72 72 55 60'/%3E%3C/g%3E%3C/svg%3E",
+    overlayOpacity: 1,
+    mountain: { color: '#8b7340', opacity: 0.22 },
+    trees: { color: '#b8860b', opacity: 0.45 },
+    snowflake: { color: '#94a3b8', opacity: 0.04 },
+    sun: { color: '#ea580c', opacity: 0.2 }
   },
   winter: {
-    bg: '#a8b8c8',
-    patternColor: '5a6a7a',
-    patternOpacity: 0.12,
-    mountain: { color: '#7d8c9c', opacity: 0.25 },
-    trees: { color: '#5a6a5a', opacity: 0.12 },
-    snowflake: { color: '#e0e7ff', opacity: 0.45 },
-    sun: { color: '#93c5fd', opacity: 0.12 }
+    bg: '#7d96b0',
+    patternSvg: "data:image/svg+xml,%3Csvg width='64' height='64' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23e8eef8' fill-opacity='0.35'%3E%3Ccircle cx='16' cy='16' r='4'/%3E%3Ccircle cx='48' cy='24' r='5'/%3E%3Ccircle cx='24' cy='48' r='3'/%3E%3Ccircle cx='56' cy='52' r='4'/%3E%3Ccircle cx='8' cy='40' r='3'/%3E%3Ccircle cx='40' cy='8' r='2'/%3E%3C/g%3E%3C/svg%3E",
+    patternSize: 64,
+    overlaySvg: "data:image/svg+xml,%3Csvg width='72' height='72' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%2394a8c4' fill-opacity='0.15'%3E%3Cpath d='M36 36 L40 28 L44 36 L36 40 Z'/%3E%3Cpath d='M20 20 L22 16 L24 20 L20 22 Z'/%3E%3Cpath d='M52 48 L54 45 L56 48 L52 50 Z'/%3E%3C/g%3E%3C/svg%3E",
+    overlayOpacity: 1,
+    mountain: { color: '#6b7c8c', opacity: 0.28 },
+    trees: { color: '#4a5a4a', opacity: 0.1 },
+    snowflake: { color: '#e0e7ff', opacity: 0.5 },
+    sun: { color: '#93c5fd', opacity: 0.1 }
   }
 };
 
@@ -292,6 +304,10 @@ export const BigMapView = ({
           0% { transform: translateY(0); }
           100% { transform: translateY(-20px); }
         }
+        @keyframes snow-fall {
+          0% { transform: translateY(-10%) translateX(0); opacity: 0.8; }
+          100% { transform: translateY(110vh) translateX(20px); opacity: 0.3; }
+        }
       `}</style>
       {workState?.isActive && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-auto">
@@ -489,6 +505,25 @@ export const BigMapView = ({
           </div>
         </div>
       )}
+      {season === 'winter' && (
+        <div className="absolute inset-0 pointer-events-none z-[25] overflow-hidden" aria-hidden>
+          {Array.from({ length: 40 }).map((_, i) => (
+            <div
+              key={i}
+              className="absolute rounded-full bg-white/70"
+              style={{
+                left: `${(i * 7 + 13) % 100}%`,
+                top: '-2%',
+                width: `${2 + (i % 3)}px`,
+                height: `${2 + (i % 3)}px`,
+                animation: 'snow-fall 8s linear infinite',
+                animationDelay: `${(i * 0.4) % 6}s`,
+                animationDuration: `${6 + (i % 5)}s`
+              }}
+            />
+          ))}
+        </div>
+      )}
       {hoveredLocation && (
         <div
           className="fixed z-50 bg-stone-900 border border-amber-500/50 px-3 py-2 rounded shadow-2xl pointer-events-none text-left"
@@ -509,9 +544,13 @@ export const BigMapView = ({
           width: `${MAP_WIDTH * unitSize}px`,
           height: `${MAP_HEIGHT * unitSize}px`,
           transform: `translate3d(${Math.round((-(MAP_WIDTH / 2) * unitSize + camera.x) * 10) / 10}px, ${Math.round((-(MAP_HEIGHT / 2) * unitSize + camera.y) * 10) / 10}px, 0)`,
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 30h30v30H30zM0 0h30v30H0z' fill='%23${seasonStyle.patternColor}' fill-opacity='${seasonStyle.patternOpacity}' fill-rule='evenodd'/%3E%3C/svg%3E")`,
           backgroundColor: seasonStyle.bg,
-          backgroundSize: `${60 * zoom}px ${60 * zoom}px`,
+          backgroundImage: seasonStyle.overlaySvg
+            ? `url("${seasonStyle.overlaySvg}"), url("${seasonStyle.patternSvg}")`
+            : `url("${seasonStyle.patternSvg}")`,
+          backgroundSize: seasonStyle.overlaySvg
+            ? `${(seasonStyle.patternSize * 1.5) * zoom}px ${(seasonStyle.patternSize * 1.5) * zoom}px, ${seasonStyle.patternSize * zoom}px ${seasonStyle.patternSize * zoom}px`
+            : `${seasonStyle.patternSize * zoom}px ${seasonStyle.patternSize * zoom}px`,
           willChange: 'transform'
         }}
       >
