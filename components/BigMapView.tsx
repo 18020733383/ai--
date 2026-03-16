@@ -1,8 +1,9 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { AlertTriangle, Brain, Coffee, Coins, Eye, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, Shield, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Users, Utensils, Zap } from 'lucide-react';
 import { Location, MineralId, MineralPurity, PlayerState, WorldDiplomacyState } from '../types';
 import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../game/data';
 import { Button } from './Button';
+import { getTerrainType, type TerrainType } from '../game/utils/terrainNoise';
 
 type WorkState = {
   isActive: boolean;
@@ -47,58 +48,32 @@ type HideoutStayState = {
 
 export type MapSeason = 'spring' | 'summer' | 'autumn' | 'winter';
 
+/** 装饰层（山/树/雪/日）颜色与透明度 */
 const MAP_SEASON_STYLES: Record<MapSeason, {
-  bg: string;
-  /** 主纹理 SVG data URL（随季节变化：春草地/夏麦田/秋落叶/冬雪地） */
-  patternSvg: string;
-  patternSize: number;
-  /** 次要叠层（增加层次感） */
-  overlaySvg?: string;
-  overlayOpacity?: number;
   mountain: { color: string; opacity: number };
   trees: { color: string; opacity: number };
   snowflake: { color: string; opacity: number };
   sun: { color: string; opacity: number };
 }> = {
   spring: {
-    bg: '#7cb86c',
-    patternSvg: "data:image/svg+xml,%3Csvg width='48' height='48' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%233d6b34' fill-opacity='0.2'%3E%3Ccircle cx='8' cy='8' r='2'/%3E%3Ccircle cx='24' cy='16' r='1.5'/%3E%3Ccircle cx='40' cy='8' r='2'/%3E%3Ccircle cx='16' cy='32' r='1.5'/%3E%3Ccircle cx='32' cy='40' r='2'/%3E%3C/g%3E%3C/svg%3E",
-    patternSize: 48,
-    overlaySvg: "data:image/svg+xml,%3Csvg width='96' height='96' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%235a8c4a' fill-opacity='0.08'%3E%3Cellipse cx='20' cy='20' rx='12' ry='6'/%3E%3Cellipse cx='60' cy='50' rx='15' ry='7'/%3E%3Cellipse cx='40' cy='80' rx='10' ry='5'/%3E%3C/g%3E%3C/svg%3E",
-    overlayOpacity: 1,
     mountain: { color: '#5a7c52', opacity: 0.22 },
     trees: { color: '#3d7c3d', opacity: 0.4 },
     snowflake: { color: '#94a3b8', opacity: 0.05 },
     sun: { color: '#facc15', opacity: 0.18 }
   },
   summer: {
-    bg: '#8fbc7a',
-    patternSvg: "data:image/svg+xml,%3Csvg width='56' height='56' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%235a7c4a' fill-opacity='0.15'%3E%3Crect x='4' y='4' width='8' height='2' rx='1' transform='rotate(-15 8 5)'/%3E%3Crect x='28' y='12' width='6' height='2' rx='1' transform='rotate(10 31 13)'/%3E%3Crect x='44' y='36' width='8' height='2' rx='1' transform='rotate(-5 48 37)'/%3E%3Crect x='12' y='44' width='6' height='2' rx='1' transform='rotate(8 15 45)'/%3E%3C/g%3E%3C/svg%3E",
-    patternSize: 56,
-    overlaySvg: "data:image/svg+xml,%3Csvg width='80' height='80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%236b9c5a' fill-opacity='0.1'%3E%3Ccircle cx='40' cy='40' r='25'/%3E%3Ccircle cx='70' cy='20' r='15'/%3E%3Ccircle cx='15' cy='65' r='18'/%3E%3C/g%3E%3C/svg%3E",
-    overlayOpacity: 1,
     mountain: { color: '#6b8c5c', opacity: 0.22 },
     trees: { color: '#4a7c44', opacity: 0.28 },
     snowflake: { color: '#93c5fd', opacity: 0.12 },
     sun: { color: '#f59e0b', opacity: 0.35 }
   },
   autumn: {
-    bg: '#a67c4a',
-    patternSvg: "data:image/svg+xml,%3Csvg width='52' height='52' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%238b6914' fill-opacity='0.25'%3E%3Cellipse cx='10' cy='12' rx='6' ry='4' transform='rotate(-20 10 12)'/%3E%3Cellipse cx='36' cy='8' rx='5' ry='3' transform='rotate(15 36 8)'/%3E%3Cellipse cx='42' cy='38' rx='7' ry='4' transform='rotate(-10 42 38)'/%3E%3Cellipse cx='14' cy='42' rx='5' ry='3' transform='rotate(5 14 42)'/%3E%3C/g%3E%3C/svg%3E",
-    patternSize: 52,
-    overlaySvg: "data:image/svg+xml,%3Csvg width='88' height='88' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23c4956a' fill-opacity='0.12'%3E%3Cpath d='M20 40 Q35 20 50 40 Q40 55 20 40'/%3E%3Cpath d='M55 60 Q68 45 80 60 Q72 72 55 60'/%3E%3C/g%3E%3C/svg%3E",
-    overlayOpacity: 1,
     mountain: { color: '#8b7340', opacity: 0.22 },
     trees: { color: '#b8860b', opacity: 0.45 },
     snowflake: { color: '#94a3b8', opacity: 0.04 },
     sun: { color: '#ea580c', opacity: 0.2 }
   },
   winter: {
-    bg: '#7d96b0',
-    patternSvg: "data:image/svg+xml,%3Csvg width='64' height='64' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%23e8eef8' fill-opacity='0.35'%3E%3Ccircle cx='16' cy='16' r='4'/%3E%3Ccircle cx='48' cy='24' r='5'/%3E%3Ccircle cx='24' cy='48' r='3'/%3E%3Ccircle cx='56' cy='52' r='4'/%3E%3Ccircle cx='8' cy='40' r='3'/%3E%3Ccircle cx='40' cy='8' r='2'/%3E%3C/g%3E%3C/svg%3E",
-    patternSize: 64,
-    overlaySvg: "data:image/svg+xml,%3Csvg width='72' height='72' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='%2394a8c4' fill-opacity='0.15'%3E%3Cpath d='M36 36 L40 28 L44 36 L36 40 Z'/%3E%3Cpath d='M20 20 L22 16 L24 20 L20 22 Z'/%3E%3Cpath d='M52 48 L54 45 L56 48 L52 50 Z'/%3E%3C/g%3E%3C/svg%3E",
-    overlayOpacity: 1,
     mountain: { color: '#6b7c8c', opacity: 0.28 },
     trees: { color: '#4a5a4a', opacity: 0.1 },
     snowflake: { color: '#e0e7ff', opacity: 0.5 },
@@ -112,6 +87,43 @@ const SEASON_LABELS: Record<MapSeason, string> = {
   autumn: '秋',
   winter: '冬'
 };
+
+/** 地形 × 季节 颜色：各地形对季节的响应不同 */
+const TERRAIN_SEASON_COLORS: Record<TerrainType, Record<MapSeason, string>> = {
+  forest: {
+    spring: '#4a7c4a',
+    summer: '#3d6b3d',
+    autumn: '#8b6914',
+    winter: '#5a6a5a'
+  },
+  grassland: {
+    spring: '#6bac5a',
+    summer: '#8fbc7a',
+    autumn: '#a67c4a',
+    winter: '#8b9c7a'
+  },
+  desert: {
+    spring: '#c9b896',
+    summer: '#d4b896',
+    autumn: '#c4a876',
+    winter: '#b8a898'
+  },
+  hills: {
+    spring: '#7a8c6a',
+    summer: '#8a9c7a',
+    autumn: '#9a7c5a',
+    winter: '#7a8a9a'
+  },
+  wetland: {
+    spring: '#5a7c5a',
+    summer: '#4a6b5a',
+    autumn: '#6b5a4a',
+    winter: '#5a6a7a'
+  }
+};
+
+const TERRAIN_GRID_SIZE = 48;
+const TERRAIN_CELL_UNITS = MAP_WIDTH / TERRAIN_GRID_SIZE;
 
 type BigMapViewProps = {
   zoom: number;
@@ -175,6 +187,16 @@ export const BigMapView = ({
   const [season, setSeason] = useState<MapSeason>('summer');
   const unitSize = 10 * zoom;
   const seasonStyle = MAP_SEASON_STYLES[season];
+
+  const terrainGrid = useMemo(() => {
+    const grid: { gx: number; gy: number; terrain: TerrainType }[] = [];
+    for (let gy = 0; gy < TERRAIN_GRID_SIZE; gy++) {
+      for (let gx = 0; gx < TERRAIN_GRID_SIZE; gx++) {
+        grid.push({ gx, gy, terrain: getTerrainType(gx, gy) });
+      }
+    }
+    return grid;
+  }, []);
   const isTimeSkipActive = !!(workState?.isActive || miningState?.isActive || roachLureState?.isActive || habitatStayState?.isActive || hideoutStayState?.isActive);
   const imposterPortal = locations.find(loc => loc.type === 'IMPOSTER_PORTAL');
   const fieldCampCount = locations.filter(loc => loc.type === 'FIELD_CAMP').length;
@@ -544,20 +566,27 @@ export const BigMapView = ({
           width: `${MAP_WIDTH * unitSize}px`,
           height: `${MAP_HEIGHT * unitSize}px`,
           transform: `translate3d(${Math.round((-(MAP_WIDTH / 2) * unitSize + camera.x) * 10) / 10}px, ${Math.round((-(MAP_HEIGHT / 2) * unitSize + camera.y) * 10) / 10}px, 0)`,
-          backgroundColor: seasonStyle.bg,
-          backgroundImage: seasonStyle.overlaySvg
-            ? `url("${seasonStyle.overlaySvg}"), url("${seasonStyle.patternSvg}")`
-            : `url("${seasonStyle.patternSvg}")`,
-          backgroundSize: seasonStyle.overlaySvg
-            ? `${(seasonStyle.patternSize * 1.5) * zoom}px ${(seasonStyle.patternSize * 1.5) * zoom}px, ${seasonStyle.patternSize * zoom}px ${seasonStyle.patternSize * zoom}px`
-            : `${seasonStyle.patternSize * zoom}px ${seasonStyle.patternSize * zoom}px`,
           willChange: 'transform'
         }}
       >
-        <div className="absolute top-[10%] left-[10%]" style={{ opacity: seasonStyle.mountain.opacity }}><Mountain size={400 * zoom} color={seasonStyle.mountain.color} /></div>
-        <div className="absolute top-[80%] left-[20%]" style={{ opacity: seasonStyle.trees.opacity }}><Trees size={300 * zoom} color={seasonStyle.trees.color} /></div>
-        <div className="absolute top-[20%] left-[70%]" style={{ opacity: seasonStyle.snowflake.opacity }}><Snowflake size={350 * zoom} color={seasonStyle.snowflake.color} /></div>
-        <div className="absolute top-[70%] left-[70%]" style={{ opacity: seasonStyle.sun.opacity }}><Sun size={300 * zoom} color={seasonStyle.sun.color} /></div>
+        {/* 网格地形：森林/草原/沙漠/丘陵/湿地，随季节变化 */}
+        <div className="absolute inset-0 z-0" style={{ display: 'grid', gridTemplateColumns: `repeat(${TERRAIN_GRID_SIZE}, 1fr)`, gridTemplateRows: `repeat(${TERRAIN_GRID_SIZE}, 1fr)` }}>
+          {terrainGrid.map(({ gx, gy, terrain }) => (
+            <div
+              key={`${gx}-${gy}`}
+              className="border border-black/[0.04]"
+              style={{
+                backgroundColor: TERRAIN_SEASON_COLORS[terrain][season],
+                transition: 'background-color 1.6s cubic-bezier(0.4, 0, 0.2, 1)'
+              }}
+              aria-hidden
+            />
+          ))}
+        </div>
+        <div className="absolute top-[10%] left-[10%] z-[5]" style={{ opacity: seasonStyle.mountain.opacity }}><Mountain size={400 * zoom} color={seasonStyle.mountain.color} /></div>
+        <div className="absolute top-[80%] left-[20%] z-[5]" style={{ opacity: seasonStyle.trees.opacity }}><Trees size={300 * zoom} color={seasonStyle.trees.color} /></div>
+        <div className="absolute top-[20%] left-[70%] z-[5]" style={{ opacity: seasonStyle.snowflake.opacity }}><Snowflake size={350 * zoom} color={seasonStyle.snowflake.color} /></div>
+        <div className="absolute top-[70%] left-[70%] z-[5]" style={{ opacity: seasonStyle.sun.opacity }}><Sun size={300 * zoom} color={seasonStyle.sun.color} /></div>
         {raidPath && (
           <svg
             className="absolute left-0 top-0 pointer-events-none z-20"
