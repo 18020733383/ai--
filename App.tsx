@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, SoldierInstance, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
 import { BUILDING_OPTIONS, ENCHANTMENT_RECIPES, ENDING_LIST, FACTIONS, getBuildingName, getSiegeEngineName, getEndingContent, getNewCovenantAvailable, HIDEOUT_GOV_EVENTS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, SIEGE_ENGINE_COMBAT_STATS, SIEGE_ENGINE_OPTIONS, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, MINE_CONFIGS, MINERAL_META, MINERAL_PURITY_LABELS, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
+import { attributesFromRatios } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
 import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
@@ -5626,26 +5627,13 @@ export default function App() {
         if (!Number.isFinite(n)) return min;
         return Math.min(max, Math.max(min, Math.round(n)));
       };
-      const buildShaperAttributes = (tier: TroopTier) => {
-        if (tier === TroopTier.TIER_1) return { attack: 30, defense: 20, agility: 25, hp: 30, range: 5, morale: 25 };
-        if (tier === TroopTier.TIER_2) return { attack: 75, defense: 85, agility: 50, hp: 80, range: 5, morale: 75 };
-        if (tier === TroopTier.TIER_3) return { attack: 110, defense: 115, agility: 70, hp: 110, range: 5, morale: 110 };
-        if (tier === TroopTier.TIER_4) return { attack: 155, defense: 150, agility: 90, hp: 145, range: 5, morale: 140 };
-        return { attack: 220, defense: 185, agility: 115, hp: 170, range: 5, morale: 170 };
-      };
-      const capByTier: Record<number, number> = { 1: 85, 2: 115, 3: 150, 4: 185, 5: 225 };
+      /** 仅使用 attributeRatios 按 tier 基线分配属性，禁止 AI 直接返回整数，防止 0 或极端值 */
       const sanitizeShaperAttributes = (tier: TroopTier, raw: any) => {
-        const cap = capByTier[tier] ?? 85;
-        const base = buildShaperAttributes(tier);
-        if (!raw || typeof raw !== 'object') return base;
-        return {
-          attack: clampInt(raw.attack, 0, cap),
-          defense: clampInt(raw.defense, 0, cap),
-          agility: clampInt(raw.agility, 0, cap),
-          hp: clampInt(raw.hp, 0, cap),
-          range: clampInt(raw.range, 0, cap),
-          morale: clampInt(raw.morale, 0, cap)
-        };
+        const ratios = raw?.attributeRatios;
+        if (ratios && typeof ratios === 'object' && ['attack', 'defense', 'agility', 'hp', 'range', 'morale'].some(k => ratios[k] !== undefined)) {
+          return attributesFromRatios(tier, ratios);
+        }
+        return attributesFromRatios(tier, { attack: 1/6, defense: 1/6, agility: 1/6, hp: 1/6, range: 1/6, morale: 1/6 });
       };
       const sanitizeShaperRace = (raw: any) => {
         const val = String(raw ?? '').toUpperCase().trim();
@@ -5666,7 +5654,7 @@ export default function App() {
         const equipmentRaw = Array.isArray((troop as any).equipment) ? (troop as any).equipment : [];
         const equipment = equipmentRaw.map((x: any) => String(x)).filter(Boolean).slice(0, 5);
         const upgradeTargetId = String((troop as any).upgradeTargetId || '').trim();
-        const attributes = sanitizeShaperAttributes(tier, (troop as any).attributes);
+        const attributes = sanitizeShaperAttributes(tier, troop as any);
         return {
           id,
           name,
@@ -5698,7 +5686,7 @@ export default function App() {
           upgradeTargetId: troopTemplate?.upgradeTargetId,
           description: troopTemplate?.description ?? String((troop as any).description || '沉默的造物。').slice(0, 500),
           equipment: troopTemplate?.equipment ?? (Array.isArray((troop as any).equipment) ? (troop as any).equipment : []).map((x: any) => String(x)).filter(Boolean).slice(0, 5),
-          attributes: troopTemplate?.attributes ?? sanitizeShaperAttributes((clampInt((troop as any).tier, 1, 5) as TroopTier), (troop as any).attributes)
+          attributes: troopTemplate?.attributes ?? sanitizeShaperAttributes((clampInt((troop as any).tier, 1, 5) as TroopTier), troop as any)
         } : undefined
       });
     } finally {
@@ -5727,13 +5715,8 @@ export default function App() {
       if (!Number.isFinite(n)) return min;
       return Math.min(max, Math.max(min, Math.round(n)));
     };
-    const fallbackAttributes = (tier: number) => {
-      if (tier === 1) return { attack: 3, defense: 2, agility: 3, hp: 3, range: 2, morale: 4 };
-      if (tier === 2) return { attack: 5, defense: 4, agility: 4, hp: 4, range: 3, morale: 5 };
-      if (tier === 3) return { attack: 7, defense: 6, agility: 5, hp: 6, range: 4, morale: 6 };
-      if (tier === 4) return { attack: 10, defense: 8, agility: 6, hp: 8, range: 5, morale: 7 };
-      return { attack: 13, defense: 10, agility: 7, hp: 10, range: 6, morale: 9 };
-    };
+    const fallbackAttributes = (tier: number) =>
+      attributesFromRatios(tier, { attack: 1/6, defense: 1/6, agility: 1/6, hp: 1/6, range: 1/6, morale: 1/6 });
 
     const tierCaps: Record<number, number> = { 1: 6, 2: 4, 3: 3, 4: 2, 5: 1 };
     const clampTroopsByTier = (list: AltarTroopDraft[]) => {

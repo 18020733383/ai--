@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.1',
+    date: '2026-03-16',
+    items: [
+      '宗教/裁缝自定义兵种属性改为仅用 attributeRatios 归一化分配：AI 不再直接生成整数属性',
+      '按 tier 基线总和（T1:135 ~ T5:865）分配六维，防止 AI 返回 0 或极端值导致失衡',
+      '移除 raw attributes 回退逻辑，统一走 attributesFromRatios'
+    ]
+  },
+  {
     version: '0.13.0',
     date: '2026-03-13',
     items: [
