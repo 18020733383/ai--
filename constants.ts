@@ -1,5 +1,5 @@
 
-import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, Hero, BugSummonRecipe, MineralId, Anomaly } from './types';
+import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, Hero, BugSummonRecipe, MineralId, Anomaly, TroopAttributes } from './types';
 export { MAP_WIDTH, MAP_HEIGHT, WORLD_BOOK } from './game/data/world';
 export { RACE_LABELS, RACE_RELATION_MATRIX } from './game/data/races';
 export { FACTIONS } from './game/data/factions';
@@ -72,6 +72,62 @@ const normalizeAttributes = (attrs: Troop['attributes'], tier: TroopTier) => {
     antiAir
   };
 };
+
+/** 各 Tier 六维属性总和（用于 AI 生成兵种时按比例分配） */
+export const TIER_ATTR_TOTALS: Record<number, number> = {
+  1: 135,   // T1 农民基线
+  2: 370,   // T2 正规兵基线
+  3: 520,   // T3 处刑巨剑基线
+  4: 685,   // T4 游侠基线
+  5: 865
+};
+
+type AttributeRatios = { attack?: number; defense?: number; agility?: number; hp?: number; range?: number; morale?: number };
+
+/**
+ * 从 AI 返回的归一化比例（六维之和为 1）计算实际属性值。
+ * 使用各 tier 基线总和分配，避免 AI 返回离谱数值导致失衡。
+ */
+export function attributesFromRatios(tier: number, ratios: AttributeRatios): TroopAttributes {
+  const total = TIER_ATTR_TOTALS[Math.max(1, Math.min(5, Math.round(tier)))] ?? 520;
+  const keys = ['attack', 'defense', 'agility', 'hp', 'range', 'morale'] as const;
+  let sum = 0;
+  const raw: Record<string, number> = {};
+  for (const k of keys) {
+    const v = Number(ratios[k]);
+    const safe = Number.isFinite(v) && v >= 0 ? v : 1 / 6;
+    raw[k] = safe;
+    sum += safe;
+  }
+  if (sum <= 0) {
+    for (const k of keys) raw[k] = 1 / 6;
+    sum = 1;
+  }
+  const rounded: Record<string, number> = {};
+  let allocated = 0;
+  let maxKey = keys[0];
+  let maxVal = 0;
+  for (const k of keys) {
+    const v = Math.max(1, Math.round((raw[k] / sum) * total));
+    rounded[k] = v;
+    allocated += v;
+    if (v > maxVal) { maxVal = v; maxKey = k; }
+  }
+  const diff = total - allocated;
+  if (diff !== 0) {
+    rounded[maxKey] = Math.max(1, rounded[maxKey] + diff);
+  }
+  return {
+    attack: rounded.attack,
+    defense: rounded.defense,
+    agility: rounded.agility,
+    hp: rounded.hp,
+    range: rounded.range,
+    morale: rounded.morale,
+    air: 0,
+    antiAir: clampByte(Math.round(Math.max(0, rounded.range) * 0.85 + 10))
+  };
+}
 
 const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
   // --- HUMAN TREE ---
