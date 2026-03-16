@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.2',
+    date: '2026-03-16',
+    items: [
+      '地图新增季节系统：春/夏/秋/冬四种背景，地图右上角按钮切换',
+      '各季节有独立底色、纹理与装饰氛围（春绿/夏金/秋棕/冬雪）',
+      '默认夏季，切换后立即生效'
+    ]
+  },
+  {
     version: '0.13.1',
     date: '2026-03-16',
     items: [

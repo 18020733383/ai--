@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { AlertTriangle, Brain, Coffee, Coins, Eye, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, Shield, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Users, Utensils, Zap } from 'lucide-react';
 import { Location, MineralId, MineralPurity, PlayerState, WorldDiplomacyState } from '../types';
 import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../game/data';
@@ -43,6 +43,62 @@ type HideoutStayState = {
   locationId: string;
   totalDays: number;
   daysPassed: number;
+};
+
+export type MapSeason = 'spring' | 'summer' | 'autumn' | 'winter';
+
+const MAP_SEASON_STYLES: Record<MapSeason, {
+  bg: string;
+  patternColor: string;
+  patternOpacity: number;
+  mountain: { color: string; opacity: number };
+  trees: { color: string; opacity: number };
+  snowflake: { color: string; opacity: number };
+  sun: { color: string; opacity: number };
+}> = {
+  spring: {
+    bg: '#a8c9a0',
+    patternColor: '4a6b3f',
+    patternOpacity: 0.12,
+    mountain: { color: '#6b8c64', opacity: 0.22 },
+    trees: { color: '#4a7c3f', opacity: 0.35 },
+    snowflake: { color: '#94a3b8', opacity: 0.08 },
+    sun: { color: '#fbbf24', opacity: 0.15 }
+  },
+  summer: {
+    bg: '#e6d5a7',
+    patternColor: '5c4d3c',
+    patternOpacity: 0.1,
+    mountain: { color: '#8c7b64', opacity: 0.2 },
+    trees: { color: '#6b8c64', opacity: 0.2 },
+    snowflake: { color: '#a5b4fc', opacity: 0.2 },
+    sun: { color: '#fb923c', opacity: 0.28 }
+  },
+  autumn: {
+    bg: '#c9a66b',
+    patternColor: '6b5344',
+    patternOpacity: 0.14,
+    mountain: { color: '#7d6b5c', opacity: 0.2 },
+    trees: { color: '#a67c3c', opacity: 0.4 },
+    snowflake: { color: '#94a3b8', opacity: 0.06 },
+    sun: { color: '#ea580c', opacity: 0.18 }
+  },
+  winter: {
+    bg: '#a8b8c8',
+    patternColor: '5a6a7a',
+    patternOpacity: 0.12,
+    mountain: { color: '#7d8c9c', opacity: 0.25 },
+    trees: { color: '#5a6a5a', opacity: 0.12 },
+    snowflake: { color: '#e0e7ff', opacity: 0.45 },
+    sun: { color: '#93c5fd', opacity: 0.12 }
+  }
+};
+
+const SEASON_LABELS: Record<MapSeason, string> = {
+  spring: '春',
+  summer: '夏',
+  autumn: '秋',
+  winter: '冬'
 };
 
 type BigMapViewProps = {
@@ -104,7 +160,9 @@ export const BigMapView = ({
   moveTo,
   setHoveredLocation
 }: BigMapViewProps) => {
+  const [season, setSeason] = useState<MapSeason>('summer');
   const unitSize = 10 * zoom;
+  const seasonStyle = MAP_SEASON_STYLES[season];
   const isTimeSkipActive = !!(workState?.isActive || miningState?.isActive || roachLureState?.isActive || habitatStayState?.isActive || hideoutStayState?.isActive);
   const imposterPortal = locations.find(loc => loc.type === 'IMPOSTER_PORTAL');
   const fieldCampCount = locations.filter(loc => loc.type === 'FIELD_CAMP').length;
@@ -451,16 +509,16 @@ export const BigMapView = ({
           width: `${MAP_WIDTH * unitSize}px`,
           height: `${MAP_HEIGHT * unitSize}px`,
           transform: `translate3d(${Math.round((-(MAP_WIDTH / 2) * unitSize + camera.x) * 10) / 10}px, ${Math.round((-(MAP_HEIGHT / 2) * unitSize + camera.y) * 10) / 10}px, 0)`,
-          backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cpath d=\'M30 30h30v30H30zM0 0h30v30H0z\' fill=\'%235c4d3c\' fill-opacity=\'0.1\' fill-rule=\'evenodd\'/%3E%3C/svg%3E")',
-          backgroundColor: '#e6d5a7',
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 30h30v30H30zM0 0h30v30H0z' fill='%23${seasonStyle.patternColor}' fill-opacity='${seasonStyle.patternOpacity}' fill-rule='evenodd'/%3E%3C/svg%3E")`,
+          backgroundColor: seasonStyle.bg,
           backgroundSize: `${60 * zoom}px ${60 * zoom}px`,
           willChange: 'transform'
         }}
       >
-        <div className="absolute top-[10%] left-[10%] opacity-20"><Mountain size={400 * zoom} color="#8c7b64" /></div>
-        <div className="absolute top-[80%] left-[20%] opacity-20"><Trees size={300 * zoom} color="#6b8c64" /></div>
-        <div className="absolute top-[20%] left-[70%] opacity-20"><Snowflake size={350 * zoom} color="#a5b4fc" /></div>
-        <div className="absolute top-[70%] left-[70%] opacity-20"><Sun size={300 * zoom} color="#fb923c" /></div>
+        <div className="absolute top-[10%] left-[10%]" style={{ opacity: seasonStyle.mountain.opacity }}><Mountain size={400 * zoom} color={seasonStyle.mountain.color} /></div>
+        <div className="absolute top-[80%] left-[20%]" style={{ opacity: seasonStyle.trees.opacity }}><Trees size={300 * zoom} color={seasonStyle.trees.color} /></div>
+        <div className="absolute top-[20%] left-[70%]" style={{ opacity: seasonStyle.snowflake.opacity }}><Snowflake size={350 * zoom} color={seasonStyle.snowflake.color} /></div>
+        <div className="absolute top-[70%] left-[70%]" style={{ opacity: seasonStyle.sun.opacity }}><Sun size={300 * zoom} color={seasonStyle.sun.color} /></div>
         {raidPath && (
           <svg
             className="absolute left-0 top-0 pointer-events-none z-20"
@@ -723,6 +781,23 @@ export const BigMapView = ({
       </div>
       <div className="absolute top-4 left-4 bg-black/60 text-stone-300 p-2 rounded text-xs select-none pointer-events-none z-30">
         WASD 或 拖拽移动视野 | 滚轮缩放 ({Math.round(zoom * 100)}%) | 行军营地 {fieldCampCount}
+      </div>
+      <div className="absolute top-4 right-4 flex gap-1 z-30 pointer-events-auto">
+        <span className="bg-black/60 text-stone-400 px-2 py-1 rounded-l text-xs self-center">季节</span>
+        {(['spring', 'summer', 'autumn', 'winter'] as MapSeason[]).map((s) => (
+          <button
+            key={s}
+            type="button"
+            onClick={() => setSeason(s)}
+            className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+              season === s
+                ? 'bg-amber-600 text-white'
+                : 'bg-black/60 text-stone-400 hover:bg-stone-700 hover:text-stone-200'
+            }`}
+          >
+            {SEASON_LABELS[s]}
+          </button>
+        ))}
       </div>
     </div>
   );
