@@ -20,6 +20,8 @@ export type TownTab =
   | 'ALTAR_RECRUIT'
   | 'MAGICIAN_LIBRARY'
   | 'RECOMPILER'
+  | 'FOUNDRY'
+  | 'FARM'
   | 'HABITAT'
   | 'HIDEOUT'
   | 'SEAL_HABITAT';

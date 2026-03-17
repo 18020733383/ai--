@@ -46,6 +46,8 @@ export const MapListModal = ({
     LOGIC_PARADOX_MINE: '逻辑悖论深渊',
     HERO_CRYSTAL_MINE: '英雄水晶矿脉',
     BLACKSMITH: '铁匠铺',
+    CRYSTAL_FOUNDRY: '熔炼所',
+    MEGA_FARM: '巨大农田',
     ALTAR: '祭坛',
     MAGICIAN_LIBRARY: '魔法师图书馆',
     SOURCE_RECOMPILER: '源码重塑塔',
@@ -77,6 +79,8 @@ export const MapListModal = ({
     LOGIC_PARADOX_MINE: 'bg-violet-900/25 border-violet-900/50 text-violet-200',
     HERO_CRYSTAL_MINE: 'bg-purple-950/30 border-purple-900/60 text-purple-200',
     BLACKSMITH: 'bg-orange-900/25 border-orange-900/50 text-orange-200',
+    CRYSTAL_FOUNDRY: 'bg-cyan-950/30 border-cyan-900/50 text-cyan-200',
+    MEGA_FARM: 'bg-lime-950/30 border-lime-900/50 text-lime-200',
     ALTAR: 'bg-indigo-950/30 border-indigo-900/50 text-indigo-200',
     MAGICIAN_LIBRARY: 'bg-sky-950/30 border-sky-900/50 text-sky-200',
     SOURCE_RECOMPILER: 'bg-fuchsia-950/30 border-fuchsia-900/60 text-fuchsia-200',
@@ -91,7 +95,13 @@ export const MapListModal = ({
   const query = mapListQuery.trim().toLowerCase();
   const activeType = mapListTypeFilter;
   const getLocationBgStyle = (loc: Location) => {
-    const type = loc.type === 'HIDEOUT' ? 'RUINS' : loc.type;
+    const type = loc.type === 'HIDEOUT'
+      ? 'RUINS'
+      : loc.type === 'CRYSTAL_FOUNDRY'
+        ? 'BLACKSMITH'
+        : loc.type === 'MEGA_FARM'
+          ? 'VILLAGE'
+          : loc.type;
     return {
       backgroundImage: `url("/image/locations/${type}.png"), url("/image/locations/${type}.jpg"), url("/image/locations/${type}.jpeg"), url("/image/${type}.webp"), url("/image/${type}.png"), url("/image/${type}.jpg"), url("/image/${type}.jpeg")`,
     backgroundSize: 'cover',

@@ -10,5 +10,6 @@ export * from './player-state';
 export * from './buildings';
 export * from './locations';
 export * from './minerals';
+export * from './farm';
 export * from './siegeEngines';
 export * from './endings';

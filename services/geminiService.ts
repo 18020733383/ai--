@@ -109,11 +109,14 @@ export const buildBattlePrompt = (
         ? `, 词条: ${t.enchantments.map(e => `【${e.name}】`).join('')}`
         : '';
       const attrs = t.attributes ? `, ${formatAttributes(t.attributes)}` : '';
+      const ammoMeta = (t.ammoPerUnit ?? 0) > 0
+        ? `, 弹药: 每战耗弹${t.ammoPerUnit ?? 0}/人, 当前可用${t.currentAmmo ?? 0}`
+        : '';
       const heavyMeta = t.category === 'HEAVY'
         ? `, 重型单位: HEAVY(heavyTier=${t.heavyTier ?? 1}, ammoPerUnit=${t.ammoPerUnit ?? 0}, role=${t.supportRole ?? 'OTHER'})`
         : '';
       const heavyRule = t.category === 'HEAVY' && t.supportRules ? `, 重型规则: ${String(t.supportRules)}` : '';
-      return `${t.count}x ${t.name} (Tier ${t.tier}, 装备: ${t.equipment.join(', ')}, 描述: ${t.description}${attrs}${enchantments}${heavyMeta}${heavyRule})`;
+      return `${t.count}x ${t.name} (Tier ${t.tier}, 装备: ${t.equipment.join(', ')}, 描述: ${t.description}${attrs}${enchantments}${ammoMeta}${heavyMeta}${heavyRule})`;
     }).join('\n');
 
   const enemyArmyDesc = formatArmy(enemyForce.troops);
@@ -206,6 +209,16 @@ ${attributeMeta.map(attr => {
   const heavyUnitBlock = heavyLines.length > 0
     ? `【重型单位特别说明】\n${heavyLines.join('\n')}`
     : '';
+  const ammoLines = playerTroops
+    .filter(t => (t.ammoPerUnit ?? 0) > 0)
+    .map(t => {
+      const totalNeed = (t.count ?? 0) * (t.ammoPerUnit ?? 0);
+      return `- ${t.name}: 数量${t.count}，理论耗弹${totalNeed}，当前可用${t.currentAmmo ?? 0}`;
+    });
+  const totalAmmoNeed = playerTroops.reduce((sum, t) => sum + (t.count ?? 0) * (t.ammoPerUnit ?? 0), 0);
+  const ammoBlock = ammoLines.length > 0
+    ? `【A方弹药状态】\n- 当前剩余水晶子弹: ${player.bullets ?? 0}\n- 本战理论耗弹: ${totalAmmoNeed}\n- 若弹药不足，请明确表现为火力下降、齐射次数减少、部分单位无法持续开火。\n${ammoLines.join('\n')}`
+    : '';
 
   const outputHint = outputMode === 'ndjson'
     ? `- 使用 NDJSON，每行一个 JSON，不要输出多余文本。
@@ -250,6 +263,7 @@ ${attributeMeta.map(attr => {
     - 血量影响: 单位战斗力与承伤能力按 当前血量/上限 折算（最低 20%）；A方指挥核心当前血量系数 ${Math.round(playerHpRatio * 100)}%；B方指挥核心当前血量系数 ${Math.round(enemyCommanderHpRatio * 100)}%
     
     ${attrCompareBlock}
+    ${ammoBlock}
     ${heavyUnitBlock}
     ${deploymentBlock ? `\n    【战场部署】\n    ${deploymentBlock}\n` : ''}
 

@@ -163,6 +163,12 @@ export const TroopCard: React.FC<TroopCardProps> = ({
         <span>射 {troop.attributes.range}</span>
         <span>士 {troop.attributes.morale}</span>
       </div>
+      {(troop.ammoPerUnit ?? 0) > 0 && (
+        <div className="text-[11px] text-cyan-300">
+          每战耗弹 {troop.ammoPerUnit}/人
+          {typeof troop.currentAmmo === 'number' ? ` · 当前可用 ${troop.currentAmmo}` : ''}
+        </div>
+      )}
 
       {/* Action Area */}
       <div className="mt-auto pt-2 border-t border-stone-800 flex flex-col gap-2">

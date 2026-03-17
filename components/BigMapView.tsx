@@ -122,7 +122,7 @@ const TERRAIN_SEASON_COLORS: Record<TerrainType, Record<MapSeason, string>> = {
   }
 };
 
-const TERRAIN_GRID_SIZE = 48;
+const TERRAIN_GRID_SIZE = 96;
 const TERRAIN_CELL_UNITS = MAP_WIDTH / TERRAIN_GRID_SIZE;
 
 type BigMapViewProps = {
@@ -192,7 +192,9 @@ export const BigMapView = ({
     const grid: { gx: number; gy: number; terrain: TerrainType }[] = [];
     for (let gy = 0; gy < TERRAIN_GRID_SIZE; gy++) {
       for (let gx = 0; gx < TERRAIN_GRID_SIZE; gx++) {
-        grid.push({ gx, gy, terrain: getTerrainType(gx, gy) });
+        const worldX = (gx + 0.5) * TERRAIN_CELL_UNITS;
+        const worldY = (gy + 0.5) * TERRAIN_CELL_UNITS;
+        grid.push({ gx, gy, terrain: getTerrainType(worldX / MAP_WIDTH, worldY / MAP_HEIGHT) });
       }
     }
     return grid;
@@ -753,6 +755,8 @@ export const BigMapView = ({
                   loc.type === 'VOID_BUFFER_MINE' || loc.type === 'MEMORY_OVERFLOW_MINE' || loc.type === 'LOGIC_PARADOX_MINE' ? <Mountain className="text-emerald-400" size={20} /> :
                   loc.type === 'HERO_CRYSTAL_MINE' ? <Mountain className="text-purple-300" size={20} /> :
                   loc.type === 'BLACKSMITH' ? <Hammer className="text-orange-400" size={20} /> :
+                  loc.type === 'CRYSTAL_FOUNDRY' ? <Hammer className="text-cyan-300" size={20} /> :
+                  loc.type === 'MEGA_FARM' ? <Coins className="text-lime-300" size={20} /> :
                   loc.type === 'ALTAR' ? <span className="text-[20px] leading-none">🛐</span> :
                   loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={20} /> :
                   loc.type === 'SOURCE_RECOMPILER' ? <Brain className="text-fuchsia-300" size={20} /> :

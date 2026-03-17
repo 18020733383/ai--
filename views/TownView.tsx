@@ -6,8 +6,8 @@ import { TroopCard } from '../components/TroopCard';
 import { AltarRecruitSection, AltarSection, CoffeeChatSection, ForgeSection, GarrisonSection, HabitatSection, MagicianLibrarySection, MiningSection, RecompilerSection, RecruitSection, RoachLureSection, SealHabitatSection, TavernSection, WorkSection } from '../features/town';
 import { chatWithCampLeader, chatWithLord } from '../services/geminiService';
 import { ANOMALY_CATALOG } from '../constants';
-import { getTroopRace, TROOP_RACE_LABELS } from '../game/data';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, SoldierInstance, StayParty, Troop, TroopTier } from '../types';
+import { CROP_DEFS, CROP_DEF_MAP, createFarmState, FARM_MAX_PLOTS, FARM_PLOT_UNLOCK_COST, getTroopRace, TROOP_RACE_LABELS } from '../game/data';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, CropId, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, SoldierInstance, StayParty, Troop, TroopTier } from '../types';
 import type { AltarRecruitState, HabitatStayState, HideoutStayState, MiningState, RoachLureState, TownTab, WorkState } from '../features/town/model/types';
 
 export type TownViewProps = {
@@ -215,7 +215,15 @@ export const TownView = ({
 
   const getBgImageStyle = () => {
     const type = currentLocation.type;
-    const bgType = type === 'FIELD_CAMP' ? 'BANDIT_CAMP' : type === 'HIDEOUT' ? 'RUINS' : type;
+    const bgType = type === 'FIELD_CAMP'
+      ? 'BANDIT_CAMP'
+      : type === 'HIDEOUT'
+        ? 'RUINS'
+        : type === 'CRYSTAL_FOUNDRY'
+          ? 'BLACKSMITH'
+          : type === 'MEGA_FARM'
+            ? 'VILLAGE'
+            : type;
     return {
       backgroundImage: `url("/image/locations/${bgType}.png"), url("/image/locations/${bgType}.jpg"), url("/image/locations/${bgType}.jpeg"), url("/image/${bgType}.webp"), url("/image/${bgType}.png"), url("/image/${bgType}.jpg"), url("/image/${bgType}.jpeg")`,
       backgroundSize: 'cover',
@@ -241,10 +249,12 @@ export const TownView = ({
   const mineConfig = mineConfigs[currentLocation.type];
   const isMine = !!mineConfig;
   const isBlacksmith = currentLocation.type === 'BLACKSMITH';
+  const isCrystalFoundry = currentLocation.type === 'CRYSTAL_FOUNDRY';
+  const isMegaFarm = currentLocation.type === 'MEGA_FARM';
   const isMagicianLibrary = currentLocation.type === 'MAGICIAN_LIBRARY';
   const isRecompiler = currentLocation.type === 'SOURCE_RECOMPILER';
   const isFieldCamp = currentLocation.type === 'FIELD_CAMP';
-  const isSpecialLocation = isMine || isBlacksmith || isAltar || isMagicianLibrary || isRecompiler || isSealHabitat;
+  const isSpecialLocation = isMine || isBlacksmith || isCrystalFoundry || isMegaFarm || isAltar || isMagicianLibrary || isRecompiler || isSealHabitat;
   const isOwnedByPlayer = currentLocation.owner === 'PLAYER';
   const locationRelationValue = player.locationRelations?.[currentLocation.id] ?? 0;
   const isWantedHere = !isOwnedByPlayer && (isCity || isCastle || isVillage) && locationRelationValue <= -60;
@@ -252,7 +262,7 @@ export const TownView = ({
   const isRestricted = (currentLocation.sackedUntilDay ?? 0) >= player.day || isRestrictedEnemyHeld || !!currentLocation.isUnderSiege;
   const restrictedTabs = ['RECRUIT', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'OWNED', 'MINING', 'FORGE', 'ROACH_LURE', 'LORD', 'MAGICIAN_LIBRARY', 'RECOMPILER'];
   const specialHiddenTabs = ['RECRUIT', 'GARRISON', 'LOCAL_GARRISON', 'DEFENSE', 'SIEGE', 'OWNED', 'TAVERN', 'WORK', 'MEMORIAL', 'COFFEE_CHAT', 'LORD'];
-  const specialFallbackTab = isMine ? 'MINING' : isBlacksmith ? 'FORGE' : isAltar ? 'ALTAR' : isMagicianLibrary ? 'MAGICIAN_LIBRARY' : isRecompiler ? 'RECOMPILER' : isSealHabitat ? 'SEAL_HABITAT' : 'LOCAL_GARRISON';
+  const specialFallbackTab = isMine ? 'MINING' : isBlacksmith ? 'FORGE' : isCrystalFoundry ? 'FOUNDRY' : isMegaFarm ? 'FARM' : isAltar ? 'ALTAR' : isMagicianLibrary ? 'MAGICIAN_LIBRARY' : isRecompiler ? 'RECOMPILER' : isSealHabitat ? 'SEAL_HABITAT' : 'LOCAL_GARRISON';
   const activeTownTab = isHideout
     ? 'HIDEOUT'
     : (isOwnedByPlayer && townTab === 'LORD')
@@ -281,6 +291,7 @@ export const TownView = ({
   const [coffeeGiftHeroId, setCoffeeGiftHeroId] = React.useState<string>(() => giftableHeroes[0]?.id ?? '');
   const [coffeeGiftItemId, setCoffeeGiftItemId] = React.useState<string>(() => coffeeGiftItems[0].id);
   const [coffeeGiftError, setCoffeeGiftError] = React.useState<string | null>(null);
+  const [farmNow, setFarmNow] = React.useState(() => Date.now());
   const tavernLabel = "前往酒馆";
 
   const woundedTroopCount = (player.woundedTroops ?? []).reduce((sum, e) => sum + (e.count ?? 0), 0);
@@ -316,6 +327,11 @@ export const TownView = ({
       setTownTab('ALTAR');
     }
   }, [isAltar, activeTownTab, altarHasTree, setTownTab]);
+  React.useEffect(() => {
+    if (!isMegaFarm || activeTownTab !== 'FARM') return;
+    const timer = window.setInterval(() => setFarmNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [isMegaFarm, activeTownTab]);
   const hasLord = (!!ownerLord || lordsHere.length > 0) && !isOwnedByPlayer;
   const lordFocusLabels: Record<LordFocus, string> = {
     WAR: '扩张',
@@ -433,6 +449,26 @@ export const TownView = ({
     }))
     .filter(item => item.anomaly && item.count > 0)
     .sort((a, b) => (a.anomaly?.tier ?? 0) - (b.anomaly?.tier ?? 0));
+  const BULLET_YIELD_BY_PURITY: Record<MineralPurity, number> = { 1: 1, 2: 2, 3: 4, 4: 7, 5: 11 };
+  const foundryRecruitTemplate = getTroopTemplate('magic_flintlock_recruit');
+  const farmState = isMegaFarm ? (currentLocation.farm ?? createFarmState(2)) : null;
+  const getFoundryBulletYield = (mineralId: MineralId) => {
+    const record = mineralInventory[mineralId] ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    return ([1, 2, 3, 4, 5] as MineralPurity[]).reduce((sum, purity) => sum + (record[purity] ?? 0) * BULLET_YIELD_BY_PURITY[purity], 0);
+  };
+  const getFarmUnlockCost = (unlockedPlots: number) => FARM_PLOT_UNLOCK_COST + Math.max(0, unlockedPlots - 2) * 140;
+  const formatCountdown = (targetMs?: number) => {
+    if (!targetMs) return '未种植';
+    const remaining = Math.max(0, targetMs - farmNow);
+    if (remaining <= 0) return '已成熟';
+    const totalSeconds = Math.ceil(remaining / 1000);
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    if (hours > 0) return `${hours}小时${minutes}分`;
+    if (minutes > 0) return `${minutes}分${seconds}秒`;
+    return `${seconds}秒`;
+  };
   const pushLordLine = (role: 'PLAYER' | 'LORD', text: string) => {
     setLordDialogue(prev => [...prev, { role, text }].slice(-16));
   };
@@ -1027,6 +1063,126 @@ export const TownView = ({
     }
     if (remaining > 0) return null;
     return { ...inventory, [mineralId]: record };
+  };
+
+  const handleSmeltBullets = (mineralId: MineralId) => {
+    if (!isCrystalFoundry) return;
+    const record = mineralInventory[mineralId] ?? { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+    const totalOre = ([1, 2, 3, 4, 5] as MineralPurity[]).reduce((sum, purity) => sum + (record[purity] ?? 0), 0);
+    const bulletGain = getFoundryBulletYield(mineralId);
+    if (totalOre <= 0 || bulletGain <= 0) {
+      addLog('当前矿物不足，无法熔炼。');
+      return;
+    }
+    setPlayer(prev => ({
+      ...prev,
+      bullets: (prev.bullets ?? 0) + bulletGain,
+      minerals: {
+        ...prev.minerals,
+        [mineralId]: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
+      }
+    }));
+    addLog(`熔炼 ${mineralMeta[mineralId].name}，获得 ${bulletGain} 发水晶子弹。`);
+  };
+
+  const handleRecruitFoundryGunner = () => {
+    if (!isCrystalFoundry || !foundryRecruitTemplate) return;
+    if (currentTroopCount >= maxTroops) {
+      addLog('队伍人数已达上限，无法继续招募。');
+      return;
+    }
+    if (player.gold < foundryRecruitTemplate.cost) {
+      addLog('金钱不足，无法雇佣魔法枪新兵。');
+      return;
+    }
+    setPlayer(prev => {
+      const existing = prev.troops.find(t => t.id === foundryRecruitTemplate.id);
+      const nextTroops = existing
+        ? prev.troops.map(t => t.id === foundryRecruitTemplate.id ? { ...t, count: t.count + 1 } : t)
+        : [...prev.troops, { ...foundryRecruitTemplate, count: 1, xp: 0, currentAmmo: foundryRecruitTemplate.ammoPerUnit ?? 0 }];
+      return {
+        ...prev,
+        gold: prev.gold - foundryRecruitTemplate.cost,
+        troops: nextTroops
+      };
+    });
+    addLog(`你在 ${currentLocation.name} 招募了 1 名 ${foundryRecruitTemplate.name}。`);
+  };
+
+  const updateFarmState = (updater: (farm: NonNullable<Location['farm']>) => NonNullable<Location['farm']>) => {
+    if (!isMegaFarm) return;
+    const base = currentLocation.farm ?? createFarmState(2);
+    updateLocationState({ ...currentLocation, farm: updater(base) });
+  };
+
+  const handleUnlockFarmPlot = () => {
+    if (!farmState) return;
+    if (farmState.unlockedPlots >= FARM_MAX_PLOTS) {
+      addLog('所有农田地块都已解锁。');
+      return;
+    }
+    const cost = getFarmUnlockCost(farmState.unlockedPlots);
+    if (player.gold < cost) {
+      addLog('金钱不足，无法购买新地块。');
+      return;
+    }
+    setPlayer(prev => ({ ...prev, gold: prev.gold - cost }));
+    updateFarmState(farm => ({ ...farm, unlockedPlots: Math.min(FARM_MAX_PLOTS, farm.unlockedPlots + 1), lastUpdatedAt: Date.now() }));
+    addLog(`巨大农田新增 1 块可耕地，花费 ${cost} 第纳尔。`);
+  };
+
+  const handlePlantCrop = (slot: number, cropId: CropId) => {
+    if (!farmState) return;
+    const crop = CROP_DEF_MAP[cropId];
+    if (!crop) return;
+    if (slot >= farmState.unlockedPlots) {
+      addLog('该地块尚未解锁。');
+      return;
+    }
+    if (player.gold < crop.seedCost) {
+      addLog('金钱不足，无法购买种子。');
+      return;
+    }
+    const existing = farmState.plots.find(plot => plot.slot === slot);
+    if (existing?.cropId) {
+      addLog('该地块已有作物。');
+      return;
+    }
+    const plantedAt = Date.now();
+    setPlayer(prev => ({ ...prev, gold: prev.gold - crop.seedCost }));
+    updateFarmState(farm => ({
+      ...farm,
+      lastUpdatedAt: plantedAt,
+      plots: Array.from({ length: FARM_MAX_PLOTS }, (_, plotSlot) => {
+        const current = farm.plots.find(plot => plot.slot === plotSlot) ?? { slot: plotSlot };
+        if (plotSlot !== slot) return current;
+        return {
+          slot,
+          cropId,
+          plantedAt,
+          readyAt: plantedAt + crop.growMs,
+          plantedDay: player.day
+        };
+      })
+    }));
+    addLog(`在巨大农田的 ${slot + 1} 号地块播下了 ${crop.name}。`);
+  };
+
+  const handleHarvestCrop = (slot: number) => {
+    if (!farmState) return;
+    const plot = farmState.plots.find(item => item.slot === slot);
+    const crop = plot?.cropId ? CROP_DEF_MAP[plot.cropId] : null;
+    if (!plot || !crop || !plot.readyAt || plot.readyAt > Date.now()) {
+      addLog('作物尚未成熟。');
+      return;
+    }
+    setPlayer(prev => ({ ...prev, gold: prev.gold + crop.yieldGold }));
+    updateFarmState(farm => ({
+      ...farm,
+      lastUpdatedAt: Date.now(),
+      plots: farm.plots.map(item => item.slot === slot ? { slot } : item)
+    }));
+    addLog(`收获 ${crop.name}，获得 ${crop.yieldGold} 第纳尔。`);
   };
 
   const handleForge = () => {
@@ -2281,6 +2437,22 @@ export const TownView = ({
             <Hammer size={16} className="inline mr-2" /> 铁匠铺
           </button>
         )}
+        {isCrystalFoundry && !isRestricted && (
+          <button
+            onClick={() => setTownTab('FOUNDRY')}
+            className={`px-6 py-3 font-serif font-bold text-sm whitespace-nowrap ${activeTownTab === 'FOUNDRY' ? 'bg-stone-800 text-cyan-300 border-t-2 border-cyan-500' : 'text-stone-500 hover:text-stone-300'}`}
+          >
+            <Hammer size={16} className="inline mr-2" /> 熔炼所
+          </button>
+        )}
+        {isMegaFarm && !isRestricted && (
+          <button
+            onClick={() => setTownTab('FARM')}
+            className={`px-6 py-3 font-serif font-bold text-sm whitespace-nowrap ${activeTownTab === 'FARM' ? 'bg-stone-800 text-lime-300 border-t-2 border-lime-500' : 'text-stone-500 hover:text-stone-300'}`}
+          >
+            <Coins size={16} className="inline mr-2" /> 农田
+          </button>
+        )}
         {isMagicianLibrary && !isRestricted && (
           <button
             onClick={() => setTownTab('MAGICIAN_LIBRARY')}
@@ -3504,6 +3676,144 @@ export const TownView = ({
             getMineralAvailable={getMineralAvailable}
             onForge={handleForge}
           />
+        )}
+
+        {isCrystalFoundry && activeTownTab === 'FOUNDRY' && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-stone-900/60 border border-cyan-900/40 rounded p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div>
+                <div className="text-stone-200 font-bold text-lg">晶簧熔炼所</div>
+                <div className="text-sm text-stone-400 mt-1">把现有矿物直接熔成一次性水晶子弹。纯度越高，产弹越多。</div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-stone-500">当前弹药库存</div>
+                <div className="text-3xl font-bold text-cyan-300">{player.bullets ?? 0}</div>
+              </div>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {(Object.keys(mineralMeta) as MineralId[]).map(mineralId => {
+                const yieldCount = getFoundryBulletYield(mineralId);
+                const oreCount = getMineralAvailable(mineralInventory, mineralId, 1);
+                return (
+                  <div key={mineralId} className="bg-stone-900/50 border border-stone-800 rounded p-4 space-y-3">
+                    <div>
+                      <div className="text-stone-200 font-semibold">{mineralMeta[mineralId].name}</div>
+                      <div className="text-xs text-stone-500 mt-1">{mineralMeta[mineralId].effect}</div>
+                    </div>
+                    <div className="flex flex-wrap gap-2 text-xs text-stone-400">
+                      {([1, 2, 3, 4, 5] as MineralPurity[]).map(purity => (
+                        <span key={purity} className="px-2 py-1 rounded border border-stone-800 bg-black/30">
+                          {mineralPurityLabels[purity]} {mineralInventory[mineralId]?.[purity] ?? 0}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="text-sm text-cyan-200">可熔炼 {yieldCount} 发子弹</div>
+                    <Button variant={yieldCount > 0 ? 'primary' : 'secondary'} disabled={oreCount <= 0} onClick={() => handleSmeltBullets(mineralId)}>
+                      {oreCount > 0 ? `熔炼全部（${oreCount} 块）` : '没有可熔炼矿物'}
+                    </Button>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="bg-stone-900/50 border border-stone-800 rounded p-5 space-y-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <div className="text-stone-200 font-bold">特殊招募</div>
+                  <div className="text-xs text-stone-500 mt-1">熔炼所提供一条独立的魔法燧发枪兵升级树。</div>
+                </div>
+                <div className="text-xs text-stone-500">后续升级可在队伍界面进行</div>
+              </div>
+              {foundryRecruitTemplate ? (
+                <TroopCard
+                  troop={{ ...foundryRecruitTemplate, count: 1, xp: 0, currentAmmo: foundryRecruitTemplate.ammoPerUnit ?? 0 }}
+                  price={foundryRecruitTemplate.cost}
+                  actionLabel="招募 1 人"
+                  onAction={handleRecruitFoundryGunner}
+                  disabled={player.gold < foundryRecruitTemplate.cost || currentTroopCount >= maxTroops}
+                />
+              ) : (
+                <div className="text-sm text-stone-500">未找到魔法燧发枪兵模板。</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {isMegaFarm && activeTownTab === 'FARM' && farmState && (
+          <div className="space-y-6 animate-fade-in">
+            <div className="bg-stone-900/60 border border-lime-900/40 rounded p-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div>
+                <div className="text-stone-200 font-bold text-lg">巨大农田</div>
+                <div className="text-sm text-stone-400 mt-1">作物按现实时间成熟。离开游戏后，回来看依旧会继续长。</div>
+              </div>
+              <div className="text-right">
+                <div className="text-xs text-stone-500">已解锁地块</div>
+                <div className="text-3xl font-bold text-lime-300">{farmState.unlockedPlots}/{FARM_MAX_PLOTS}</div>
+              </div>
+            </div>
+            <div className="bg-stone-900/50 border border-stone-800 rounded p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+              <div className="text-sm text-stone-400">
+                下一个地块解锁费用：<span className="text-lime-300 font-semibold">{getFarmUnlockCost(farmState.unlockedPlots)}</span>
+              </div>
+              <Button variant="primary" disabled={farmState.unlockedPlots >= FARM_MAX_PLOTS || player.gold < getFarmUnlockCost(farmState.unlockedPlots)} onClick={handleUnlockFarmPlot}>
+                解锁新地块
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {farmState.plots.map(plot => {
+                const crop = plot.cropId ? CROP_DEF_MAP[plot.cropId] : null;
+                const unlocked = plot.slot < farmState.unlockedPlots;
+                const isReady = !!plot.readyAt && plot.readyAt <= farmNow;
+                return (
+                  <div key={plot.slot} className={`rounded border p-4 ${unlocked ? 'bg-stone-900/50 border-stone-800' : 'bg-stone-950/40 border-stone-900 opacity-70'}`}>
+                    <div className="flex items-center justify-between gap-3 mb-3">
+                      <div className="text-stone-200 font-semibold">{plot.slot + 1} 号地块</div>
+                      <div className="text-xs text-stone-500">{unlocked ? (crop ? formatCountdown(plot.readyAt) : '空闲') : '未解锁'}</div>
+                    </div>
+                    {!unlocked && (
+                      <div className="text-sm text-stone-500">购买更多地块后才能在这里种植。</div>
+                    )}
+                    {unlocked && !crop && (
+                      <div className="space-y-2">
+                        <div className="text-xs text-stone-500">选择要种下的作物</div>
+                        <div className="grid grid-cols-1 gap-2">
+                          {CROP_DEFS.map(def => (
+                            <button
+                              key={`${plot.slot}_${def.id}`}
+                              type="button"
+                              onClick={() => handlePlantCrop(plot.slot, def.id)}
+                              disabled={player.gold < def.seedCost}
+                              className="text-left rounded border border-stone-800 bg-black/25 px-3 py-2 hover:border-lime-700 hover:bg-lime-950/20 disabled:opacity-50 disabled:hover:border-stone-800"
+                            >
+                              <div className="flex items-center justify-between gap-3 text-sm">
+                                <span className="text-stone-200">{def.name}</span>
+                                <span className="text-lime-300">{def.seedCost} 金</span>
+                              </div>
+                              <div className="text-[11px] text-stone-500 mt-1">{def.flavor} 收益 {def.yieldGold}，耗时 {formatCountdown(Date.now() + def.growMs)}</div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    {unlocked && crop && (
+                      <div className="space-y-3">
+                        <div>
+                          <div className="text-stone-200 font-semibold">{crop.name}</div>
+                          <div className="text-xs text-stone-500 mt-1">{crop.flavor}</div>
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-stone-400">成熟收益</span>
+                          <span className="text-lime-300">{crop.yieldGold} 第纳尔</span>
+                        </div>
+                        <Button variant={isReady ? 'primary' : 'secondary'} disabled={!isReady} onClick={() => handleHarvestCrop(plot.slot)}>
+                          {isReady ? '收获' : '等待成熟'}
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {activeTownTab === 'GARRISON' && (

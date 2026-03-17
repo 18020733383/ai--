@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, SoldierInstance, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
-import { BUILDING_OPTIONS, ENCHANTMENT_RECIPES, ENDING_LIST, FACTIONS, getBuildingName, getSiegeEngineName, getEndingContent, getNewCovenantAvailable, HIDEOUT_GOV_EVENTS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, SIEGE_ENGINE_COMBAT_STATS, SIEGE_ENGINE_OPTIONS, TROOP_TEMPLATES, createTroop, MAP_WIDTH, MAP_HEIGHT, MINE_CONFIGS, MINERAL_META, MINERAL_PURITY_LABELS, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
+import { BUILDING_OPTIONS, CROP_DEF_MAP, ENCHANTMENT_RECIPES, ENDING_LIST, FACTIONS, FARM_MAX_PLOTS, getBuildingName, getSiegeEngineName, getEndingContent, getNewCovenantAvailable, HIDEOUT_GOV_EVENTS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, SIEGE_ENGINE_COMBAT_STATS, SIEGE_ENGINE_OPTIONS, TROOP_TEMPLATES, createFarmState, createTroop, MAP_WIDTH, MAP_HEIGHT, MINE_CONFIGS, MINERAL_META, MINERAL_PURITY_LABELS, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
 import { attributesFromRatios } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
@@ -4848,6 +4848,35 @@ export default function App() {
     const currentPlayer = playerRef.current;
     let battleTroops = getBattleTroops(currentPlayer, heroesRef.current);
 
+    const buildAmmoState = (troops: Troop[], bullets: number) => {
+      const ammoUsers = troops.filter(t => (t.ammoPerUnit ?? 0) > 0 && (t.count ?? 0) > 0);
+      const expectedCost = ammoUsers.reduce((sum, troop) => sum + (troop.count ?? 0) * (troop.ammoPerUnit ?? 0), 0);
+      const available = Math.max(0, Math.floor(bullets ?? 0));
+      const effectiveRatio = expectedCost > 0 ? Math.max(0, Math.min(1, available / expectedCost)) : 1;
+      const adjustedTroops = troops.map(troop => {
+        if ((troop.ammoPerUnit ?? 0) <= 0) return troop;
+        const fireRatio = effectiveRatio >= 1 ? 1 : (0.3 + effectiveRatio * 0.7);
+        const neededAmmo = (troop.count ?? 0) * (troop.ammoPerUnit ?? 0);
+        return {
+          ...troop,
+          currentAmmo: Math.floor(neededAmmo * effectiveRatio),
+          attributes: {
+            ...troop.attributes,
+            range: Math.max(0, Math.round((troop.attributes?.range ?? 0) * fireRatio)),
+            attack: Math.max(0, Math.round((troop.attributes?.attack ?? 0) * (0.8 + effectiveRatio * 0.2)))
+          }
+        };
+      });
+      return {
+        expectedCost,
+        actualCost: Math.min(available, expectedCost),
+        effectiveRatio,
+        adjustedTroops
+      };
+    };
+    const ammoState = buildAmmoState(battleTroops, currentPlayer.bullets ?? 0);
+    battleTroops = ammoState.adjustedTroops;
+
     battleTroops = appendDefenseAidTroops(battleTroops, locations, battleInfo);
     const battleLocationText = describeBattleLocationText(battleInfo, locations, currentLocation, currentPlayer);
     setBattleMeta(battleInfo);
@@ -4871,7 +4900,7 @@ export default function App() {
       const { finalResult, localRewards, shouldStep, firstRoundReady } = await runBattlePipeline({
             battleTroops,
             activeEnemy,
-            currentPlayer,
+            currentPlayer: { ...currentPlayer, bullets: currentPlayer.bullets ?? 0 },
         battleInfo,
         battleResolutionMode,
         battleStreamEnabled,
@@ -4929,9 +4958,19 @@ export default function App() {
           buildWoundedEntriesFromSoldiers,
           calculateXpGain
         });
-        setPlayer(settlement.nextPlayer);
+        const ammoNextPlayer = ammoState.actualCost > 0
+          ? { ...settlement.nextPlayer, bullets: Math.max(0, (settlement.nextPlayer.bullets ?? 0) - ammoState.actualCost) }
+          : settlement.nextPlayer;
+        setPlayer(ammoNextPlayer);
         setHeroes(settlement.nextHeroes);
         settlement.logs.forEach(addLog);
+        if (ammoState.expectedCost > 0) {
+          if (ammoState.effectiveRatio >= 1) {
+            addLog(`本战消耗 ${ammoState.actualCost} 发水晶子弹，剩余 ${Math.max(0, (ammoNextPlayer.bullets ?? 0))}。`);
+          } else {
+            addLog(`弹药不足：本战理论需 ${ammoState.expectedCost} 发，实际仅消耗 ${ammoState.actualCost} 发，枪兵火力已按比例下降。`);
+          }
+        }
         if (settlement.garrisonUpdate) {
           const loc = locations.find(l => l.id === settlement.garrisonUpdate!.locationId);
           if (loc) updateLocationState({ ...loc, garrison: settlement.garrisonUpdate!.garrison });
@@ -6542,6 +6581,8 @@ export default function App() {
       };
 
       const save = migrateToSaveGame(parsed);
+      const saveTimestamp = typeof save?.meta?.timestamp === 'number' ? save.meta.timestamp : Date.now();
+      const elapsedMs = Math.max(0, Date.now() - saveTimestamp);
       const nextPlayer = save?.player as PlayerState | undefined;
       const nextLocations = save?.world?.locations as Location[] | undefined;
       const nextHeroes = save?.entities?.heroes as Hero[] | undefined;
@@ -6550,6 +6591,7 @@ export default function App() {
       if (!Array.isArray(nextLocations)) throw new Error('存档缺少据点信息。');
     const normalizedPlayer = {
         ...nextPlayer,
+        bullets: typeof (nextPlayer as any)?.bullets === 'number' ? Math.max(0, Math.floor((nextPlayer as any).bullets)) : 0,
         prestige: typeof (nextPlayer as any)?.prestige === 'number' ? (nextPlayer as any).prestige : 0,
         attributes: {
           ...INITIAL_PLAYER_STATE.attributes,
@@ -6656,6 +6698,32 @@ export default function App() {
         } as Location);
       });
       const locationTemplates = new Map(LOCATIONS.map(loc => [loc.id, loc]));
+      const normalizeFarm = (farm: any) => {
+        const base = createFarmState(typeof farm?.unlockedPlots === 'number' ? farm.unlockedPlots : 2);
+        const unlockedPlots = Math.max(2, Math.min(FARM_MAX_PLOTS, Math.floor(farm?.unlockedPlots ?? base.unlockedPlots)));
+        const rawPlots = Array.isArray(farm?.plots) ? farm.plots : [];
+        return {
+          unlockedPlots,
+          lastUpdatedAt: Date.now(),
+          plots: Array.from({ length: FARM_MAX_PLOTS }, (_, slot) => {
+            const raw = rawPlots.find((plot: any) => Math.floor(plot?.slot ?? -1) === slot);
+            const cropId = raw?.cropId;
+            if (!cropId || !(cropId in CROP_DEF_MAP)) return { slot };
+            const crop = CROP_DEF_MAP[cropId as keyof typeof CROP_DEF_MAP];
+            const plantedAt = typeof raw?.plantedAt === 'number'
+              ? raw.plantedAt
+              : (typeof raw?.readyAt === 'number' ? raw.readyAt - crop.growMs : (Date.now() - Math.min(elapsedMs, crop.growMs)));
+            const readyAt = typeof raw?.readyAt === 'number' ? raw.readyAt : plantedAt + crop.growMs;
+            return {
+              slot,
+              cropId,
+              plantedAt,
+              readyAt,
+              plantedDay: typeof raw?.plantedDay === 'number' ? raw.plantedDay : undefined
+            };
+          })
+        };
+      };
       const normalizeTroops = (troops?: Troop[]) => {
         if (!Array.isArray(troops)) return [];
         return troops
@@ -6688,7 +6756,8 @@ export default function App() {
           mercenaries: Array.isArray(merged.mercenaries) ? merged.mercenaries : (template?.mercenaries ?? []),
           buildings: Array.isArray(merged.buildings) ? merged.buildings : (template?.buildings ?? []),
           garrison: normalizeTroops(merged.garrison),
-          stayParties: normalizeStayParties(merged.stayParties)
+          stayParties: normalizeStayParties(merged.stayParties),
+          farm: merged.type === 'MEGA_FARM' ? normalizeFarm(merged.farm ?? template?.farm) : merged.farm
         };
         if (!next.lord && template?.lord) next.lord = template.lord;
         if (next.id.startsWith('village_goblin_')) {

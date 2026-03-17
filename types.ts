@@ -67,6 +67,7 @@ export interface Troop {
   category?: TroopCategory;
   heavyTier?: number;
   ammoPerUnit?: number;
+  currentAmmo?: number;
   supportRole?: HeavySupportRole;
   supportRules?: string;
   combatDomain?: CombatDomain;
@@ -240,6 +241,7 @@ export type WoundedTroopEntry = {
 
 export interface PlayerState {
   gold: number;
+  bullets: number;
   renown: number;
   prestige: number; // 威望，影响领主态度，可为负
   troops: Troop[];
@@ -573,10 +575,35 @@ export type WorkBoard = {
   contracts: WorkContract[];
 };
 
+export type CropId = 'TURNIP' | 'WHEAT' | 'MOONBERRY' | 'SUNSPIKE';
+
+export type CropDef = {
+  id: CropId;
+  name: string;
+  growMs: number;
+  seedCost: number;
+  yieldGold: number;
+  flavor: string;
+};
+
+export type FarmPlot = {
+  slot: number;
+  cropId?: CropId;
+  plantedAt?: number;
+  readyAt?: number;
+  plantedDay?: number;
+};
+
+export type FarmState = {
+  unlockedPlots: number;
+  plots: FarmPlot[];
+  lastUpdatedAt?: number;
+};
+
 export interface Location {
   id: string;
   name: string;
-  type: 'VILLAGE' | 'CASTLE' | 'CITY' | 'RUINS' | 'TRAINING_GROUNDS' | 'ASYLUM' | 'GRAVEYARD' | 'MARKET' | 'HOTPOT_RESTAURANT' | 'BANDIT_CAMP' | 'MYSTERIOUS_CAVE' | 'COFFEE' | 'IMPOSTER_PORTAL' | 'WORLD_BOARD' | 'VOID_BUFFER_MINE' | 'MEMORY_OVERFLOW_MINE' | 'LOGIC_PARADOX_MINE' | 'HERO_CRYSTAL_MINE' | 'BLACKSMITH' | 'ROACH_NEST' | 'HEAVY_TRIAL_GROUNDS' | 'ALTAR' | 'MAGICIAN_LIBRARY' | 'SOURCE_RECOMPILER' | 'FIELD_CAMP' | 'HABITAT' | 'HIDEOUT' | 'SEAL_HABITAT';
+  type: 'VILLAGE' | 'CASTLE' | 'CITY' | 'RUINS' | 'TRAINING_GROUNDS' | 'ASYLUM' | 'GRAVEYARD' | 'MARKET' | 'HOTPOT_RESTAURANT' | 'BANDIT_CAMP' | 'MYSTERIOUS_CAVE' | 'COFFEE' | 'IMPOSTER_PORTAL' | 'WORLD_BOARD' | 'VOID_BUFFER_MINE' | 'MEMORY_OVERFLOW_MINE' | 'LOGIC_PARADOX_MINE' | 'HERO_CRYSTAL_MINE' | 'BLACKSMITH' | 'ROACH_NEST' | 'HEAVY_TRIAL_GROUNDS' | 'ALTAR' | 'MAGICIAN_LIBRARY' | 'SOURCE_RECOMPILER' | 'FIELD_CAMP' | 'HABITAT' | 'HIDEOUT' | 'SEAL_HABITAT' | 'CRYSTAL_FOUNDRY' | 'MEGA_FARM';
   description: string;
   coordinates: { x: number; y: number };
   terrain: TerrainType;
@@ -624,6 +651,7 @@ export interface Location {
   garrisonBaseLimit?: number;
   localLogs?: LocalLogEntry[];
   hideout?: HideoutState;
+  farm?: FarmState;
   workBoard?: WorkBoard;
   activeSiege?: {
     attackerName: string;

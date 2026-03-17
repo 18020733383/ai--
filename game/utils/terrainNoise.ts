@@ -40,10 +40,12 @@ export const fbm = (x: number, y: number, octaves = 3) => {
 
 export type TerrainType = 'forest' | 'grassland' | 'desert' | 'hills' | 'wetland';
 
-/** 根据噪声值返回地形类型 */
-export const getTerrainType = (gx: number, gy: number): TerrainType => {
-  const n1 = fbm(gx * 0.02, gy * 0.02);
-  const n2 = fbm(gx * 0.05 + 100, gy * 0.05);
+/** 根据 0~1 归一化坐标返回地形类型，这样细化网格时不会整张地图洗牌 */
+export const getTerrainType = (nx: number, ny: number): TerrainType => {
+  const x = Math.max(0, Math.min(1, nx));
+  const y = Math.max(0, Math.min(1, ny));
+  const n1 = fbm(x * 4.5, y * 4.5);
+  const n2 = fbm(x * 10 + 100, y * 10 + 57);
   const combined = n1 * 0.7 + n2 * 0.3;
   if (combined < 0.18) return 'wetland';
   if (combined < 0.42) return 'grassland';

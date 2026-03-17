@@ -120,6 +120,26 @@ export const PartyView = ({
       </div>
 
       <div className="bg-stone-900/60 border border-stone-700 rounded p-3 mb-4">
+        <div className="flex items-center justify-between gap-3 mb-3">
+          <div className="text-xs text-stone-500">队伍弹药</div>
+          <div className="text-sm text-cyan-300 font-semibold">水晶子弹 {player.bullets ?? 0}</div>
+        </div>
+        <div className="flex flex-wrap gap-2 text-xs text-stone-400">
+          {player.troops.filter(troop => (troop.ammoPerUnit ?? 0) > 0).length > 0 ? (
+            player.troops
+              .filter(troop => (troop.ammoPerUnit ?? 0) > 0)
+              .map(troop => (
+                <span key={`ammo_${troop.id}`} className="px-2 py-1 rounded border border-cyan-900/40 bg-cyan-950/20">
+                  {troop.name} 需弹 {troop.count * (troop.ammoPerUnit ?? 0)}
+                </span>
+              ))
+          ) : (
+            <span className="text-stone-500">暂无耗弹兵种</span>
+          )}
+        </div>
+      </div>
+
+      <div className="bg-stone-900/60 border border-stone-700 rounded p-3 mb-4">
         <div className="text-xs text-stone-500 mb-2">队伍种族构成</div>
         {totalTroops === 0 ? (
           <div className="text-sm text-stone-500">暂无部队</div>

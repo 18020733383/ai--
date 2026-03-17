@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Coins, Flag, Map as MapIcon, MessageCircle, Scroll, Settings, User, Users } from 'lucide-react';
+import { Activity, Coins, Crosshair, Flag, Map as MapIcon, MessageCircle, Scroll, Settings, User, Users } from 'lucide-react';
 import { GameView, PlayerState } from '../../types';
 
 type AppHeaderProps = {
@@ -57,6 +57,9 @@ export const AppHeader = ({
       </div>
       <div className="flex items-center gap-1 text-yellow-500" title="第纳尔">
         <Coins size={14} /> <span>{player.gold}</span>
+      </div>
+      <div className="flex items-center gap-1 text-cyan-300" title="水晶子弹">
+        <Crosshair size={14} /> <span>{player.bullets ?? 0}</span>
       </div>
       <button
         onClick={onToggleParty}
