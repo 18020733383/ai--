@@ -202,6 +202,11 @@ export const BigMapView = ({
   const isTimeSkipActive = !!(workState?.isActive || miningState?.isActive || roachLureState?.isActive || habitatStayState?.isActive || hideoutStayState?.isActive);
   const imposterPortal = locations.find(loc => loc.type === 'IMPOSTER_PORTAL');
   const fieldCampCount = locations.filter(loc => loc.type === 'FIELD_CAMP').length;
+  const hoveredFieldCampTarget =
+    hoveredLocation?.type === 'FIELD_CAMP' && hoveredLocation.camp?.targetLocationId
+      ? locations.find(l => l.id === hoveredLocation.camp!.targetLocationId) ?? null
+      : null;
+  const hoveredCampMeta = hoveredLocation?.type === 'FIELD_CAMP' ? hoveredLocation.camp : undefined;
   const factionColors = FACTIONS.reduce<Record<string, string>>((acc, faction) => {
     acc[faction.id] = faction.color;
     return acc;
@@ -550,16 +555,46 @@ export const BigMapView = ({
       )}
       {hoveredLocation && (
         <div
-          className="fixed z-50 bg-stone-900 border border-amber-500/50 px-3 py-2 rounded shadow-2xl pointer-events-none text-left"
+          className="fixed z-50 bg-stone-900 border border-amber-500/50 px-3 py-2 rounded shadow-2xl pointer-events-none text-left max-w-[min(320px,calc(100vw-32px))]"
           style={{
-            left: Math.min(window.innerWidth - 240, mousePos.x + 16),
-            top: Math.min(window.innerHeight - 80, mousePos.y + 16)
+            left: Math.min(window.innerWidth - 280, mousePos.x + 16),
+            top: Math.min(window.innerHeight - (hoveredLocation.type === 'FIELD_CAMP' && hoveredCampMeta ? 140 : 80), mousePos.y + 16)
           }}
         >
           <div className="flex items-center gap-2">
             <span className="font-bold text-amber-400">{hoveredLocation.name}</span>
             <span className="text-[10px] bg-stone-800 px-1.5 py-0.5 rounded text-stone-400 uppercase">{hoveredLocation.type}</span>
           </div>
+          {hoveredLocation.type === 'FIELD_CAMP' && hoveredCampMeta && (
+            <div className="mt-2 space-y-1 text-xs text-stone-300 border-t border-stone-700/80 pt-2">
+              <div>
+                <span className="text-stone-500">目的地：</span>
+                <span className="text-amber-200/90">
+                  {hoveredFieldCampTarget?.name ?? hoveredCampMeta.targetLocationId ?? '未知'}
+                </span>
+              </div>
+              <div>
+                <span className="text-stone-500">预计到达：</span>
+                {(() => {
+                  const left = hoveredCampMeta.daysLeft ?? 0;
+                  const total = hoveredCampMeta.totalDays ?? 0;
+                  if (left <= 0) {
+                    return <span className="text-emerald-400">即将抵达目标</span>;
+                  }
+                  return (
+                    <span className="text-stone-200">
+                      约 <span className="text-amber-400 font-semibold tabular-nums">{left}</span> 天后抵达
+                      {total > 0 ? (
+                        <span className="text-stone-500 ml-1">
+                          （剩余 {left}/{total} 天路程）
+                        </span>
+                      ) : null}
+                    </span>
+                  );
+                })()}
+              </div>
+            </div>
+          )}
         </div>
       )}
       <div
