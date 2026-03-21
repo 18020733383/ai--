@@ -6,7 +6,7 @@ import { attributesFromRatios } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
 import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
-import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildRandomizedHeroes, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, clampValue, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, buildGarrisonTroops as buildGarrisonTroopsImpl, getDefenderTroops as getDefenderTroopsImpl, getLocationRecruitId, getLocationRelationTarget, getPlayerReligion as getPlayerReligionFromLocations, getRecruitmentPool, getRelationScale, getRelationTone, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isPlayerHideoutUnlocked, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, PRESTIGE, computeSealHabitatPrestige, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence, buildTroopsFromSoldiers as buildTroopsFromSoldiersImpl, buildWoundedEntriesFromSoldiers as buildWoundedEntriesFromSoldiersImpl, normalizePlayerSoldiers as normalizePlayerSoldiersImpl, markSoldiersWounded as markSoldiersWoundedImpl, removeSoldiersById as removeSoldiersByIdImpl, buildRaceComposition } from './game/systems';
+import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildRandomizedHeroes, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, clampValue, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, buildGarrisonTroops as buildGarrisonTroopsImpl, getDefenderTroops as getDefenderTroopsImpl, getLocationRecruitId, getLocationRelationTarget, getPlayerReligion as getPlayerReligionFromLocations, getRecruitmentPool, FIELD_CAMP_PARLEY_RELATION_THRESHOLD, getFieldCampPlayerRelationValue, getRelationScale, getRelationTone, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isPlayerHideoutUnlocked, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, PRESTIGE, computeSealHabitatPrestige, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence, buildTroopsFromSoldiers as buildTroopsFromSoldiersImpl, buildWoundedEntriesFromSoldiers as buildWoundedEntriesFromSoldiersImpl, normalizePlayerSoldiers as normalizePlayerSoldiersImpl, markSoldiersWounded as markSoldiersWoundedImpl, removeSoldiersById as removeSoldiersByIdImpl, buildRaceComposition } from './game/systems';
 import { calculatePower } from './game/systems/combatPower';
 import { calculateXpGain } from './game/systems/xpGain';
 import { calculateFleeChance, calculateRearGuardPlan } from './features/battle/model/battleEscape';
@@ -3927,6 +3927,7 @@ export default function App() {
           description: `向 ${target.name} 行军中（剩余 ${daysLeft} 天）`,
           coordinates: existing?.coordinates ?? { ...from.coordinates },
           terrain: from.terrain ?? target.terrain,
+          factionId: lord.factionId,
           owner: 'ENEMY' as const,
           garrison: lord.partyTroops.map(t => ({ ...t })),
           camp: {
@@ -4144,32 +4145,46 @@ export default function App() {
     });
   };
 
+  const beginFieldCampBattle = (location: Location) => {
+    if (location.type !== 'FIELD_CAMP' || location.owner !== 'ENEMY') return;
+    const troops = (location.garrison ?? []).map(t => ({ ...t }));
+    const militiaTemplate = getTroopTemplate('militia');
+    const defenseAddon = militiaTemplate ? [{ ...militiaTemplate, count: 8, xp: 0 }] : [];
+    const withDefense = (location.buildings ?? []).includes('DEFENSE')
+      ? mergeTroops(troops, defenseAddon)
+      : troops;
+    const isCaravan = location.camp?.kind === 'CARAVAN';
+    const caravanMultiplier = Math.max(1, location.camp?.goldMultiplier ?? 3.0);
+    const enemy: EnemyForce = {
+      id: `field_camp_${Date.now()}`,
+      name: location.camp?.attackerName ?? location.name,
+      description: `${location.description}${(location.buildings ?? []).includes('DEFENSE') ? '营地四周有简易木栅与拒马。' : ''}${isCaravan ? ' 车阵里传来钱币与货箱碰撞声。' : ''}`,
+      troops: withDefense,
+      difficulty: isCaravan ? 'CARAVAN' : '一般',
+      lootPotential: isCaravan ? caravanMultiplier : 1.0,
+      terrain: location.terrain,
+      baseTroopId: isCaravan ? 'caravan' : (withDefense[0]?.id ?? 'militia')
+    };
+    addLog(`你接近了 ${location.name}，敌军立即出营迎战！`);
+    setActiveEnemy(enemy);
+    setPendingBattleMeta({ mode: 'FIELD', targetLocationId: location.id, siegeContext: isCaravan ? '商队临时营地：车阵围成半环，护卫在木箱后方布防，适合防守反击。' : '临时营地：有简易木栅、拒马与壕沟，适合防守反击。' });
+    setPendingBattleIsTraining(false);
+    setView('BATTLE');
+  };
+
   const enterLocation = (location: Location) => {
      if (location.type === 'FIELD_CAMP') {
        if (location.owner === 'ENEMY') {
-         const troops = (location.garrison ?? []).map(t => ({ ...t }));
-         const militiaTemplate = getTroopTemplate('militia');
-         const defenseAddon = militiaTemplate ? [{ ...militiaTemplate, count: 8, xp: 0 }] : [];
-         const withDefense = (location.buildings ?? []).includes('DEFENSE')
-           ? mergeTroops(troops, defenseAddon)
-           : troops;
-        const isCaravan = location.camp?.kind === 'CARAVAN';
-        const caravanMultiplier = Math.max(1, location.camp?.goldMultiplier ?? 3.0);
-        const enemy: EnemyForce = {
-           id: `field_camp_${Date.now()}`,
-           name: location.camp?.attackerName ?? location.name,
-          description: `${location.description}${(location.buildings ?? []).includes('DEFENSE') ? '营地四周有简易木栅与拒马。' : ''}${isCaravan ? ' 车阵里传来钱币与货箱碰撞声。' : ''}`,
-           troops: withDefense,
-          difficulty: isCaravan ? 'CARAVAN' : '一般',
-          lootPotential: isCaravan ? caravanMultiplier : 1.0,
-           terrain: location.terrain,
-          baseTroopId: isCaravan ? 'caravan' : (withDefense[0]?.id ?? 'militia')
-         };
-         addLog(`你接近了 ${location.name}，敌军立即出营迎战！`);
-         setActiveEnemy(enemy);
-        setPendingBattleMeta({ mode: 'FIELD', targetLocationId: location.id, siegeContext: isCaravan ? '商队临时营地：车阵围成半环，护卫在木箱后方布防，适合防守反击。' : '临时营地：有简易木栅、拒马与壕沟，适合防守反击。' });
-         setPendingBattleIsTraining(false);
-         setView('BATTLE');
+         const campRel = getFieldCampPlayerRelationValue(playerRef.current, location, locations, lords);
+         const allowParley = campRel !== null && campRel > FIELD_CAMP_PARLEY_RELATION_THRESHOLD;
+         if (allowParley) {
+           setCurrentLocation(location);
+           setTownTab('SIEGE');
+           setView('TOWN');
+           addLog(`你接近了 ${location.name}，对方认出你并非死敌，允许你察看营地并与首领交涉。`);
+           return;
+         }
+         beginFieldCampBattle(location);
          return;
        }
        setCurrentLocation(location);
@@ -7901,7 +7916,12 @@ export default function App() {
               setView('HIDEOUT_INSPECT');
             },
             onUnlockPlayerHideout: unlockPlayerHideout,
-            onConsumeRecompilerSoldier: consumeRecompilerSoldier
+            onConsumeRecompilerSoldier: consumeRecompilerSoldier,
+            onAttackFieldCamp: () => {
+              if (currentLocation?.type === 'FIELD_CAMP' && currentLocation.owner === 'ENEMY') {
+                beginFieldCampBattle(currentLocation);
+              }
+            }
           },
           townDerived: {
             playerRef,

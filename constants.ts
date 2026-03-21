@@ -3808,14 +3808,15 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
   },
   heavy_light_tank: {
     id: 'heavy_light_tank',
-    name: '履带轻坦',
+    name: '符驱木甲战车',
     tier: TroopTier.TIER_4,
     basePower: 155,
     cost: 1800,
     upgradeCost: 0,
     maxXp: 999999,
-    description: '把火炮搬上履带底盘并轻量化（初始弹药 16）。【技能：穿阵冲撞】可在短时间内突破薄弱阵线。',
-    equipment: ['轻量履带', '旋转炮塔', '缓冲装甲'],
+    description:
+      '中世纪木制装甲战车：厚橡木车身外钉铁皮，由法师向底盘「符枢」灌注魔力驱动木轴与铁箍轮前进（非蒸汽、非内燃、绝非现代坦克或汽车造型）。前部可装弩炮/小型投石臂（初始弹药 16）。生图时请表现卡拉迪亚式奇幻与旧纸画风，避免出现旋转炮塔、履带纵列、现代军绿涂装。【技能：穿阵冲撞】短时间内碾穿薄弱阵线。',
+    equipment: ['符纹驱动木轴', '铁箍木轮', '硬化橡木车厢', '弩炮或投石吊臂'],
     attributes: troopAttr(200, 170, 45, 160, 120, 120),
     category: 'HEAVY',
     heavyTier: 5,

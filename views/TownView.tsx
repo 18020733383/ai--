@@ -8,6 +8,7 @@ import { chatWithCampLeader, chatWithLord } from '../services/geminiService';
 import { ANOMALY_CATALOG } from '../constants';
 import { CROP_DEFS, CROP_DEF_MAP, createFarmState, FARM_MAX_PLOTS, FARM_PLOT_UNLOCK_COST, getTroopRace, HIDEOUT_UNLOCK_COST, TROOP_RACE_LABELS } from '../game/data';
 import { isPlayerHideoutUnlocked } from '../game/systems/hideoutAccess';
+import { FIELD_CAMP_PARLEY_RELATION_THRESHOLD, getFieldCampPlayerRelationValue, getRelationTone } from '../game/systems/relationHelpers';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, CropId, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, SoldierInstance, StayParty, Troop, TroopTier } from '../types';
 import type { AltarRecruitState, HabitatStayState, HideoutStayState, MiningState, RoachLureState, TownTab, WorkState } from '../features/town/model/types';
 
@@ -112,6 +113,8 @@ export type TownViewProps = {
   /** 付费开通玩家隐匿点（未解锁前无功能） */
   onUnlockPlayerHideout: () => void;
   onConsumeRecompilerSoldier: (payload: { soldierId: string; troopId: string; goldCost: number; crystalTier: number }) => void;
+  /** 行军营地和平接触后，玩家仍可选择主动开战 */
+  onAttackFieldCamp?: () => void;
 };
 
 export const TownView = ({
@@ -213,7 +216,8 @@ export const TownView = ({
   onPreachInCity,
   onInspectHideout,
   onUnlockPlayerHideout,
-  onConsumeRecompilerSoldier
+  onConsumeRecompilerSoldier,
+  onAttackFieldCamp
 }: TownViewProps) => {
   if (!currentLocation) return null;
 
@@ -258,6 +262,12 @@ export const TownView = ({
   const isMagicianLibrary = currentLocation.type === 'MAGICIAN_LIBRARY';
   const isRecompiler = currentLocation.type === 'SOURCE_RECOMPILER';
   const isFieldCamp = currentLocation.type === 'FIELD_CAMP';
+  const fieldCampDiploRel =
+    isFieldCamp && currentLocation.owner === 'ENEMY'
+      ? getFieldCampPlayerRelationValue(playerRef.current, currentLocation, locations, lords)
+      : null;
+  const fieldCampParleyActive =
+    fieldCampDiploRel !== null && fieldCampDiploRel > FIELD_CAMP_PARLEY_RELATION_THRESHOLD;
   const isSpecialLocation = isMine || isBlacksmith || isCrystalFoundry || isMegaFarm || isAltar || isMagicianLibrary || isRecompiler || isSealHabitat;
   const isOwnedByPlayer = currentLocation.owner === 'PLAYER';
   const hideoutNeedsUnlock = isHideout && isOwnedByPlayer && !isPlayerHideoutUnlocked(currentLocation);
@@ -3856,6 +3866,23 @@ export const TownView = ({
 
         {isFieldCamp && activeTownTab === 'SIEGE' && (
           <div className="space-y-6 animate-fade-in">
+            {fieldCampParleyActive && fieldCampDiploRel !== null && (
+              <div className="bg-emerald-950/30 border border-emerald-800/80 rounded p-4 space-y-3">
+                <div className="text-emerald-100 text-sm leading-relaxed">
+                  你与营地所代表势力的关系尚可（
+                  <span className={getRelationTone(fieldCampDiploRel).color}>{getRelationTone(fieldCampDiploRel).label}</span>
+                  ，{fieldCampDiploRel}），对方未主动动武。可在「首领」与指挥官交涉；若仍要夺取营地或挑起战斗，可点击下方。
+                </div>
+                <Button
+                  variant="danger"
+                  disabled={isBattling}
+                  onClick={() => onAttackFieldCamp?.()}
+                  className="w-full md:w-auto"
+                >
+                  <Swords size={16} className="inline mr-2" /> 主动开战
+                </Button>
+              </div>
+            )}
             <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
               <p className="text-stone-400 text-sm">这是行军中的临时营地，不被视为固定据点。</p>
             </div>

@@ -30,6 +30,7 @@ export const EndingScreen = ({
 
   return (
     <EndingCinematicView
+      endingKey={endingKey}
       title={endingContent.title}
       subtitle={endingContent.subtitle}
       lines={endingContent.lines}

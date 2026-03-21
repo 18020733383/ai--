@@ -1,4 +1,4 @@
-import type { EnemyForce, Location, PlayerState, RaceId } from '../../types';
+import type { EnemyForce, Location, Lord, PlayerState, RaceId } from '../../types';
 import { IMPOSTER_TROOP_IDS } from '../data';
 import { INITIAL_PLAYER_STATE } from '../../constants';
 import { isCastleLikeLocation, isUndeadFortressLocation } from './worldInit';
@@ -134,3 +134,32 @@ export const getRelationValue = (state: PlayerState, targetType: 'FACTION' | 'RA
   }
   return matrix.races[targetId as keyof typeof matrix.races] ?? 0;
 };
+
+/** 与行军营地的外交关系；null 表示无外交通道（保持接近即开战等原逻辑，如商队、裂隙军团） */
+export const getFieldCampPlayerRelationValue = (
+  state: PlayerState,
+  camp: Location,
+  allLocations: Location[],
+  lords: Lord[] = []
+): number | null => {
+  if (camp.type !== 'FIELD_CAMP' || !camp.camp) return null;
+  const kind = camp.camp.kind;
+  if (kind === 'CARAVAN' || kind === 'IMPOSTER_RAID') return null;
+  if (camp.factionId) {
+    return getRelationValue(state, 'FACTION', camp.factionId);
+  }
+  if (kind === 'LORD_MARCH' && camp.camp.lordId) {
+    const lord = lords.find(l => l.id === camp.camp!.lordId);
+    if (lord?.factionId) return getRelationValue(state, 'FACTION', lord.factionId);
+  }
+  const srcId = camp.camp.sourceLocationId;
+  if (srcId && srcId !== 'caravan_route') {
+    const src = allLocations.find(l => l.id === srcId);
+    const race = src ? getLocationRace(src) : null;
+    if (race) return getRelationValue(state, 'RACE', race);
+  }
+  return 0;
+};
+
+/** 关系高于此阈值则接近行军营地时不自动开战，改为进入据点界面交涉 */
+export const FIELD_CAMP_PARLEY_RELATION_THRESHOLD = -30;

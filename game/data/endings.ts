@@ -19,6 +19,27 @@ export const ENDING_LIST = [
   { id: 'ALL_DIED', title: '无名之死', subtitle: '队伍覆灭，传说终止。' }
 ] as const;
 
+/** 结局演出背景图用 id（空则视为全军覆没结局） */
+export function normalizeEndingBackgroundId(endingKey: string | undefined | null): string {
+  const id = String(endingKey ?? '').trim();
+  return id || 'ALL_DIED';
+}
+
+/** 全屏背景用 URL 列表（与据点背景类似，多格式回退） */
+export function getEndingBackgroundImageUrls(endingKey: string | undefined | null): string[] {
+  const id = normalizeEndingBackgroundId(endingKey);
+  const base = `/image/endings/${id}`;
+  return [
+    `${base}.png`,
+    `${base}.jpg`,
+    `${base}.jpeg`,
+    `/image/${id}.webp`,
+    `/image/${id}.png`,
+    `/image/${id}.jpg`,
+    `/image/${id}.jpeg`
+  ];
+}
+
 export function getEndingContent(
   endingKey: string,
   playerDay: number,

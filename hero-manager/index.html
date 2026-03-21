@@ -47,6 +47,7 @@
         <button class="tab active" id="tabHero">英雄</button>
         <button class="tab" id="tabTroop">兵种</button>
         <button class="tab" id="tabLocation">据点</button>
+        <button class="tab" id="tabEnding">结局</button>
       </div>
 
       <div class="card" id="heroPanel">
@@ -433,17 +434,75 @@
         </div>
       </div>
     </div>
+
+    <div class="card" id="endingPanel" style="display: none; margin-top: 16px;">
+      <div class="row">
+        <div>
+          <label>结局</label>
+          <select id="endingSelect"></select>
+        </div>
+        <div>
+          <label>状态</label>
+          <div class="status" id="endingStatus"></div>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>操作</label>
+          <div class="btnRow">
+            <button id="endingGenBtn">生成结局背景</button>
+            <button id="endingSaveBtn" disabled>保存为结局背景</button>
+          </div>
+        </div>
+        <div>
+          <label>画风要求</label>
+          <div class="muted">与据点一致：《骑马与砍杀》风格、旧纸画风、无文字无边缘。游戏内路径 public/image/endings/{结局ID}.png</div>
+        </div>
+      </div>
+      <div class="row">
+        <div style="grid-column: 1 / -1;">
+          <label>结局提示词</label>
+          <textarea id="endingPrompt" rows="6" placeholder="点击生成提示词或自行编辑"></textarea>
+          <div class="btnRow" style="margin-top: 8px;">
+            <button id="endingPromptBtn">生成提示词</button>
+            <button id="endingCopyPromptBtn">复制提示词</button>
+          </div>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>上传结局背景（png/jpg/jpeg）</label>
+          <input id="endingUploadInput" type="file" accept=".png,.jpg,.jpeg" />
+        </div>
+        <div>
+          <label>操作</label>
+          <button id="endingUseUploadBtn" disabled>载入预览</button>
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label>生成预览</label>
+          <img id="endingPreview" style="width: 100%; height: 240px; object-fit: contain; background: #111; border-radius: 10px; border: 1px solid #2a2f3a;" />
+        </div>
+        <div>
+          <label>已有背景</label>
+          <div class="grid" id="endingGrid"></div>
+        </div>
+      </div>
+    </div>
     </div>
 
     <script>
       const tabHero = document.getElementById('tabHero');
       const tabTroop = document.getElementById('tabTroop');
       const tabLocation = document.getElementById('tabLocation');
+      const tabEnding = document.getElementById('tabEnding');
       const heroPanel = document.getElementById('heroPanel');
       const heroGridCard = document.getElementById('heroGridCard');
       const heroStickerCard = document.getElementById('heroStickerCard');
       const troopPanel = document.getElementById('troopPanel');
       const locationPanel = document.getElementById('locationPanel');
+      const endingPanel = document.getElementById('endingPanel');
 
       const heroSelect = document.getElementById('heroSelect');
       const expressionSelect = document.getElementById('expressionSelect');
@@ -481,6 +540,17 @@
       const locationCopyPromptBtn = document.getElementById('locationCopyPromptBtn');
       const locationUploadInput = document.getElementById('locationUploadInput');
       const locationUseUploadBtn = document.getElementById('locationUseUploadBtn');
+      const endingSelect = document.getElementById('endingSelect');
+      const endingStatus = document.getElementById('endingStatus');
+      const endingGenBtn = document.getElementById('endingGenBtn');
+      const endingSaveBtn = document.getElementById('endingSaveBtn');
+      const endingPreview = document.getElementById('endingPreview');
+      const endingGrid = document.getElementById('endingGrid');
+      const endingPrompt = document.getElementById('endingPrompt');
+      const endingPromptBtn = document.getElementById('endingPromptBtn');
+      const endingCopyPromptBtn = document.getElementById('endingCopyPromptBtn');
+      const endingUploadInput = document.getElementById('endingUploadInput');
+      const endingUseUploadBtn = document.getElementById('endingUseUploadBtn');
 
       const troopSelect = document.getElementById('troopSelect');
       const troopFileInput = document.getElementById('troopFileInput');
@@ -556,6 +626,8 @@
       let heroStickerSlices = [];
       let locationPreviewDataUrl = '';
       let locationCatalog = [];
+      let endingPreviewDataUrl = '';
+      let endingCatalog = [];
 
       const loadGenSettings = () => {
         const raw = localStorage.getItem('troopGenSettings');
@@ -605,14 +677,17 @@
         const isHero = key === 'HERO';
         const isTroop = key === 'TROOP';
         const isLocation = key === 'LOCATION';
+        const isEnding = key === 'ENDING';
         tabHero.classList.toggle('active', isHero);
         tabTroop.classList.toggle('active', isTroop);
         tabLocation.classList.toggle('active', isLocation);
+        tabEnding.classList.toggle('active', isEnding);
         heroPanel.style.display = isHero ? '' : 'none';
         heroStickerCard.style.display = isHero ? '' : 'none';
         heroGridCard.style.display = isHero ? '' : 'none';
         troopPanel.style.display = isTroop ? '' : 'none';
         locationPanel.style.display = isLocation ? '' : 'none';
+        endingPanel.style.display = isEnding ? '' : 'none';
       };
 
       const fetchHeroes = async () => {
@@ -807,6 +882,145 @@
           setLocationStatus(e.message || '保存失败');
         } finally {
           locationSaveBtn.disabled = false;
+        }
+      };
+
+      const setEndingStatus = (text) => { endingStatus.textContent = text || ''; };
+      const renderEndingFiles = (files) => {
+        if (!files.length) {
+          endingGrid.innerHTML = '<div class="muted">暂无背景</div>';
+          return;
+        }
+        endingGrid.innerHTML = files.map(name => `
+          <div class="thumb">
+            <img src="/ending-files/${encodeURIComponent(name)}" />
+            <div class="muted">${name}</div>
+          </div>
+        `).join('');
+      };
+
+      const fetchEndings = async () => {
+        const res = await fetch('/api/endings');
+        const data = await res.json();
+        endingCatalog = Array.isArray(data.endings) ? data.endings : [];
+        endingSelect.innerHTML = endingCatalog.map(e => `<option value="${e.id}">${e.title || e.id}（${e.id}）</option>`).join('');
+      };
+
+      const fetchEndingFiles = async () => {
+        const endingId = endingSelect.value;
+        if (!endingId) return;
+        const res = await fetch(`/api/ending/${encodeURIComponent(endingId)}`);
+        const data = await res.json();
+        const files = data.files || [];
+        renderEndingFiles(files);
+        endingPreviewDataUrl = '';
+        endingPreview.removeAttribute('src');
+        endingSaveBtn.disabled = true;
+        setEndingStatus('');
+        endingPrompt.value = '';
+        endingUploadInput.value = '';
+        endingUseUploadBtn.disabled = true;
+      };
+
+      const requestEndingPrompt = async (endingId) => {
+        const body = {
+          baseUrl: txtBaseUrl.value.trim(),
+          apiKey: txtKey.value,
+          model: txtModel.value.trim(),
+          endingId
+        };
+        const res = await fetch('/api/ai/ending-prompt', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || '提示词生成失败');
+        return data;
+      };
+
+      const requestEndingImage = async (prompt) => {
+        const body = {
+          baseUrl: imgBaseUrl.value.trim(),
+          apiKey: imgKey.value,
+          model: imgModel.value.trim(),
+          prompt,
+          size: '1024x1024',
+          endpointMode: imgEndpointMode.value || 'AUTO'
+        };
+        const res = await fetch('/api/ai/ending-image', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || '生图失败');
+        return data;
+      };
+
+      const generateEndingPrompt = async () => {
+        const endingId = endingSelect.value;
+        if (!endingId) return '';
+        if (!txtBaseUrl.value.trim() || !txtModel.value.trim() || !txtKey.value) {
+          setEndingStatus('文本模型配置不完整');
+          return '';
+        }
+        setEndingStatus('生成提示词中...');
+        const promptData = await requestEndingPrompt(endingId);
+        const prompt = String(promptData.imagePrompt || '').trim();
+        if (!prompt) throw new Error('提示词生成为空');
+        endingPrompt.value = prompt;
+        setEndingStatus('提示词已生成');
+        return prompt;
+      };
+
+      const generateEndingBackground = async () => {
+        const endingId = endingSelect.value;
+        if (!endingId) return;
+        if (!imgBaseUrl.value.trim() || !imgModel.value.trim() || !imgKey.value) {
+          setEndingStatus('生图模型配置不完整');
+          return;
+        }
+        saveGenSettings();
+        setEndingStatus('生成中...');
+        endingGenBtn.disabled = true;
+        endingSaveBtn.disabled = true;
+        try {
+          let prompt = String(endingPrompt.value || '').trim();
+          if (!prompt) prompt = await generateEndingPrompt();
+          if (!prompt) throw new Error('提示词生成为空');
+          const imageData = await requestEndingImage(prompt);
+          endingPreviewDataUrl = String(imageData.dataUrl || '').trim();
+          if (!endingPreviewDataUrl) throw new Error('生图返回为空');
+          endingPreview.src = endingPreviewDataUrl;
+          setEndingStatus('生成完成');
+          endingSaveBtn.disabled = false;
+        } catch (e) {
+          setEndingStatus(e.message || '生成失败');
+        } finally {
+          endingGenBtn.disabled = false;
+        }
+      };
+
+      const saveEndingBackground = async () => {
+        const endingId = endingSelect.value;
+        if (!endingId || !endingPreviewDataUrl) return;
+        setEndingStatus('保存中...');
+        endingSaveBtn.disabled = true;
+        try {
+          const res = await fetch('/api/ending/upload', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ endingId, dataUrl: endingPreviewDataUrl })
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data.error || '保存失败');
+          setEndingStatus('保存完成');
+          await fetchEndingFiles();
+        } catch (e) {
+          setEndingStatus(e.message || '保存失败');
+        } finally {
+          endingSaveBtn.disabled = false;
         }
       };
 
@@ -1561,6 +1775,41 @@
       tabHero.addEventListener('click', () => setActiveTab('HERO'));
       tabTroop.addEventListener('click', () => setActiveTab('TROOP'));
       tabLocation.addEventListener('click', () => setActiveTab('LOCATION'));
+      tabEnding.addEventListener('click', () => setActiveTab('ENDING'));
+      endingSelect.addEventListener('change', fetchEndingFiles);
+      endingGenBtn.addEventListener('click', generateEndingBackground);
+      endingPromptBtn.addEventListener('click', async () => {
+        try {
+          await generateEndingPrompt();
+        } catch (e) {
+          setEndingStatus(e.message || '失败');
+        }
+      });
+      endingCopyPromptBtn.addEventListener('click', async () => {
+        const text = String(endingPrompt.value || '').trim();
+        if (!text) return;
+        const ok = await copyText(text);
+        setEndingStatus(ok ? '已复制' : '复制失败');
+      });
+      endingUploadInput.addEventListener('change', () => {
+        endingUseUploadBtn.disabled = !endingUploadInput.files.length;
+      });
+      endingUseUploadBtn.addEventListener('click', async () => {
+        const file = endingUploadInput.files[0];
+        if (!file) return;
+        setEndingStatus('载入中...');
+        try {
+          const dataUrl = await readFileAsDataUrl(file);
+          endingPreviewDataUrl = String(dataUrl || '').trim();
+          if (!endingPreviewDataUrl) throw new Error('图片读取失败');
+          endingPreview.src = endingPreviewDataUrl;
+          endingSaveBtn.disabled = false;
+          setEndingStatus('已载入');
+        } catch (e) {
+          setEndingStatus(e.message || '载入失败');
+        }
+      });
+      endingSaveBtn.addEventListener('click', saveEndingBackground);
       startGenBtn.addEventListener('click', startBatchGenerate);
       stopGenBtn.addEventListener('click', stopBatchGenerate);
       [txtBaseUrl, txtModel, txtKey, imgBaseUrl, imgModel, imgKey, imgEndpointMode, batchSize, sendIntervalMs, retryIntervalMs, maxRetries, imgConcurrency, skipExisting, troopPageSize, troopImageFilter].forEach(el => {
@@ -1602,6 +1851,7 @@
       fetchHeroes().then(fetchHeroFiles);
       fetchTroops().then(fetchTroopFiles);
       fetchLocations().then(fetchLocationFiles);
+      fetchEndings().then(fetchEndingFiles);
       loadGenSettings();
       refreshTroopCache();
     </script>

@@ -82,6 +82,7 @@ export type TownActions = Pick<
   | 'onInspectHideout'
   | 'onUnlockPlayerHideout'
   | 'onConsumeRecompilerSoldier'
+  | 'onAttackFieldCamp'
 >;
 
 export type TownDerived = Pick<

@@ -1,14 +1,17 @@
 import React from 'react';
 import { Button } from '../components/Button';
+import { getEndingBackgroundImageUrls } from '../game/data/endings';
 
 type EndingCinematicViewProps = {
+  /** 用于加载 public/image/endings/{id}.(png|jpg|jpeg)，空则按 ALL_DIED */
+  endingKey?: string;
   title: string;
   subtitle?: string;
   lines: string[];
   onFinish: () => void;
 };
 
-export const EndingCinematicView = ({ title, subtitle, lines, onFinish }: EndingCinematicViewProps) => {
+export const EndingCinematicView = ({ endingKey, title, subtitle, lines, onFinish }: EndingCinematicViewProps) => {
   const safeLines = Array.isArray(lines) ? lines.filter(Boolean) : [];
   const [lineIndex, setLineIndex] = React.useState(0);
   const [charIndex, setCharIndex] = React.useState(0);
@@ -43,10 +46,23 @@ export const EndingCinematicView = ({ title, subtitle, lines, onFinish }: Ending
   const currentLine = safeLines[lineIndex] ?? '';
   const currentText = currentLine.slice(0, Math.min(currentLine.length, charIndex));
 
+  const bgUrls = getEndingBackgroundImageUrls(endingKey);
+  const backgroundImage = bgUrls.map(u => `url("${u}")`).join(', ');
+
   return (
     <div className="fixed inset-0 z-50 bg-black flex items-center justify-center p-4">
       <style>{'@keyframes endingCaret{0%,49%{opacity:1}50%,100%{opacity:0}}'}</style>
-      <div className="absolute inset-0 bg-gradient-to-b from-black via-black to-stone-950 opacity-100 pointer-events-none" />
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+          backgroundRepeat: 'no-repeat'
+        }}
+      />
+      <div className="absolute inset-0 bg-black/75 pointer-events-none" />
+      <div className="absolute inset-0 bg-gradient-to-b from-black/90 via-black/80 to-stone-950/90 opacity-100 pointer-events-none" />
       <div className="absolute inset-0 opacity-30 pointer-events-none" style={{
         backgroundImage: 'radial-gradient(circle at 20% 10%, rgba(244,63,94,0.12), transparent 40%), radial-gradient(circle at 80% 30%, rgba(16,185,129,0.10), transparent 45%), radial-gradient(circle at 60% 80%, rgba(245,158,11,0.10), transparent 45%)'
       }} />

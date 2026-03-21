@@ -9,15 +9,27 @@ const rootDir = path.resolve(__dirname, '..');
 const publicHeroRoot = path.join(rootDir, 'public', 'image', 'characters');
 const publicTroopRoot = path.join(rootDir, 'public', 'image', 'troops');
 const publicLocationRoot = path.join(rootDir, 'public', 'image', 'locations');
+const publicEndingRoot = path.join(rootDir, 'public', 'image', 'endings');
 const legacyHeroRoot = path.join(rootDir, 'image', 'characters');
 const legacyTroopRoot = path.join(rootDir, 'image', 'troops');
 const legacyLocationRoot = path.join(rootDir, 'image', 'locations');
+const legacyEndingRoot = path.join(rootDir, 'image', 'endings');
 const heroRoots = [publicHeroRoot, legacyHeroRoot];
 const troopRoots = [publicTroopRoot, legacyTroopRoot];
 const locationRoots = [publicLocationRoot, legacyLocationRoot];
+const endingRoots = [publicEndingRoot, legacyEndingRoot];
 const heroRoot = publicHeroRoot;
 const troopRoot = publicTroopRoot;
 const locationRoot = publicLocationRoot;
+const endingRoot = publicEndingRoot;
+
+const FALLBACK_ENDING_LIST = [
+  { id: 'PORTAL_CLEARED', title: '封堵裂隙', subtitle: '你夺回了回家的门。' },
+  { id: 'NEW_COVENANT', title: '诸神黄昏后的新约', subtitle: '你把信仰写进废土。' },
+  { id: 'HIDEOUT_FALLEN', title: '隐匿点沦陷', subtitle: '最后退路被异常吞没。' },
+  { id: 'HIDEOUT_REBELLION', title: '叛军夺取隐匿点', subtitle: '内政失衡，地下燃起反旗。' },
+  { id: 'ALL_DIED', title: '无名之死', subtitle: '队伍覆灭，传说终止。' }
+];
 const indexPath = path.join(__dirname, 'index.html');
 
 const sendJson = (res, status, data) => {
@@ -128,6 +140,46 @@ const listLocationFiles = async (locationType) => {
       try {
         const entries = await readdir(root, { withFileTypes: true });
         return entries.filter(e => e.isFile() && e.name.startsWith(`${locationType}.`)).map(e => e.name);
+      } catch {
+        return [];
+      }
+    }));
+    return Array.from(new Set(lists.flat())).sort();
+  } catch {
+    return [];
+  }
+};
+
+const parseEndingsFromGameData = async () => {
+  try {
+    const p = path.join(rootDir, 'game', 'data', 'endings.ts');
+    const text = await readFile(p, 'utf8');
+    const listStart = text.indexOf('export const ENDING_LIST');
+    if (listStart < 0) return FALLBACK_ENDING_LIST;
+    const bracket = text.indexOf('[', listStart);
+    const endBracket = text.indexOf('] as const', bracket);
+    if (bracket < 0 || endBracket < 0 || endBracket <= bracket) return FALLBACK_ENDING_LIST;
+    const block = text.slice(bracket + 1, endBracket);
+    const re = /id:\s*'([^']+)'\s*,\s*title:\s*'([^']*)'\s*,\s*subtitle:\s*'([^']*)'/g;
+    const out = [];
+    let m;
+    while ((m = re.exec(block)) !== null) {
+      out.push({ id: m[1], title: m[2], subtitle: m[3] });
+    }
+    return out.length ? out : FALLBACK_ENDING_LIST;
+  } catch {
+    return FALLBACK_ENDING_LIST;
+  }
+};
+
+const listEndingFiles = async (endingId) => {
+  const id = String(endingId ?? '').trim();
+  if (!id) return [];
+  try {
+    const lists = await Promise.all(endingRoots.map(async (root) => {
+      try {
+        const entries = await readdir(root, { withFileTypes: true });
+        return entries.filter(e => e.isFile() && e.name.startsWith(`${id}.`)).map(e => e.name);
       } catch {
         return [];
       }
@@ -422,6 +474,34 @@ const buildLocationBackgroundPromptForAI = (loc) => {
 - 地形: ${safe.terrain || '未知'}
 - 阵营: ${safe.factionId || '未知'}
 - 描述: ${safe.description || '无'}
+
+请返回 JSON，格式如下：
+{
+  "imagePrompt": "最终 prompt（建议英文，包含风格与限制）"
+}
+  `.trim();
+};
+
+const buildEndingBackgroundPromptForAI = (ending) => {
+  const safe = {
+    id: String(ending?.id ?? '').trim(),
+    title: String(ending?.title ?? '').trim(),
+    subtitle: String(ending?.subtitle ?? '').trim()
+  };
+  return `
+你是一个游戏美术提示词撰写助手。请为“游戏结局全屏背景图”生成最终生图 prompt。
+输出必须是 JSON，不要输出任何额外文字。
+
+要求：
+1) 风格参考《骑马与砍杀》游戏氛围。
+2) 画面带旧纸画风质感，边缘不要描边或相框感。
+3) 无文字、无数字、无 logo、无 UI、无水印。
+4) 画面干净且具有场景层次与情绪氛围，适合作为结局叙事衬底。
+
+结局信息：
+- ID: ${safe.id || '未知'}
+- 标题: ${safe.title || '未知'}
+- 副标题: ${safe.subtitle || '无'}
 
 请返回 JSON，格式如下：
 {
@@ -868,6 +948,13 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { locations, existing: Array.from(new Set(existing)).sort() });
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/endings') {
+    const endings = await parseEndingsFromGameData();
+    const files = await readdir(publicEndingRoot, { withFileTypes: true }).catch(() => []);
+    const existing = files.filter(e => e.isFile()).map(e => e.name.replace(/\.(png|jpg|jpeg)$/i, ''));
+    return sendJson(res, 200, { endings, existing: Array.from(new Set(existing)).sort() });
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/locations/redistribute') {
     try {
       const locations = await parseLocationsFromConstants();
@@ -905,6 +992,15 @@ const server = http.createServer(async (req, res) => {
       const locationId = decodeURIComponent(parts[2]);
       const files = await listLocationFiles(locationId);
       return sendJson(res, 200, { locationId, files });
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/api/ending/')) {
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length === 3 && parts[2]) {
+      const endingId = decodeURIComponent(parts[2]);
+      const files = await listEndingFiles(endingId);
+      return sendJson(res, 200, { endingId, files });
     }
   }
 
@@ -963,6 +1059,30 @@ const server = http.createServer(async (req, res) => {
       const fileName = decodeURIComponent(parts[1]);
       try {
         const filePath = await findFirstExisting(locationRoots, fileName);
+        if (!filePath) return sendText(res, 404, 'Not found');
+        const ext = path.extname(filePath).toLowerCase();
+        const contentType = ext === '.png'
+          ? 'image/png'
+          : ext === '.jpg'
+            ? 'image/jpeg'
+            : ext === '.jpeg'
+              ? 'image/jpeg'
+              : 'application/octet-stream';
+        const buffer = await readFile(filePath);
+        res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
+        return res.end(buffer);
+      } catch {
+        return sendText(res, 404, 'Not found');
+      }
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/ending-files/')) {
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length === 2) {
+      const fileName = decodeURIComponent(parts[1]);
+      try {
+        const filePath = await findFirstExisting(endingRoots, fileName);
         if (!filePath) return sendText(res, 404, 'Not found');
         const ext = path.extname(filePath).toLowerCase();
         const contentType = ext === '.png'
@@ -1054,6 +1174,31 @@ const server = http.createServer(async (req, res) => {
       await writeFile(filePath, parsed.buffer);
 
       return sendJson(res, 200, { ok: true, locationType, fileName });
+    } catch {
+      return sendJson(res, 500, { error: 'Upload failed' });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/ending/upload') {
+    try {
+      const body = await readBody(req);
+      const endingId = String(body?.endingId ?? '').trim();
+      const dataUrl = String(body?.dataUrl ?? '').trim();
+      if (!endingId || !dataUrl) {
+        return sendJson(res, 400, { error: 'Missing fields' });
+      }
+      const parsed = parseDataUrl(dataUrl);
+      if (!parsed) return sendJson(res, 400, { error: 'Unsupported file type' });
+
+      await mkdir(endingRoot, { recursive: true });
+      const targets = ['png', 'jpg', 'jpeg'].map(ext => path.join(endingRoot, `${endingId}.${ext}`));
+      await Promise.all(targets.map(file => rm(file, { force: true })));
+
+      const fileName = `${endingId}.${parsed.ext}`;
+      const filePath = path.join(endingRoot, fileName);
+      await writeFile(filePath, parsed.buffer);
+
+      return sendJson(res, 200, { ok: true, endingId, fileName });
     } catch {
       return sendJson(res, 500, { error: 'Upload failed' });
     }
@@ -1182,6 +1327,43 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  if (req.method === 'POST' && url.pathname === '/api/ai/ending-prompt') {
+    try {
+      const body = await readBody(req);
+      const baseUrl = String(body?.baseUrl ?? '').trim();
+      const apiKey = String(body?.apiKey ?? '').trim();
+      const model = String(body?.model ?? '').trim();
+      const endingId = String(body?.endingId ?? '').trim();
+      if (!baseUrl || !apiKey || !model || !endingId) return sendJson(res, 400, { error: 'Missing fields' });
+      const endings = await parseEndingsFromGameData();
+      const meta = endings.find(e => e.id === endingId) ?? { id: endingId, title: endingId, subtitle: '' };
+      const prompt = buildEndingBackgroundPromptForAI(meta);
+      const endpoint = joinUrl(ensureV1(baseUrl), '/chat/completions');
+      const json = await fetchJson(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model,
+          temperature: 0.7,
+          messages: [
+            { role: 'system', content: prompt },
+            { role: 'user', content: '只返回 JSON。' }
+          ]
+        })
+      }, 180000);
+      const content = json?.choices?.[0]?.message?.content ?? '';
+      const parsed = extractJson(content) ?? extractJson(json) ?? null;
+      const imagePrompt = String(parsed?.imagePrompt ?? '').trim();
+      if (!imagePrompt) return sendJson(res, 500, { error: 'Empty AI result' });
+      return sendJson(res, 200, { ok: true, endingId, imagePrompt });
+    } catch (e) {
+      return sendJson(res, 500, { error: String(e?.message ?? 'AI failed') });
+    }
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/ai/troop-image') {
     try {
       const body = await readBody(req);
@@ -1229,6 +1411,24 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && url.pathname === '/api/ai/location-image') {
+    try {
+      const body = await readBody(req);
+      const baseUrl = String(body?.baseUrl ?? '').trim();
+      const apiKey = String(body?.apiKey ?? '').trim();
+      const model = String(body?.model ?? '').trim();
+      const prompt = String(body?.prompt ?? '').trim();
+      const size = String(body?.size ?? '1024x1024').trim() || '1024x1024';
+      const endpointMode = String(body?.endpointMode ?? 'AUTO').trim().toUpperCase();
+      if (!baseUrl || !apiKey || !model || !prompt) return sendJson(res, 400, { error: 'Missing fields' });
+      const result = await generateImageFromPrompt({ baseUrl, apiKey, model, prompt, size, endpointMode });
+      const dataUrl = `data:image/${result.ext};base64,${result.buffer.toString('base64')}`;
+      return sendJson(res, 200, { ok: true, dataUrl, ext: result.ext });
+    } catch (e) {
+      return sendJson(res, 500, { error: String(e?.message ?? 'Image failed') });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/ai/ending-image') {
     try {
       const body = await readBody(req);
       const baseUrl = String(body?.baseUrl ?? '').trim();
