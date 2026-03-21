@@ -1,1 +1,1 @@
-export { LOCATIONS } from '../../constants';
+export { LOCATIONS, HIDEOUT_UNLOCK_COST } from '../../constants';

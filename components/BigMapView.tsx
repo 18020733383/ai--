@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { AlertTriangle, Brain, Coffee, Coins, Eye, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, Shield, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Users, Utensils, Zap } from 'lucide-react';
 import { Location, MineralId, MineralPurity, PlayerState, WorldDiplomacyState } from '../types';
 import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../game/data';
+import { isPlayerHideoutUnlocked } from '../game/systems/hideoutAccess';
 import { Button } from './Button';
 import { getTerrainType, type TerrainType } from '../game/utils/terrainNoise';
 
@@ -568,6 +569,11 @@ export const BigMapView = ({
             <span className="font-bold text-amber-400">{hoveredLocation.name}</span>
             <span className="text-[10px] bg-stone-800 px-1.5 py-0.5 rounded text-stone-400 uppercase">{hoveredLocation.type}</span>
           </div>
+          {hoveredLocation.type === 'HIDEOUT' && hoveredLocation.owner === 'PLAYER' && !isPlayerHideoutUnlocked(hoveredLocation) && (
+            <div className="mt-2 text-xs text-amber-200/80 border-t border-stone-700/80 pt-2">
+              入口未开通：进入据点后支付第纳尔解锁后方可使用。
+            </div>
+          )}
           {hoveredLocation.type === 'FIELD_CAMP' && hoveredCampMeta && (
             <div className="mt-2 space-y-1 text-xs text-stone-300 border-t border-stone-700/80 pt-2">
               <div>

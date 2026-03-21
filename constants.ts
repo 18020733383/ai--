@@ -4740,6 +4740,9 @@ export const createTroop = (id: string, count: number = 1): Troop => {
   };
 };
 
+/** 花钱开通玩家隐匿点；未解锁前无内政/建设结算且不成为袭击目标 */
+export const HIDEOUT_UNLOCK_COST = 1500;
+
 export const INITIAL_HERO_ROSTER: Hero[] = [
   {
     id: 'hero_lixue',
@@ -5368,6 +5371,7 @@ export const LOCATIONS: Location[] = [
         }
       ],
       selectedLayer: 0,
+      hideoutUnlocked: false,
       lastRaidDay: 0,
       exposure: 8,
       camouflageCooldownUntilDay: 0

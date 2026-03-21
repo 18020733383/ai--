@@ -1,3 +1,4 @@
+export * from './hideoutAccess';
 export * from './banditTroops';
 export * from './combatPower';
 export * from './diplomacy';

@@ -80,6 +80,7 @@ export type TownActions = Pick<
   | 'updateLord'
   | 'onPreachInCity'
   | 'onInspectHideout'
+  | 'onUnlockPlayerHideout'
   | 'onConsumeRecompilerSoldier'
 >;
 

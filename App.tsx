@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, SoldierInstance, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
-import { BUILDING_OPTIONS, CROP_DEF_MAP, ENCHANTMENT_RECIPES, ENDING_LIST, FACTIONS, FARM_MAX_PLOTS, getBuildingName, getSiegeEngineName, getEndingContent, getNewCovenantAvailable, HIDEOUT_GOV_EVENTS, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, SIEGE_ENGINE_COMBAT_STATS, SIEGE_ENGINE_OPTIONS, TROOP_TEMPLATES, createFarmState, createTroop, MAP_WIDTH, MAP_HEIGHT, MINE_CONFIGS, MINERAL_META, MINERAL_PURITY_LABELS, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
+import { BUILDING_OPTIONS, CROP_DEF_MAP, ENCHANTMENT_RECIPES, ENDING_LIST, FACTIONS, FARM_MAX_PLOTS, getBuildingName, getSiegeEngineName, getEndingContent, getNewCovenantAvailable, HIDEOUT_GOV_EVENTS, HIDEOUT_UNLOCK_COST, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, SIEGE_ENGINE_COMBAT_STATS, SIEGE_ENGINE_OPTIONS, TROOP_TEMPLATES, createFarmState, createTroop, MAP_WIDTH, MAP_HEIGHT, MINE_CONFIGS, MINERAL_META, MINERAL_PURITY_LABELS, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
 import { attributesFromRatios } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
 import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
-import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildRandomizedHeroes, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, clampValue, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, buildGarrisonTroops as buildGarrisonTroopsImpl, getDefenderTroops as getDefenderTroopsImpl, getLocationRecruitId, getLocationRelationTarget, getPlayerReligion as getPlayerReligionFromLocations, getRecruitmentPool, getRelationScale, getRelationTone, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, PRESTIGE, computeSealHabitatPrestige, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence, buildTroopsFromSoldiers as buildTroopsFromSoldiersImpl, buildWoundedEntriesFromSoldiers as buildWoundedEntriesFromSoldiersImpl, normalizePlayerSoldiers as normalizePlayerSoldiersImpl, markSoldiersWounded as markSoldiersWoundedImpl, removeSoldiersById as removeSoldiersByIdImpl, buildRaceComposition } from './game/systems';
+import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildRandomizedHeroes, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, clampValue, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, buildGarrisonTroops as buildGarrisonTroopsImpl, getDefenderTroops as getDefenderTroopsImpl, getLocationRecruitId, getLocationRelationTarget, getPlayerReligion as getPlayerReligionFromLocations, getRecruitmentPool, getRelationScale, getRelationTone, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isPlayerHideoutUnlocked, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, PRESTIGE, computeSealHabitatPrestige, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence, buildTroopsFromSoldiers as buildTroopsFromSoldiersImpl, buildWoundedEntriesFromSoldiers as buildWoundedEntriesFromSoldiersImpl, normalizePlayerSoldiers as normalizePlayerSoldiersImpl, markSoldiersWounded as markSoldiersWoundedImpl, removeSoldiersById as removeSoldiersByIdImpl, buildRaceComposition } from './game/systems';
 import { calculatePower } from './game/systems/combatPower';
 import { calculateXpGain } from './game/systems/xpGain';
 import { calculateFleeChance, calculateRearGuardPlan } from './features/battle/model/battleEscape';
@@ -1430,7 +1430,7 @@ export default function App() {
       const zoomSensitivity = 0.001;
       const delta = -e.deltaY * zoomSensitivity;
       const current = targetZoomRef.current;
-      const next = Math.min(Math.max(0.5, current + delta), 3);
+      const next = Math.min(Math.max(0.1, current + delta), 3);
 
       const rect = mapRef.current?.getBoundingClientRect();
       if (rect) {
@@ -1909,7 +1909,7 @@ export default function App() {
         const clampPct = (v: number) => Math.max(0, Math.min(100, Math.floor(v)));
         const relationCandidates = (Object.keys(RACE_LABELS) as RaceId[]).filter(r => r !== 'HUMAN');
         newLocations = newLocations.map(loc => {
-          if (loc.type !== 'HIDEOUT' || loc.owner !== 'PLAYER' || !loc.hideout) return loc;
+          if (loc.type !== 'HIDEOUT' || loc.owner !== 'PLAYER' || !loc.hideout || !isPlayerHideoutUnlocked(loc)) return loc;
           const gov = loc.hideout.governance ?? { stability: 60, productivity: 55, prosperity: 50, harmony: 55 };
           const builtFacilities = (loc.hideout.layers ?? []).flatMap(layer => (layer.facilitySlots ?? []))
             .filter(s => !!s?.type && !(typeof s?.daysLeft === 'number' && s.daysLeft > 0))
@@ -1963,7 +1963,7 @@ export default function App() {
       }
       const stayLoc = location ? (newLocations.find(l => l.id === location.id) ?? location) : null;
       const hospitalLevel = (() => {
-        if (!stayLoc || stayLoc.type !== 'HIDEOUT' || stayLoc.owner !== 'PLAYER') return 0;
+        if (!stayLoc || stayLoc.type !== 'HIDEOUT' || stayLoc.owner !== 'PLAYER' || !isPlayerHideoutUnlocked(stayLoc)) return 0;
         const layers = stayLoc.hideout?.layers ?? [];
         const built = layers.flatMap(l => (l.facilitySlots ?? []) as any[])
           .filter(s => !!s?.type && !(typeof s?.daysLeft === 'number' && s.daysLeft > 0))
@@ -2344,7 +2344,7 @@ export default function App() {
         // }
 
         if (updated.owner === 'PLAYER') {
-          if (updated.type === 'HIDEOUT' && updated.hideout && Array.isArray(updated.hideout.layers) && updated.hideout.layers.length > 0) {
+          if (updated.type === 'HIDEOUT' && updated.hideout && Array.isArray(updated.hideout.layers) && updated.hideout.layers.length > 0 && isPlayerHideoutUnlocked(updated)) {
             const religionTroopIds = (() => {
               const altar = newLocations.find(l => l.type === 'ALTAR' && (l.altar?.troopIds ?? []).length > 0 && !!l.altar?.doctrine?.religionName);
               return altar?.altar?.troopIds ?? [];
@@ -2580,6 +2580,9 @@ export default function App() {
          const siegeFactionName = siege.attackerFactionId ? (FACTIONS.find(f => f.id === siege.attackerFactionId)?.name ?? siege.attackerName) : siege.attackerName;
 
          if (loc.type === 'HIDEOUT' && loc.owner === 'PLAYER' && loc.hideout && Array.isArray(loc.hideout.layers) && loc.hideout.layers.length > 0) {
+          if (!isPlayerHideoutUnlocked(loc)) {
+            return { ...loc, activeSiege: undefined, isUnderSiege: false };
+          }
           if (typeof siege.startDay === 'number' && nextDay < siege.startDay) {
             const remaining = Math.max(1, Math.floor(siege.startDay - nextDay));
             if (remaining <= 3 || remaining % 2 === 1) {
@@ -3186,6 +3189,10 @@ export default function App() {
           logsToAdd.push(`【行军营地】${meta.attackerName} 抵达 ${target.name} 时战场已被占据，选择撤回。`);
           return;
         }
+        if (target.type === 'HIDEOUT' && target.owner === 'PLAYER' && !isPlayerHideoutUnlocked(target)) {
+          logsToAdd.push(`【行军营地】${meta.attackerName} 抵达 ${target.name}，未发现可用入口，讨伐中止。`);
+          return;
+        }
         const raidTroops = (camp.garrison ?? []).map(t => ({ ...t }));
         const raidPower = calculatePower(raidTroops);
         const hideoutDelayDays = (() => {
@@ -3236,7 +3243,8 @@ export default function App() {
       const playerTargets = newLocations.filter(loc => (
         loc.owner === 'PLAYER' &&
         !loc.activeSiege &&
-        (loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE' || loc.type === 'HIDEOUT')
+        (loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE' || loc.type === 'HIDEOUT') &&
+        !(loc.type === 'HIDEOUT' && !isPlayerHideoutUnlocked(loc))
       ));
       hostileFactions.forEach(faction => {
         if (playerTargets.length === 0) return;
@@ -3424,7 +3432,7 @@ export default function App() {
         newLocations.push(camp);
       });
 
-      const hideoutTarget = newLocations.find(loc => loc.type === 'HIDEOUT' && loc.owner === 'PLAYER');
+      const hideoutTarget = newLocations.find(loc => loc.type === 'HIDEOUT' && loc.owner === 'PLAYER' && isPlayerHideoutUnlocked(loc));
       if (hideoutTarget && !hideoutTarget.activeSiege && !hideoutTarget.isUnderSiege && hideoutTarget.hideout) {
         const exposure = clampValue(hideoutTarget.hideout.exposure ?? 0, 0, 100);
         const hasExistingRaidCamp = newLocations.some(loc => (
@@ -3971,6 +3979,7 @@ export default function App() {
         newLocations.forEach(loc => {
           if (loc.owner !== 'PLAYER') return;
           if (loc.type === 'HIDEOUT') {
+            if (!isPlayerHideoutUnlocked(loc)) return;
             const layers = loc.hideout?.layers ?? [];
             layers.forEach(layer => {
               (layer.garrison ?? []).forEach(t => stationedTroops.push({ ...t }));
@@ -6706,6 +6715,7 @@ export default function App() {
           hideout: {
             layers: normalizedLayers,
             selectedLayer: Math.max(0, Math.min(normalizedLayers.length - 1, Math.floor(hideout?.selectedLayer ?? 0))),
+            hideoutUnlocked: typeof hideout?.hideoutUnlocked === 'boolean' ? hideout.hideoutUnlocked : true,
             lastRaidDay: typeof hideout?.lastRaidDay === 'number' ? hideout!.lastRaidDay : 0,
             lastRaidCheckDay: typeof hideout?.lastRaidCheckDay === 'number' ? hideout!.lastRaidCheckDay : 0,
             exposure: typeof hideout?.exposure === 'number' ? Math.max(0, Math.min(100, hideout!.exposure)) : 8,
@@ -7547,6 +7557,27 @@ export default function App() {
     />
   );
 
+  const unlockPlayerHideout = () => {
+    const loc = currentLocation;
+    if (!loc || loc.type !== 'HIDEOUT' || loc.owner !== 'PLAYER' || !loc.hideout) return;
+    if (isPlayerHideoutUnlocked(loc)) return;
+    if (playerRef.current.gold < HIDEOUT_UNLOCK_COST) {
+      addLog(`第纳尔不足：开通隐匿点需要 ${HIDEOUT_UNLOCK_COST}。`);
+      return;
+    }
+    const id = loc.id;
+    setPlayer(p => ({ ...p, gold: Math.max(0, p.gold - HIDEOUT_UNLOCK_COST) }));
+    setLocations(prev => prev.map(l => {
+      if (l.id !== id || !l.hideout) return l;
+      return { ...l, hideout: { ...l.hideout, hideoutUnlocked: true } };
+    }));
+    setCurrentLocation(prev => {
+      if (!prev || prev.id !== id || !prev.hideout) return prev;
+      return { ...prev, hideout: { ...prev.hideout, hideoutUnlocked: true } };
+    });
+    addLog(`支付 ${HIDEOUT_UNLOCK_COST} 第纳尔，开通了隐匿点入口。`);
+  };
+
   const restartGame = () => {
     const freshWorld = buildInitialWorld();
     setPlayer(normalizePlayerSoldiers(INITIAL_PLAYER_STATE));
@@ -7859,12 +7890,17 @@ export default function App() {
             updateLord,
             onPreachInCity: preachInCity,
             onInspectHideout: (layerIndex) => {
+              if (currentLocation?.type === 'HIDEOUT' && currentLocation.owner === 'PLAYER' && !isPlayerHideoutUnlocked(currentLocation)) {
+                addLog('请先花钱开通隐匿点入口后再视察。');
+                return;
+              }
               const hideout = currentLocation?.hideout;
               const maxLayer = Math.max(0, (hideout?.layers?.length ?? 1) - 1);
               const safe = Math.max(0, Math.min(maxLayer, Math.floor(layerIndex || 0)));
               setHideoutInspectLayerIndex(safe);
               setView('HIDEOUT_INSPECT');
             },
+            onUnlockPlayerHideout: unlockPlayerHideout,
             onConsumeRecompilerSoldier: consumeRecompilerSoldier
           },
           townDerived: {

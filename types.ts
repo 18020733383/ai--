@@ -548,6 +548,8 @@ export type HideoutLayer = {
 export type HideoutState = {
   layers: HideoutLayer[];
   selectedLayer?: number;
+  /** false：未花钱开通，无功能且不触发袭击；缺省视为 true（兼容旧存档） */
+  hideoutUnlocked?: boolean;
   lastRaidDay?: number;
   lastRaidCheckDay?: number;
   exposure?: number;

@@ -1,12 +1,13 @@
 import React from 'react';
-import { AlertTriangle, Beer, Brain, Coins, Ghost, Hammer, History, Home, MapPin, MessageCircle, Mountain, Plus, Scroll, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, Zap } from 'lucide-react';
+import { AlertTriangle, Beer, Brain, Coins, Ghost, Hammer, History, Home, Lock, MapPin, MessageCircle, Mountain, Plus, Scroll, Shield, ShieldAlert, Skull, Star, Swords, Users, Utensils, Zap } from 'lucide-react';
 import { Button } from '../components/Button';
 import { ThinkingBubble } from '../components/ThinkingBubble';
 import { TroopCard } from '../components/TroopCard';
 import { AltarRecruitSection, AltarSection, CoffeeChatSection, ForgeSection, GarrisonSection, HabitatSection, MagicianLibrarySection, MiningSection, RecompilerSection, RecruitSection, RoachLureSection, SealHabitatSection, TavernSection, WorkSection } from '../features/town';
 import { chatWithCampLeader, chatWithLord } from '../services/geminiService';
 import { ANOMALY_CATALOG } from '../constants';
-import { CROP_DEFS, CROP_DEF_MAP, createFarmState, FARM_MAX_PLOTS, FARM_PLOT_UNLOCK_COST, getTroopRace, TROOP_RACE_LABELS } from '../game/data';
+import { CROP_DEFS, CROP_DEF_MAP, createFarmState, FARM_MAX_PLOTS, FARM_PLOT_UNLOCK_COST, getTroopRace, HIDEOUT_UNLOCK_COST, TROOP_RACE_LABELS } from '../game/data';
+import { isPlayerHideoutUnlocked } from '../game/systems/hideoutAccess';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, CropId, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, SoldierInstance, StayParty, Troop, TroopTier } from '../types';
 import type { AltarRecruitState, HabitatStayState, HideoutStayState, MiningState, RoachLureState, TownTab, WorkState } from '../features/town/model/types';
 
@@ -108,6 +109,8 @@ export type TownViewProps = {
   playerReligionName: string | null;
   onPreachInCity: (locationId: string) => void;
   onInspectHideout: (layerIndex: number) => void;
+  /** 付费开通玩家隐匿点（未解锁前无功能） */
+  onUnlockPlayerHideout: () => void;
   onConsumeRecompilerSoldier: (payload: { soldierId: string; troopId: string; goldCost: number; crystalTier: number }) => void;
 };
 
@@ -209,6 +212,7 @@ export const TownView = ({
   playerReligionName,
   onPreachInCity,
   onInspectHideout,
+  onUnlockPlayerHideout,
   onConsumeRecompilerSoldier
 }: TownViewProps) => {
   if (!currentLocation) return null;
@@ -256,6 +260,7 @@ export const TownView = ({
   const isFieldCamp = currentLocation.type === 'FIELD_CAMP';
   const isSpecialLocation = isMine || isBlacksmith || isCrystalFoundry || isMegaFarm || isAltar || isMagicianLibrary || isRecompiler || isSealHabitat;
   const isOwnedByPlayer = currentLocation.owner === 'PLAYER';
+  const hideoutNeedsUnlock = isHideout && isOwnedByPlayer && !isPlayerHideoutUnlocked(currentLocation);
   const locationRelationValue = player.locationRelations?.[currentLocation.id] ?? 0;
   const isWantedHere = !isOwnedByPlayer && (isCity || isCastle || isVillage) && locationRelationValue <= -60;
   const isRestrictedEnemyHeld = currentLocation.owner === 'ENEMY' && (isCity || isCastle || isVillage) && !currentLocation.factionId;
@@ -2566,6 +2571,30 @@ export const TownView = ({
 
       <div className="min-h-[400px]">
         {activeTownTab === 'HIDEOUT' && isHideout && isOwnedByPlayer && (
+          hideoutNeedsUnlock ? (
+            <div className="space-y-4 animate-fade-in max-w-xl mx-auto">
+              <div className="bg-stone-900/70 border border-emerald-900/50 rounded-lg p-8 text-center">
+                <Lock className="mx-auto text-emerald-400 mb-4" size={40} aria-hidden />
+                <div className="text-stone-100 font-bold text-lg">隐匿点入口尚未开通</div>
+                <p className="text-stone-400 text-sm mt-3 leading-relaxed text-left">
+                  支付第纳尔打通地下通道前，不会触发隐匿点内政事件，也不会成为敌对讨伐/行军的目标；界面内亦无建设、征兵等正常功能。
+                </p>
+                <div className="mt-6 flex flex-col items-center gap-3">
+                  <div className="text-amber-300 font-mono text-xl">{HIDEOUT_UNLOCK_COST} 第纳尔</div>
+                  <Button
+                    variant="primary"
+                    disabled={player.gold < HIDEOUT_UNLOCK_COST}
+                    onClick={onUnlockPlayerHideout}
+                  >
+                    支付并开通
+                  </Button>
+                  {player.gold < HIDEOUT_UNLOCK_COST && (
+                    <div className="text-xs text-red-300">资金不足</div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : (
           <div className="space-y-6 animate-fade-in">
             <div className="bg-stone-900/60 p-6 rounded border border-emerald-900/40">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
@@ -3447,6 +3476,7 @@ export const TownView = ({
               </div>
             )}
           </div>
+          )
         )}
         {activeTownTab === 'RECRUIT' && (
           <RecruitSection
