@@ -97,11 +97,23 @@ const TERRAIN_SEASON_COLORS: Record<TerrainType, Record<MapSeason, string>> = {
     autumn: '#8b6914',
     winter: '#5a6a5a'
   },
+  rainforest: {
+    spring: '#2d6b42',
+    summer: '#1f5c38',
+    autumn: '#3d7c4a',
+    winter: '#3a5c48'
+  },
   grassland: {
     spring: '#6bac5a',
     summer: '#8fbc7a',
     autumn: '#a67c4a',
     winter: '#8b9c7a'
+  },
+  savanna: {
+    spring: '#9db85a',
+    summer: '#c4c060',
+    autumn: '#c9a85a',
+    winter: '#a8a878'
   },
   desert: {
     spring: '#c9b896',
@@ -120,6 +132,12 @@ const TERRAIN_SEASON_COLORS: Record<TerrainType, Record<MapSeason, string>> = {
     summer: '#4a6b5a',
     autumn: '#6b5a4a',
     winter: '#5a6a7a'
+  },
+  tundra: {
+    spring: '#8a9c9a',
+    summer: '#7a9088',
+    autumn: '#7a8a7a',
+    winter: '#d4e4e8'
   }
 };
 
@@ -187,9 +205,8 @@ export const BigMapView = ({
 }: BigMapViewProps) => {
   const [season, setSeason] = useState<MapSeason>('summer');
   const unitSize = 10 * zoom;
-  /** 据点图标约为原基准 2 倍；行军营地 0.8 倍，且 z 更低，减少盖住据点 */
-  const settlementIconPx = (base: number) => base * 2;
-  const marchCampIconPx = (base: number) => Math.round(base * 0.8);
+  /** 与 unitSize 一致用 zoom 缩放图标像素，不再对同一层叠套 CSS scale，避免 hover 命中区与视觉错位 */
+  const iconPxAtZoom = (pxAtZoom1: number) => Math.max(8, Math.round(pxAtZoom1 * zoom));
   const seasonStyle = MAP_SEASON_STYLES[season];
 
   const terrainGrid = useMemo(() => {
@@ -615,7 +632,7 @@ export const BigMapView = ({
           willChange: 'transform'
         }}
       >
-        {/* 网格地形：森林/草原/沙漠/丘陵/湿地，随季节变化 */}
+        {/* 网格地形：苔原/雨林/稀树草原等 + 森林/草原/沙漠/丘陵/湿地，随季节变化 */}
         <div className="absolute inset-0 z-0" style={{ display: 'grid', gridTemplateColumns: `repeat(${TERRAIN_GRID_SIZE}, 1fr)`, gridTemplateRows: `repeat(${TERRAIN_GRID_SIZE}, 1fr)` }}>
           {terrainGrid.map(({ gx, gy, terrain }) => (
             <div
@@ -755,59 +772,90 @@ export const BigMapView = ({
             </text>
           </svg>
         )}
-        {locations.map(loc => (
+        {[...locations]
+          .sort((a, b) => {
+            const pa = a.type === 'FIELD_CAMP' ? 0 : 1;
+            const pb = b.type === 'FIELD_CAMP' ? 0 : 1;
+            return pa - pb;
+          })
+          .map(loc => {
+            const isCamp = loc.type === 'FIELD_CAMP';
+            /** 与缩放一致的点击范围，避免 unitSize 已乘 zoom 再 scale(zoom) 导致悬浮命中错位 */
+            const hitPx = isCamp
+              ? Math.max(26, Math.min(88, Math.round(36 * zoom)))
+              : Math.max(36, Math.min(104, Math.round(52 * zoom)));
+            const s = (base: number) => Math.max(8, Math.round(settlementIconPx(base) * zoom));
+            const flagSz = Math.max(10, Math.round(marchCampIconPx(20) * zoom));
+            const emojiPx = Math.max(18, Math.round(40 * zoom));
+            return (
           <div
             key={loc.id}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (isObserverMode) {
-                onLocationSelect?.(loc);
-                return;
-              }
-              if (isTimeSkipActive) return;
-              moveTo(loc.coordinates.x, loc.coordinates.y, loc.id);
+            className={`absolute group ${isCamp ? 'z-20' : 'z-30'} hover:z-50`}
+            style={{
+              left: `${loc.coordinates.x * unitSize}px`,
+              top: `${loc.coordinates.y * unitSize}px`,
+              width: 0,
+              height: 0,
+              pointerEvents: 'none'
             }}
-            onMouseEnter={() => setHoveredLocation(loc)}
-            onMouseLeave={() => setHoveredLocation(null)}
-            className={`absolute cursor-pointer group ${loc.type === 'FIELD_CAMP' ? 'z-20' : 'z-30'} hover:z-50`}
-            style={{ left: `${loc.coordinates.x * unitSize}px`, top: `${loc.coordinates.y * unitSize}px` }}
           >
-            <div className="absolute transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
+            <button
+              type="button"
+              className="absolute flex items-center justify-center rounded-full border-0 bg-transparent p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black/80"
+              style={{
+                pointerEvents: 'auto',
+                left: 0,
+                top: 0,
+                width: hitPx,
+                height: hitPx,
+                transform: 'translate(-50%, -50%)'
+              }}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (isObserverMode) {
+                  onLocationSelect?.(loc);
+                  return;
+                }
+                if (isTimeSkipActive) return;
+                moveTo(loc.coordinates.x, loc.coordinates.y, loc.id);
+              }}
+              onMouseEnter={() => setHoveredLocation(loc)}
+              onMouseLeave={() => setHoveredLocation(null)}
+            >
               <div
-                className={`relative rounded-full border-2 transition-transform hover:scale-110 shadow-lg bg-stone-800 border-amber-600 ${loc.type === 'FIELD_CAMP' ? 'p-0.5' : 'p-2'}`}
+                className={`relative rounded-full border-2 transition-transform hover:scale-110 shadow-lg bg-stone-800 border-amber-600 ${isCamp ? 'p-0.5' : 'p-2'}`}
                 style={{
-                  transform: `scale(${zoom})`,
-                  borderColor: loc.type === 'FIELD_CAMP' ? (loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8') : undefined,
+                  borderColor: isCamp ? (loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8') : undefined
                 }}
               >
-                {loc.type === 'CITY' ? <Home className="text-amber-500" size={settlementIconPx(24)} /> :
-                  loc.type === 'CASTLE' ? <ShieldAlert className="text-stone-400" size={settlementIconPx(20)} /> :
-                  loc.type === 'FIELD_CAMP' ? <Flag size={marchCampIconPx(20)} style={{ color: loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8' }} /> :
-                  loc.type === 'ROACH_NEST' ? <span className="text-[40px] leading-none">🪳</span> :
-                  loc.type === 'RUINS' ? <Ghost className="text-purple-400" size={settlementIconPx(20)} /> :
-                  loc.type === 'GRAVEYARD' ? <Skull className="text-stone-300" size={settlementIconPx(20)} /> :
-                  loc.type === 'TRAINING_GROUNDS' ? <Swords className="text-blue-400" size={settlementIconPx(20)} /> :
-                  loc.type === 'ASYLUM' ? <Brain className="text-pink-500" size={settlementIconPx(22)} /> :
-                  loc.type === 'MARKET' ? <ShoppingBag className="text-green-500" size={settlementIconPx(20)} /> :
-                  loc.type === 'HOTPOT_RESTAURANT' ? <Utensils className="text-red-500" size={settlementIconPx(20)} /> :
-                  loc.type === 'COFFEE' ? <Coffee className="text-amber-300" size={settlementIconPx(20)} /> :
-                  loc.type === 'BANDIT_CAMP' ? <Tent className="text-red-600" size={settlementIconPx(20)} /> :
-                  loc.type === 'HEAVY_TRIAL_GROUNDS' ? <span className="text-[40px] leading-none">🏗️</span> :
-                  loc.type === 'IMPOSTER_PORTAL' ? <Zap className="text-fuchsia-400" size={settlementIconPx(20)} /> :
-                  loc.type === 'MYSTERIOUS_CAVE' ? <Scroll className="text-indigo-400" size={settlementIconPx(20)} /> :
-                  loc.type === 'WORLD_BOARD' ? <History className="text-slate-300" size={settlementIconPx(20)} /> :
-                  loc.type === 'VOID_BUFFER_MINE' || loc.type === 'MEMORY_OVERFLOW_MINE' || loc.type === 'LOGIC_PARADOX_MINE' ? <Mountain className="text-emerald-400" size={settlementIconPx(20)} /> :
-                  loc.type === 'HERO_CRYSTAL_MINE' ? <Mountain className="text-purple-300" size={settlementIconPx(20)} /> :
-                  loc.type === 'BLACKSMITH' ? <Hammer className="text-orange-400" size={settlementIconPx(20)} /> :
-                  loc.type === 'CRYSTAL_FOUNDRY' ? <Hammer className="text-cyan-300" size={settlementIconPx(20)} /> :
-                  loc.type === 'MEGA_FARM' ? <Coins className="text-lime-300" size={settlementIconPx(20)} /> :
-                  loc.type === 'ALTAR' ? <span className="text-[40px] leading-none">🛐</span> :
-                  loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={settlementIconPx(20)} /> :
-                  loc.type === 'SOURCE_RECOMPILER' ? <Brain className="text-fuchsia-300" size={settlementIconPx(20)} /> :
-                  loc.type === 'HABITAT' ? <MapPin className="text-emerald-300" size={settlementIconPx(20)} /> :
-                  loc.type === 'SEAL_HABITAT' ? <span className="text-[40px] leading-none">🦭</span> :
-                  loc.type === 'HIDEOUT' ? <Shield className="text-emerald-300" size={settlementIconPx(20)} /> :
-                  <Tent className="text-green-500" size={settlementIconPx(16)} />}
+                {loc.type === 'CITY' ? <Home className="text-amber-500" size={s(24)} /> :
+                  loc.type === 'CASTLE' ? <ShieldAlert className="text-stone-400" size={s(20)} /> :
+                  loc.type === 'FIELD_CAMP' ? <Flag size={flagSz} style={{ color: loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8' }} /> :
+                  loc.type === 'ROACH_NEST' ? <span className="leading-none" style={{ fontSize: emojiPx }}>🪳</span> :
+                  loc.type === 'RUINS' ? <Ghost className="text-purple-400" size={s(20)} /> :
+                  loc.type === 'GRAVEYARD' ? <Skull className="text-stone-300" size={s(20)} /> :
+                  loc.type === 'TRAINING_GROUNDS' ? <Swords className="text-blue-400" size={s(20)} /> :
+                  loc.type === 'ASYLUM' ? <Brain className="text-pink-500" size={s(22)} /> :
+                  loc.type === 'MARKET' ? <ShoppingBag className="text-green-500" size={s(20)} /> :
+                  loc.type === 'HOTPOT_RESTAURANT' ? <Utensils className="text-red-500" size={s(20)} /> :
+                  loc.type === 'COFFEE' ? <Coffee className="text-amber-300" size={s(20)} /> :
+                  loc.type === 'BANDIT_CAMP' ? <Tent className="text-red-600" size={s(20)} /> :
+                  loc.type === 'HEAVY_TRIAL_GROUNDS' ? <span className="leading-none" style={{ fontSize: emojiPx }}>🏗️</span> :
+                  loc.type === 'IMPOSTER_PORTAL' ? <Zap className="text-fuchsia-400" size={s(20)} /> :
+                  loc.type === 'MYSTERIOUS_CAVE' ? <Scroll className="text-indigo-400" size={s(20)} /> :
+                  loc.type === 'WORLD_BOARD' ? <History className="text-slate-300" size={s(20)} /> :
+                  loc.type === 'VOID_BUFFER_MINE' || loc.type === 'MEMORY_OVERFLOW_MINE' || loc.type === 'LOGIC_PARADOX_MINE' ? <Mountain className="text-emerald-400" size={s(20)} /> :
+                  loc.type === 'HERO_CRYSTAL_MINE' ? <Mountain className="text-purple-300" size={s(20)} /> :
+                  loc.type === 'BLACKSMITH' ? <Hammer className="text-orange-400" size={s(20)} /> :
+                  loc.type === 'CRYSTAL_FOUNDRY' ? <Hammer className="text-cyan-300" size={s(20)} /> :
+                  loc.type === 'MEGA_FARM' ? <Coins className="text-lime-300" size={s(20)} /> :
+                  loc.type === 'ALTAR' ? <span className="leading-none" style={{ fontSize: emojiPx }}>🛐</span> :
+                  loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={s(20)} /> :
+                  loc.type === 'SOURCE_RECOMPILER' ? <Brain className="text-fuchsia-300" size={s(20)} /> :
+                  loc.type === 'HABITAT' ? <MapPin className="text-emerald-300" size={s(20)} /> :
+                  loc.type === 'SEAL_HABITAT' ? <span className="leading-none" style={{ fontSize: emojiPx }}>🦭</span> :
+                  loc.type === 'HIDEOUT' ? <Shield className="text-emerald-300" size={s(20)} /> :
+                  <Tent className="text-green-500" size={s(16)} />}
                 {loc.factionId && loc.owner !== 'PLAYER' && (
                   <span
                     className="absolute -bottom-1 left-1/2 -translate-x-1/2 h-2 w-2 rounded-full border border-black/60 shadow"
@@ -844,14 +892,22 @@ export const BigMapView = ({
                   </div>
                 )}
               </div>
-            </div>
+            </button>
             {zoom > 0.8 && (
-              <div className="absolute top-4 left-1/2 transform -translate-x-1/2 mt-2 flex justify-center whitespace-nowrap pointer-events-none">
-                <span className="font-serif text-[10px] font-bold text-stone-900 bg-white/80 px-2 rounded shadow group-hover:bg-amber-100" style={{ transform: `scale(${zoom})` }}>{loc.name}</span>
+              <div
+                className="absolute pointer-events-none whitespace-nowrap font-serif text-[10px] font-bold text-stone-900 bg-white/80 px-2 py-0.5 rounded shadow group-hover:bg-amber-100"
+                style={{
+                  left: 0,
+                  top: 0,
+                  transform: `translate(-50%, ${Math.round(hitPx * 0.52 + 6)}px) scale(${zoom})`
+                }}
+              >
+                {loc.name}
               </div>
             )}
           </div>
-        ))}
+            );
+          })}
         {!isObserverMode && (
           <div
             className="absolute transform -translate-x-1/2 -translate-y-1/2 z-40 pointer-events-none"

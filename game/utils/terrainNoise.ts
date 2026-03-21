@@ -1,6 +1,6 @@
 /**
  * 2D Value Noise（无依赖，确定性）
- * 用于生成地图地形网格：森林/草原/沙漠/丘陵/湿地
+ * 用于生成地图背景地形网格（与据点 Location.terrain 枚举无关）
  */
 
 const SEED = 42;
@@ -38,7 +38,15 @@ export const fbm = (x: number, y: number, octaves = 3) => {
   return Math.max(0, Math.min(1, v));
 };
 
-export type TerrainType = 'forest' | 'grassland' | 'desert' | 'hills' | 'wetland';
+export type TerrainType =
+  | 'forest'
+  | 'rainforest'
+  | 'grassland'
+  | 'savanna'
+  | 'desert'
+  | 'hills'
+  | 'wetland'
+  | 'tundra';
 
 /** 根据 0~1 归一化坐标返回地形类型，这样细化网格时不会整张地图洗牌 */
 export const getTerrainType = (nx: number, ny: number): TerrainType => {
@@ -46,10 +54,19 @@ export const getTerrainType = (nx: number, ny: number): TerrainType => {
   const y = Math.max(0, Math.min(1, ny));
   const n1 = fbm(x * 4.5, y * 4.5);
   const n2 = fbm(x * 10 + 100, y * 10 + 57);
-  const combined = n1 * 0.7 + n2 * 0.3;
-  if (combined < 0.18) return 'wetland';
-  if (combined < 0.42) return 'grassland';
-  if (combined < 0.62) return 'forest';
-  if (combined < 0.82) return 'hills';
+  const n3 = fbm(x * 7 + 33, y * 7 + 99);
+  const combined = n1 * 0.55 + n2 * 0.28 + n3 * 0.17;
+  const moist = fbm(x * 9 + 17, y * 9 + 31);
+  /** 地图 y 增大为南侧：南侧偏暖湿，北侧偏冷 */
+  const southWarm = y > 0.52;
+  const northCold = y < 0.3;
+
+  if (northCold && moist < 0.52 && combined < 0.48) return 'tundra';
+  if (combined < 0.15) return 'wetland';
+  if (southWarm && moist > 0.58 && combined > 0.22 && combined < 0.66) return 'rainforest';
+  if (southWarm && moist > 0.28 && moist < 0.5 && combined > 0.34 && combined < 0.68) return 'savanna';
+  if (combined < 0.38) return 'grassland';
+  if (combined < 0.56) return 'forest';
+  if (combined < 0.76) return 'hills';
   return 'desert';
 };
