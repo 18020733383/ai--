@@ -186,6 +186,9 @@ export const BigMapView = ({
 }: BigMapViewProps) => {
   const [season, setSeason] = useState<MapSeason>('summer');
   const unitSize = 10 * zoom;
+  /** 据点图标约为原基准 2 倍；行军营地 0.8 倍，且 z 更低，减少盖住据点 */
+  const settlementIconPx = (base: number) => base * 2;
+  const marchCampIconPx = (base: number) => Math.round(base * 0.8);
   const seasonStyle = MAP_SEASON_STYLES[season];
 
   const terrainGrid = useMemo(() => {
@@ -760,45 +763,45 @@ export const BigMapView = ({
             }}
             onMouseEnter={() => setHoveredLocation(loc)}
             onMouseLeave={() => setHoveredLocation(null)}
-            className={`absolute cursor-pointer group ${loc.type === 'FIELD_CAMP' ? 'z-30' : 'z-10'} hover:z-50`}
+            className={`absolute cursor-pointer group ${loc.type === 'FIELD_CAMP' ? 'z-20' : 'z-30'} hover:z-50`}
             style={{ left: `${loc.coordinates.x * unitSize}px`, top: `${loc.coordinates.y * unitSize}px` }}
           >
             <div className="absolute transform -translate-x-1/2 -translate-y-1/2 flex items-center justify-center">
               <div
-                className="relative p-1 rounded-full border-2 transition-transform hover:scale-110 shadow-lg bg-stone-800 border-amber-600"
+                className={`relative rounded-full border-2 transition-transform hover:scale-110 shadow-lg bg-stone-800 border-amber-600 ${loc.type === 'FIELD_CAMP' ? 'p-0.5' : 'p-2'}`}
                 style={{
                   transform: `scale(${zoom})`,
                   borderColor: loc.type === 'FIELD_CAMP' ? (loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8') : undefined,
                 }}
               >
-                {loc.type === 'CITY' ? <Home className="text-amber-500" size={24} /> :
-                  loc.type === 'CASTLE' ? <ShieldAlert className="text-stone-400" size={20} /> :
-                  loc.type === 'FIELD_CAMP' ? <Flag size={20} style={{ color: loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8' }} /> :
-                  loc.type === 'ROACH_NEST' ? <span className="text-[20px] leading-none">🪳</span> :
-                  loc.type === 'RUINS' ? <Ghost className="text-purple-400" size={20} /> :
-                  loc.type === 'GRAVEYARD' ? <Skull className="text-stone-300" size={20} /> :
-                  loc.type === 'TRAINING_GROUNDS' ? <Swords className="text-blue-400" size={20} /> :
-                  loc.type === 'ASYLUM' ? <Brain className="text-pink-500" size={22} /> :
-                  loc.type === 'MARKET' ? <ShoppingBag className="text-green-500" size={20} /> :
-                  loc.type === 'HOTPOT_RESTAURANT' ? <Utensils className="text-red-500" size={20} /> :
-                  loc.type === 'COFFEE' ? <Coffee className="text-amber-300" size={20} /> :
-                  loc.type === 'BANDIT_CAMP' ? <Tent className="text-red-600" size={20} /> :
-                  loc.type === 'HEAVY_TRIAL_GROUNDS' ? <span className="text-[20px] leading-none">🏗️</span> :
-                  loc.type === 'IMPOSTER_PORTAL' ? <Zap className="text-fuchsia-400" size={20} /> :
-                  loc.type === 'MYSTERIOUS_CAVE' ? <Scroll className="text-indigo-400" size={20} /> :
-                  loc.type === 'WORLD_BOARD' ? <History className="text-slate-300" size={20} /> :
-                  loc.type === 'VOID_BUFFER_MINE' || loc.type === 'MEMORY_OVERFLOW_MINE' || loc.type === 'LOGIC_PARADOX_MINE' ? <Mountain className="text-emerald-400" size={20} /> :
-                  loc.type === 'HERO_CRYSTAL_MINE' ? <Mountain className="text-purple-300" size={20} /> :
-                  loc.type === 'BLACKSMITH' ? <Hammer className="text-orange-400" size={20} /> :
-                  loc.type === 'CRYSTAL_FOUNDRY' ? <Hammer className="text-cyan-300" size={20} /> :
-                  loc.type === 'MEGA_FARM' ? <Coins className="text-lime-300" size={20} /> :
-                  loc.type === 'ALTAR' ? <span className="text-[20px] leading-none">🛐</span> :
-                  loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={20} /> :
-                  loc.type === 'SOURCE_RECOMPILER' ? <Brain className="text-fuchsia-300" size={20} /> :
-                  loc.type === 'HABITAT' ? <MapPin className="text-emerald-300" size={20} /> :
-                  loc.type === 'SEAL_HABITAT' ? <span className="text-[20px] leading-none">🦭</span> :
-                  loc.type === 'HIDEOUT' ? <Shield className="text-emerald-300" size={20} /> :
-                  <Tent className="text-green-500" size={16} />}
+                {loc.type === 'CITY' ? <Home className="text-amber-500" size={settlementIconPx(24)} /> :
+                  loc.type === 'CASTLE' ? <ShieldAlert className="text-stone-400" size={settlementIconPx(20)} /> :
+                  loc.type === 'FIELD_CAMP' ? <Flag size={marchCampIconPx(20)} style={{ color: loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8' }} /> :
+                  loc.type === 'ROACH_NEST' ? <span className="text-[40px] leading-none">🪳</span> :
+                  loc.type === 'RUINS' ? <Ghost className="text-purple-400" size={settlementIconPx(20)} /> :
+                  loc.type === 'GRAVEYARD' ? <Skull className="text-stone-300" size={settlementIconPx(20)} /> :
+                  loc.type === 'TRAINING_GROUNDS' ? <Swords className="text-blue-400" size={settlementIconPx(20)} /> :
+                  loc.type === 'ASYLUM' ? <Brain className="text-pink-500" size={settlementIconPx(22)} /> :
+                  loc.type === 'MARKET' ? <ShoppingBag className="text-green-500" size={settlementIconPx(20)} /> :
+                  loc.type === 'HOTPOT_RESTAURANT' ? <Utensils className="text-red-500" size={settlementIconPx(20)} /> :
+                  loc.type === 'COFFEE' ? <Coffee className="text-amber-300" size={settlementIconPx(20)} /> :
+                  loc.type === 'BANDIT_CAMP' ? <Tent className="text-red-600" size={settlementIconPx(20)} /> :
+                  loc.type === 'HEAVY_TRIAL_GROUNDS' ? <span className="text-[40px] leading-none">🏗️</span> :
+                  loc.type === 'IMPOSTER_PORTAL' ? <Zap className="text-fuchsia-400" size={settlementIconPx(20)} /> :
+                  loc.type === 'MYSTERIOUS_CAVE' ? <Scroll className="text-indigo-400" size={settlementIconPx(20)} /> :
+                  loc.type === 'WORLD_BOARD' ? <History className="text-slate-300" size={settlementIconPx(20)} /> :
+                  loc.type === 'VOID_BUFFER_MINE' || loc.type === 'MEMORY_OVERFLOW_MINE' || loc.type === 'LOGIC_PARADOX_MINE' ? <Mountain className="text-emerald-400" size={settlementIconPx(20)} /> :
+                  loc.type === 'HERO_CRYSTAL_MINE' ? <Mountain className="text-purple-300" size={settlementIconPx(20)} /> :
+                  loc.type === 'BLACKSMITH' ? <Hammer className="text-orange-400" size={settlementIconPx(20)} /> :
+                  loc.type === 'CRYSTAL_FOUNDRY' ? <Hammer className="text-cyan-300" size={settlementIconPx(20)} /> :
+                  loc.type === 'MEGA_FARM' ? <Coins className="text-lime-300" size={settlementIconPx(20)} /> :
+                  loc.type === 'ALTAR' ? <span className="text-[40px] leading-none">🛐</span> :
+                  loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={settlementIconPx(20)} /> :
+                  loc.type === 'SOURCE_RECOMPILER' ? <Brain className="text-fuchsia-300" size={settlementIconPx(20)} /> :
+                  loc.type === 'HABITAT' ? <MapPin className="text-emerald-300" size={settlementIconPx(20)} /> :
+                  loc.type === 'SEAL_HABITAT' ? <span className="text-[40px] leading-none">🦭</span> :
+                  loc.type === 'HIDEOUT' ? <Shield className="text-emerald-300" size={settlementIconPx(20)} /> :
+                  <Tent className="text-green-500" size={settlementIconPx(16)} />}
                 {loc.factionId && loc.owner !== 'PLAYER' && (
                   <span
                     className="absolute -bottom-1 left-1/2 -translate-x-1/2 h-2 w-2 rounded-full border border-black/60 shadow"
@@ -845,7 +848,7 @@ export const BigMapView = ({
         ))}
         {!isObserverMode && (
           <div
-            className="absolute transform -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none"
+            className="absolute transform -translate-x-1/2 -translate-y-1/2 z-40 pointer-events-none"
             style={{
               left: `${player.position.x * unitSize}px`,
               top: `${player.position.y * unitSize}px`
