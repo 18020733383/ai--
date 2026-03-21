@@ -1,5 +1,5 @@
 import React from 'react';
-import { Activity, Coins, Crosshair, Flag, Map as MapIcon, MessageCircle, Scroll, Settings, User, Users } from 'lucide-react';
+import { Activity, Coins, Crosshair, Flag, LocateFixed, Map as MapIcon, MessageCircle, Scroll, Settings, User, Users } from 'lucide-react';
 import { GameView, PlayerState } from '../../types';
 
 type AppHeaderProps = {
@@ -7,6 +7,8 @@ type AppHeaderProps = {
   view: GameView;
   troopCount: number;
   maxTroops: number;
+  /** 将大地图镜头对准队伍当前坐标（非地图界面会先切到地图） */
+  onFocusPlayerOnMap?: () => void;
   onOpenCharacter: () => void;
   onToggleParty: () => void;
   onToggleBills: () => void;
@@ -22,6 +24,7 @@ export const AppHeader = ({
   view,
   troopCount,
   maxTroops,
+  onFocusPlayerOnMap,
   onOpenCharacter,
   onToggleParty,
   onToggleBills,
@@ -33,6 +36,17 @@ export const AppHeader = ({
 }: AppHeaderProps) => (
   <header className="bg-stone-900 border-b border-stone-700 p-2 md:p-4 sticky top-0 z-30 shadow-lg flex flex-wrap gap-4 items-center justify-between">
     <div className="flex items-center gap-2">
+      {onFocusPlayerOnMap && (
+        <button
+          type="button"
+          onClick={onFocusPlayerOnMap}
+          className="flex items-center justify-center w-9 h-9 rounded-lg border border-stone-600 bg-stone-800/80 text-amber-400 hover:bg-stone-700 hover:text-amber-300 transition-colors shrink-0"
+          title="定位到队伍当前位置"
+          aria-label="定位到队伍当前位置"
+        >
+          <LocateFixed size={18} />
+        </button>
+      )}
       <div
         onClick={onOpenCharacter}
         className="flex items-center gap-2 cursor-pointer hover:bg-stone-800 p-1 rounded transition-colors"

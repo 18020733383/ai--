@@ -1713,28 +1713,44 @@ export default function App() {
     setTargetPosition({ x: targetX, y: targetY });
   };
 
-  const focusCameraOnLocation = (location: Location, desiredZoom = 1.4) => {
+  const focusCameraOnMapCoords = (worldX: number, worldY: number, desiredZoom?: number) => {
+    const z = desiredZoom ?? zoomRef.current;
     zoomAnchorRef.current = null;
-    zoomRef.current = desiredZoom;
-    targetZoomRef.current = desiredZoom;
-    setZoom(desiredZoom);
-    setTargetZoom(desiredZoom);
+    zoomRef.current = z;
+    targetZoomRef.current = z;
+    setZoom(z);
+    setTargetZoom(z);
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const el = mapRef.current;
         if (!el) return;
         const rect = el.getBoundingClientRect();
-        const unitSize = 10 * desiredZoom;
+        const unitSize = 10 * z;
         const centerX = rect.width / 2;
         const centerY = rect.height / 2;
         const nextCamera = {
-          x: centerX - (location.coordinates.x - MAP_WIDTH / 2) * unitSize,
-          y: centerY - (location.coordinates.y - MAP_HEIGHT / 2) * unitSize
+          x: centerX - (worldX - MAP_WIDTH / 2) * unitSize,
+          y: centerY - (worldY - MAP_HEIGHT / 2) * unitSize
         };
         cameraRef.current = nextCamera;
         setCamera(nextCamera);
       });
     });
+  };
+
+  const focusCameraOnLocation = (location: Location, desiredZoom = 1.4) => {
+    focusCameraOnMapCoords(location.coordinates.x, location.coordinates.y, desiredZoom);
+  };
+
+  const focusPlayerOnMap = () => {
+    const px = player.position.x;
+    const py = player.position.y;
+    if (view === 'MAP') {
+      focusCameraOnMapCoords(px, py);
+    } else {
+      setView('MAP');
+      setTimeout(() => focusCameraOnMapCoords(px, py), 50);
+    }
   };
 
   const focusLocationOnMap = (location: Location) => {
@@ -7659,6 +7675,7 @@ export default function App() {
           view={view}
           troopCount={player.troops.reduce((a, b) => a + b.count, 0) + (player.woundedTroops ?? []).reduce((sum, e) => sum + (e.count ?? 0), 0)}
           maxTroops={getMaxTroops()}
+          onFocusPlayerOnMap={focusPlayerOnMap}
           onOpenCharacter={() => setView('CHARACTER')}
           onToggleParty={() => setView(view === 'PARTY' ? 'MAP' : 'PARTY')}
           onToggleBills={() => setView(view === 'BILLS' ? 'MAP' : 'BILLS')}
