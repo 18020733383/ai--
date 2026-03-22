@@ -131,6 +131,13 @@ export default function App() {
   const cameraRef = useRef(camera);
   const isDraggingRef = useRef(isDragging);
   const zoomAnchorRef = useRef<{ screen: { x: number; y: number }; world: { x: number; y: number } } | null>(null);
+  /** 定位队伍等：平滑移动镜头（与滚轮锚点缩放互斥） */
+  const cameraLerpRef = useRef<{
+    from: { x: number; y: number };
+    to: { x: number; y: number };
+    started: number;
+    duration: number;
+  } | null>(null);
 
   // Training Ground State
   const [trainingMyArmy, setTrainingMyArmy] = useState<{id: string, count: number}[]>([{id: 'knight', count: 10}]);
@@ -1442,7 +1449,10 @@ export default function App() {
         zoomAnchorRef.current = { screen, world };
       }
 
-      if (next !== current) setTargetZoom(next);
+      if (next !== current) {
+        cameraLerpRef.current = null;
+        setTargetZoom(next);
+      }
     };
     el.addEventListener('wheel', wheelHandler, { passive: false });
     return () => el.removeEventListener('wheel', wheelHandler);
@@ -1476,7 +1486,7 @@ export default function App() {
           const dx = targetPosition.x - prev.position.x;
           const dy = targetPosition.y - prev.position.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          const speed = 36; // Units per second (Reduced from 60 to 36 for 0.6x speed)
+          const speed = 54; // 地图单位/秒（36×1.5）
 
           if (dist < 0.5) {
              // Arrived
@@ -1507,28 +1517,34 @@ export default function App() {
       if (Math.abs(zoomDiff) > 0.0005) {
         const t = Math.min(1, 12 * deltaTime);
         const nextZoom = currentZoom + zoomDiff * t;
-        const roundedZoom = Math.round(nextZoom * 1000) / 1000;
-        zoomRef.current = roundedZoom;
-        setZoom(roundedZoom);
+        zoomRef.current = nextZoom;
+        setZoom(nextZoom);
 
         const anchor = zoomAnchorRef.current;
         if (anchor && mapRef.current && !isDraggingRef.current) {
-          const unitSize = 10 * roundedZoom;
+          const unitSize = 10 * nextZoom;
           const nextCamera = {
             x: anchor.screen.x - anchor.world.x * unitSize + (MAP_WIDTH / 2) * unitSize,
             y: anchor.screen.y - anchor.world.y * unitSize + (MAP_HEIGHT / 2) * unitSize
           };
-          const roundedCamera = {
-            x: Math.round(nextCamera.x * 10) / 10,
-            y: Math.round(nextCamera.y * 10) / 10
-          };
-          cameraRef.current = roundedCamera;
-          setCamera(roundedCamera);
+          cameraRef.current = nextCamera;
+          setCamera(nextCamera);
         }
       } else if (Math.abs(zoomDiff) > 0) {
         zoomRef.current = desiredZoom;
         setZoom(desiredZoom);
         zoomAnchorRef.current = null;
+      }
+
+      if (!zoomAnchorRef.current && cameraLerpRef.current) {
+        const lp = cameraLerpRef.current;
+        const u = Math.min(1, (time - lp.started) / lp.duration);
+        const e = 1 - (1 - u) ** 3;
+        const x = lp.from.x + (lp.to.x - lp.from.x) * e;
+        const y = lp.from.y + (lp.to.y - lp.from.y) * e;
+        cameraRef.current = { x, y };
+        setCamera({ x, y });
+        if (u >= 1) cameraLerpRef.current = null;
       }
 
       movementRef.current = requestAnimationFrame(animate);
@@ -1676,6 +1692,7 @@ export default function App() {
     setIsDragging(true);
     setDragStart({ x: e.clientX - camera.x, y: e.clientY - camera.y });
     zoomAnchorRef.current = null;
+    cameraLerpRef.current = null;
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
@@ -1713,27 +1730,38 @@ export default function App() {
     setTargetPosition({ x: targetX, y: targetY });
   };
 
-  const focusCameraOnMapCoords = (worldX: number, worldY: number, desiredZoom?: number) => {
-    const z = desiredZoom ?? zoomRef.current;
+  const focusCameraOnMapCoords = (worldX: number, worldY: number, desiredZoom?: number, smooth = false) => {
     zoomAnchorRef.current = null;
-    zoomRef.current = z;
-    targetZoomRef.current = z;
-    setZoom(z);
-    setTargetZoom(z);
+    if (desiredZoom !== undefined) {
+      const z = desiredZoom;
+      zoomRef.current = z;
+      targetZoomRef.current = z;
+      setZoom(z);
+      setTargetZoom(z);
+    }
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         const el = mapRef.current;
         if (!el) return;
         const rect = el.getBoundingClientRect();
-        const unitSize = 10 * z;
+        const unitSize = 10 * zoomRef.current;
         const centerX = rect.width / 2;
         const centerY = rect.height / 2;
-        const nextCamera = {
+        const nextCam = {
           x: centerX - (worldX - MAP_WIDTH / 2) * unitSize,
           y: centerY - (worldY - MAP_HEIGHT / 2) * unitSize
         };
-        cameraRef.current = nextCamera;
-        setCamera(nextCamera);
+        if (smooth) {
+          cameraLerpRef.current = {
+            from: { ...cameraRef.current },
+            to: nextCam,
+            started: performance.now(),
+            duration: 520
+          };
+        } else {
+          cameraRef.current = nextCam;
+          setCamera(nextCam);
+        }
       });
     });
   };
@@ -1746,10 +1774,10 @@ export default function App() {
     const px = player.position.x;
     const py = player.position.y;
     if (view === 'MAP') {
-      focusCameraOnMapCoords(px, py);
+      focusCameraOnMapCoords(px, py, undefined, true);
     } else {
       setView('MAP');
-      setTimeout(() => focusCameraOnMapCoords(px, py), 50);
+      setTimeout(() => focusCameraOnMapCoords(px, py, undefined, true), 50);
     }
   };
 

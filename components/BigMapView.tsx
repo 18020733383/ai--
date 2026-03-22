@@ -628,7 +628,7 @@ export const BigMapView = ({
         style={{
           width: `${MAP_WIDTH * unitSize}px`,
           height: `${MAP_HEIGHT * unitSize}px`,
-          transform: `translate3d(${Math.round((-(MAP_WIDTH / 2) * unitSize + camera.x) * 10) / 10}px, ${Math.round((-(MAP_HEIGHT / 2) * unitSize + camera.y) * 10) / 10}px, 0)`,
+          transform: `translate3d(${-(MAP_WIDTH / 2) * unitSize + camera.x}px, ${-(MAP_HEIGHT / 2) * unitSize + camera.y}px, 0)`,
           willChange: 'transform'
         }}
       >
@@ -784,11 +784,8 @@ export const BigMapView = ({
             const hitPx = isCamp
               ? Math.max(26, Math.min(88, Math.round(36 * zoom)))
               : Math.max(36, Math.min(104, Math.round(52 * zoom)));
-            /** 原 settlementIconPx(base)=base*2；统一走 iconPxAtZoom */
-            const s = (base: number) => iconPxAtZoom(base * 2);
-            /** 原 marchCampIconPx(20)=round(16) */
-            const flagSz = Math.max(10, iconPxAtZoom(16));
-            const emojiPx = Math.max(18, Math.round(40 * zoom));
+            /** 全据点统一图标像素（约 40×zoom），避免城邦/emoji 据点大一圈 */
+            const locIconPx = iconPxAtZoom(40);
             return (
           <div
             key={loc.id}
@@ -825,39 +822,39 @@ export const BigMapView = ({
               onMouseLeave={() => setHoveredLocation(null)}
             >
               <div
-                className={`relative rounded-full border-2 transition-transform hover:scale-110 shadow-lg bg-stone-800 border-amber-600 ${isCamp ? 'p-0.5' : 'p-2'}`}
+                className="relative rounded-full border-2 transition-transform hover:scale-110 shadow-lg bg-stone-800 border-amber-600 p-1.5"
                 style={{
                   borderColor: isCamp ? (loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8') : undefined
                 }}
               >
-                {loc.type === 'CITY' ? <Home className="text-amber-500" size={s(24)} /> :
-                  loc.type === 'CASTLE' ? <ShieldAlert className="text-stone-400" size={s(20)} /> :
-                  loc.type === 'FIELD_CAMP' ? <Flag size={flagSz} style={{ color: loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8' }} /> :
-                  loc.type === 'ROACH_NEST' ? <span className="leading-none" style={{ fontSize: emojiPx }}>🪳</span> :
-                  loc.type === 'RUINS' ? <Ghost className="text-purple-400" size={s(20)} /> :
-                  loc.type === 'GRAVEYARD' ? <Skull className="text-stone-300" size={s(20)} /> :
-                  loc.type === 'TRAINING_GROUNDS' ? <Swords className="text-blue-400" size={s(20)} /> :
-                  loc.type === 'ASYLUM' ? <Brain className="text-pink-500" size={s(22)} /> :
-                  loc.type === 'MARKET' ? <ShoppingBag className="text-green-500" size={s(20)} /> :
-                  loc.type === 'HOTPOT_RESTAURANT' ? <Utensils className="text-red-500" size={s(20)} /> :
-                  loc.type === 'COFFEE' ? <Coffee className="text-amber-300" size={s(20)} /> :
-                  loc.type === 'BANDIT_CAMP' ? <Tent className="text-red-600" size={s(20)} /> :
-                  loc.type === 'HEAVY_TRIAL_GROUNDS' ? <span className="leading-none" style={{ fontSize: emojiPx }}>🏗️</span> :
-                  loc.type === 'IMPOSTER_PORTAL' ? <Zap className="text-fuchsia-400" size={s(20)} /> :
-                  loc.type === 'MYSTERIOUS_CAVE' ? <Scroll className="text-indigo-400" size={s(20)} /> :
-                  loc.type === 'WORLD_BOARD' ? <History className="text-slate-300" size={s(20)} /> :
-                  loc.type === 'VOID_BUFFER_MINE' || loc.type === 'MEMORY_OVERFLOW_MINE' || loc.type === 'LOGIC_PARADOX_MINE' ? <Mountain className="text-emerald-400" size={s(20)} /> :
-                  loc.type === 'HERO_CRYSTAL_MINE' ? <Mountain className="text-purple-300" size={s(20)} /> :
-                  loc.type === 'BLACKSMITH' ? <Hammer className="text-orange-400" size={s(20)} /> :
-                  loc.type === 'CRYSTAL_FOUNDRY' ? <Hammer className="text-cyan-300" size={s(20)} /> :
-                  loc.type === 'MEGA_FARM' ? <Coins className="text-lime-300" size={s(20)} /> :
-                  loc.type === 'ALTAR' ? <span className="leading-none" style={{ fontSize: emojiPx }}>🛐</span> :
-                  loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={s(20)} /> :
-                  loc.type === 'SOURCE_RECOMPILER' ? <Brain className="text-fuchsia-300" size={s(20)} /> :
-                  loc.type === 'HABITAT' ? <MapPin className="text-emerald-300" size={s(20)} /> :
-                  loc.type === 'SEAL_HABITAT' ? <span className="leading-none" style={{ fontSize: emojiPx }}>🦭</span> :
-                  loc.type === 'HIDEOUT' ? <Shield className="text-emerald-300" size={s(20)} /> :
-                  <Tent className="text-green-500" size={s(16)} />}
+                {loc.type === 'CITY' ? <Home className="text-amber-500" size={locIconPx} /> :
+                  loc.type === 'CASTLE' ? <ShieldAlert className="text-stone-400" size={locIconPx} /> :
+                  loc.type === 'FIELD_CAMP' ? <Flag size={locIconPx} style={{ color: loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8' }} /> :
+                  loc.type === 'ROACH_NEST' ? <span className="leading-none" style={{ fontSize: locIconPx }}>🪳</span> :
+                  loc.type === 'RUINS' ? <Ghost className="text-purple-400" size={locIconPx} /> :
+                  loc.type === 'GRAVEYARD' ? <Skull className="text-stone-300" size={locIconPx} /> :
+                  loc.type === 'TRAINING_GROUNDS' ? <Swords className="text-blue-400" size={locIconPx} /> :
+                  loc.type === 'ASYLUM' ? <Brain className="text-pink-500" size={locIconPx} /> :
+                  loc.type === 'MARKET' ? <ShoppingBag className="text-green-500" size={locIconPx} /> :
+                  loc.type === 'HOTPOT_RESTAURANT' ? <Utensils className="text-red-500" size={locIconPx} /> :
+                  loc.type === 'COFFEE' ? <Coffee className="text-amber-300" size={locIconPx} /> :
+                  loc.type === 'BANDIT_CAMP' ? <Tent className="text-red-600" size={locIconPx} /> :
+                  loc.type === 'HEAVY_TRIAL_GROUNDS' ? <span className="leading-none" style={{ fontSize: locIconPx }}>🏗️</span> :
+                  loc.type === 'IMPOSTER_PORTAL' ? <Zap className="text-fuchsia-400" size={locIconPx} /> :
+                  loc.type === 'MYSTERIOUS_CAVE' ? <Scroll className="text-indigo-400" size={locIconPx} /> :
+                  loc.type === 'WORLD_BOARD' ? <History className="text-slate-300" size={locIconPx} /> :
+                  loc.type === 'VOID_BUFFER_MINE' || loc.type === 'MEMORY_OVERFLOW_MINE' || loc.type === 'LOGIC_PARADOX_MINE' ? <Mountain className="text-emerald-400" size={locIconPx} /> :
+                  loc.type === 'HERO_CRYSTAL_MINE' ? <Mountain className="text-purple-300" size={locIconPx} /> :
+                  loc.type === 'BLACKSMITH' ? <Hammer className="text-orange-400" size={locIconPx} /> :
+                  loc.type === 'CRYSTAL_FOUNDRY' ? <Hammer className="text-cyan-300" size={locIconPx} /> :
+                  loc.type === 'MEGA_FARM' ? <Coins className="text-lime-300" size={locIconPx} /> :
+                  loc.type === 'ALTAR' ? <span className="leading-none" style={{ fontSize: locIconPx }}>🛐</span> :
+                  loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={locIconPx} /> :
+                  loc.type === 'SOURCE_RECOMPILER' ? <Brain className="text-fuchsia-300" size={locIconPx} /> :
+                  loc.type === 'HABITAT' ? <MapPin className="text-emerald-300" size={locIconPx} /> :
+                  loc.type === 'SEAL_HABITAT' ? <span className="leading-none" style={{ fontSize: locIconPx }}>🦭</span> :
+                  loc.type === 'HIDEOUT' ? <Shield className="text-emerald-300" size={locIconPx} /> :
+                  <Tent className="text-green-500" size={locIconPx} />}
                 {loc.factionId && loc.owner !== 'PLAYER' && (
                   <span
                     className="absolute -bottom-1 left-1/2 -translate-x-1/2 h-2 w-2 rounded-full border border-black/60 shadow"
