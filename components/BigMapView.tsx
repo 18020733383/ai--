@@ -784,8 +784,10 @@ export const BigMapView = ({
             const hitPx = isCamp
               ? Math.max(26, Math.min(88, Math.round(36 * zoom)))
               : Math.max(36, Math.min(104, Math.round(52 * zoom)));
-            const s = (base: number) => Math.max(8, Math.round(settlementIconPx(base) * zoom));
-            const flagSz = Math.max(10, Math.round(marchCampIconPx(20) * zoom));
+            /** 原 settlementIconPx(base)=base*2；统一走 iconPxAtZoom */
+            const s = (base: number) => iconPxAtZoom(base * 2);
+            /** 原 marchCampIconPx(20)=round(16) */
+            const flagSz = Math.max(10, iconPxAtZoom(16));
             const emojiPx = Math.max(18, Math.round(40 * zoom));
             return (
           <div
