@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { AIProvider, AltarDoctrine, AltarTroopDraft, SoldierInstance, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
 import { BUILDING_OPTIONS, CROP_DEF_MAP, ENCHANTMENT_RECIPES, ENDING_LIST, FACTIONS, FARM_MAX_PLOTS, getBuildingName, getSiegeEngineName, getEndingContent, getNewCovenantAvailable, HIDEOUT_GOV_EVENTS, HIDEOUT_UNLOCK_COST, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, SIEGE_ENGINE_COMBAT_STATS, SIEGE_ENGINE_OPTIONS, TROOP_TEMPLATES, createFarmState, createTroop, MAP_WIDTH, MAP_HEIGHT, MINE_CONFIGS, MINERAL_META, MINERAL_PURITY_LABELS, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
 import { attributesFromRatios } from './constants';
@@ -36,6 +36,17 @@ import { parseObserverTargets } from './features/observer-mode/utils/parseTarget
 import { ObserverNavBar } from './features/observer-mode/ui/ObserverNavBar';
 import { ObserverLocationModal, ObserverSiegeModal } from './features/observer-mode';
 import { ObserverNewspaperModal } from './features/observer-mode/ui/ObserverNewspaperModal';
+import {
+  ACHIEVEMENT_UNLOCK_EVENT,
+  checkProgressAchievements,
+  recordBattleWin,
+  recordManualSaveUnlock,
+  tryUnlockEndingWitness,
+  tryUnlockMapExplorer,
+  tryUnlockTroopArchive,
+  type AchievementDef
+} from './app/achievements/achievementStore';
+import { AchievementUnlockToast } from './components/AchievementUnlockToast';
 import { TroopArchiveView } from './views/TroopArchiveView';
 import { PartyView } from './views/PartyView';
 import { AsylumView } from './views/AsylumView';
@@ -194,6 +205,7 @@ export default function App() {
   const [altarRecruitDays, setAltarRecruitDays] = useState(2);
   const [altarRecruitState, setAltarRecruitState] = useState<AltarRecruitState | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [achievementToast, setAchievementToast] = useState<AchievementDef | null>(null);
   const [openAIBaseUrl, setOpenAIBaseUrl] = useState('https://api.openai.com');
   const [openAIKey, setOpenAIKey] = useState('');
   const [openAIModel, setOpenAIModel] = useState('');
@@ -622,6 +634,29 @@ export default function App() {
   useEffect(() => {
     logsRef.current = logs;
   }, [logs]);
+
+  const dismissAchievementToast = useCallback(() => {
+    setAchievementToast(null);
+  }, []);
+
+  useEffect(() => {
+    const onUnlock = (ev: Event) => {
+      const e = ev as CustomEvent<AchievementDef>;
+      if (e.detail && typeof e.detail.id === 'string') setAchievementToast(e.detail);
+    };
+    window.addEventListener(ACHIEVEMENT_UNLOCK_EVENT, onUnlock);
+    return () => window.removeEventListener(ACHIEVEMENT_UNLOCK_EVENT, onUnlock);
+  }, []);
+
+  useEffect(() => {
+    checkProgressAchievements({ day: player.day, gold: player.gold, renown: player.renown });
+  }, [player.day, player.gold, player.renown]);
+
+  useEffect(() => {
+    if (view === 'TROOP_ARCHIVE') tryUnlockTroopArchive();
+    if (view === 'MAP') tryUnlockMapExplorer();
+    if (view === 'ENDING') tryUnlockEndingWitness();
+  }, [view]);
 
   useEffect(() => {
     const active = pendingDecisions[0] ?? null;
@@ -5067,6 +5102,11 @@ export default function App() {
         }
       }
 
+      if (finalResult.outcome === 'A') {
+        if (isTraining) recordBattleWin(true);
+        else recordBattleWin(false);
+      }
+
     } catch (e: any) {
       console.error("Battle failed:", e);
       addLog("战斗演算出错: " + (e.message || "未知错误"));
@@ -6301,6 +6341,7 @@ export default function App() {
       setSelectedSaveId(id);
       setManualSaveName('');
       setSaveDataNotice(`已保存：${label}`);
+      recordManualSaveUnlock();
     } catch (e: any) {
       setSaveDataNotice(e?.message || '手动存档失败。');
     }
@@ -7736,6 +7777,7 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-200 font-sans selection:bg-amber-900 selection:text-white overflow-hidden flex flex-col">
+      <AchievementUnlockToast achievement={achievementToast} onDismiss={dismissAchievementToast} />
       {view === 'OBSERVER_MODE' && (
         <ObserverNavBar
           onBack={() => setView('MAIN_MENU')}

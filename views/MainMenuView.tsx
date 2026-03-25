@@ -1,6 +1,12 @@
 import React from 'react';
-import { Eye, Film, Play, Plus, Save, Skull, Trash2 } from 'lucide-react';
+import { Eye, Film, Play, Plus, Save, Skull, Trash2, Trophy } from 'lucide-react';
 import { Button } from '../components/Button';
+import {
+  ACHIEVEMENTS,
+  ACHIEVEMENT_CATEGORY_LABELS,
+  type AchievementCategory,
+  getUnlockedIds
+} from '../app/achievements/achievementStore';
 
 type SaveSlotMeta = {
   id: string;
@@ -45,10 +51,29 @@ export const MainMenuView = ({
   onReplayEnding,
   onObserverMode
 }: MainMenuViewProps) => {
-  const [tab, setTab] = React.useState<'SAVES' | 'ENDINGS'>('SAVES');
+  const [tab, setTab] = React.useState<'SAVES' | 'ENDINGS' | 'ACHIEVEMENTS'>('SAVES');
+  const [achFilter, setAchFilter] = React.useState<'ALL' | AchievementCategory>('ALL');
+  const [unlocked, setUnlocked] = React.useState(() => getUnlockedIds());
   const safeSaves = Array.isArray(saves) ? saves.slice().sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0)) : [];
   const selected = selectedSaveId ? safeSaves.find(s => s.id === selectedSaveId) ?? null : null;
   const autoSave = safeSaves.find(s => s.isAuto) ?? null;
+
+  React.useEffect(() => {
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== 'calradia_achievements_v1') return;
+      setUnlocked(getUnlockedIds());
+    };
+    const onUnlock = () => setUnlocked(getUnlockedIds());
+    window.addEventListener('storage', onStorage);
+    window.addEventListener('calradia-achievement-unlock', onUnlock);
+    return () => {
+      window.removeEventListener('storage', onStorage);
+      window.removeEventListener('calradia-achievement-unlock', onUnlock);
+    };
+  }, []);
+
+  const filteredAchievements = ACHIEVEMENTS.filter(a => achFilter === 'ALL' || a.category === achFilter);
+  const unlockedCount = ACHIEVEMENTS.filter(a => unlocked.has(a.id)).length;
 
   return (
     <div className="min-h-screen bg-black text-stone-200 flex items-center justify-center p-4">
@@ -65,6 +90,9 @@ export const MainMenuView = ({
             </Button>
             <Button variant={tab === 'ENDINGS' ? 'gold' : 'secondary'} onClick={() => setTab('ENDINGS')}>
               <Film size={16} className="inline mr-2" /> 达成结局
+            </Button>
+            <Button variant={tab === 'ACHIEVEMENTS' ? 'gold' : 'secondary'} onClick={() => setTab('ACHIEVEMENTS')}>
+              <Trophy size={16} className="inline mr-2" /> 成就
             </Button>
           </div>
         </div>
@@ -84,7 +112,60 @@ export const MainMenuView = ({
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
           <div className="lg:col-span-2 bg-stone-950/60 border border-stone-800 rounded p-5">
-            {tab === 'SAVES' ? (
+            {tab === 'ACHIEVEMENTS' ? (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                  <div>
+                    <div className="text-stone-300 font-bold">成就</div>
+                    <div className="text-xs text-stone-500 mt-1">
+                      跨存档累计，数据保存在本机浏览器。已解锁 {unlockedCount} / {ACHIEVEMENTS.length}
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      variant={achFilter === 'ALL' ? 'gold' : 'secondary'}
+                      size="sm"
+                      onClick={() => setAchFilter('ALL')}
+                    >
+                      全部
+                    </Button>
+                    {(Object.keys(ACHIEVEMENT_CATEGORY_LABELS) as AchievementCategory[]).map(cat => (
+                      <Button
+                        key={cat}
+                        variant={achFilter === cat ? 'gold' : 'secondary'}
+                        size="sm"
+                        onClick={() => setAchFilter(cat)}
+                      >
+                        {ACHIEVEMENT_CATEGORY_LABELS[cat]}
+                      </Button>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[min(60vh,520px)] overflow-y-auto pr-1">
+                  {filteredAchievements.map(a => {
+                    const ok = unlocked.has(a.id);
+                    return (
+                      <div
+                        key={a.id}
+                        className={`rounded border p-4 ${ok ? 'border-amber-700/70 bg-amber-950/20' : 'border-stone-800 bg-black/30 opacity-75'}`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-stone-200 font-bold">{a.title}</div>
+                          {ok ? (
+                            <span className="text-[10px] uppercase tracking-wide text-amber-400 shrink-0">已解锁</span>
+                          ) : (
+                            <span className="text-[10px] text-stone-600 shrink-0">未解锁</span>
+                          )}
+                        </div>
+                        <div className="text-[11px] text-amber-700/90 mt-1">{ACHIEVEMENT_CATEGORY_LABELS[a.category]}</div>
+                        <p className="text-xs text-stone-400 mt-2 leading-relaxed">{a.description}</p>
+                        <div className="text-[10px] text-stone-600 mt-2 font-mono">{a.id}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : tab === 'SAVES' ? (
               <div className="space-y-4">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                   <div className="text-stone-300 font-bold">存档列表</div>
@@ -145,7 +226,7 @@ export const MainMenuView = ({
                   )}
                 </div>
               </div>
-            ) : (
+            ) : tab === 'ENDINGS' ? (
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div className="text-stone-300 font-bold">结局回放</div>
@@ -165,7 +246,7 @@ export const MainMenuView = ({
                   ))}
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
 
           <div className="bg-stone-950/60 border border-stone-800 rounded p-5">

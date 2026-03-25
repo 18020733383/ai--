@@ -16,10 +16,10 @@ const buildStayPartyTroops = (location: Location, seed: number, entries: Array<{
     : location.type === 'IMPOSTER_PORTAL'
       ? ['imposter_flux_mortar']
       : (location.type === 'CITY' || location.type === 'CASTLE')
-        ? ['heavy_ballista', 'heavy_fire_cannon', 'heavy_catapult', 'heavy_light_tank']
+        ? ['heavy_ballista', 'heavy_fire_cannon', 'heavy_catapult', 'heavy_light_tank', 'heavy_siege_belfry', 'undead_bone_siege_golem']
         : [];
   const airOptions = (location.type === 'CITY' || location.type === 'CASTLE')
-    ? ['arcane_glider', 'arcane_biplane', 'arcane_airship']
+    ? ['arcane_glider', 'arcane_biplane', 'arcane_airship', 'arcane_sky_runner', 'arcane_storm_skiff', 'beast_roc']
     : [];
   const baseTroops = entries
     .map(entry => {
@@ -269,6 +269,8 @@ const buildLordPartyTroops = (location: Location) => {
       pickTroop('undead_grave_arbalist', 60),
       pickTroop('specter', 40),
       pickTroop('undead_musician', 30),
+      pickTroop('undead_carrion_moth', 25),
+      pickTroop('undead_grave_colossus', 12),
       pickTroop('undead_soul_obelisk', 1),
       pickTroop('undead_gargoyle', 1)
     ].filter(Boolean) as Troop[];

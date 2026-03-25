@@ -161,7 +161,15 @@ const TroopPortrait = ({ troopId, alt, className }: { troopId: string; alt: stri
 export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasProps) => {
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const [size, setSize] = React.useState({ w: 1200, h: 680 });
+  const sizeRef = React.useRef(size);
+  React.useEffect(() => {
+    sizeRef.current = size;
+  }, [size]);
   const [transform, setTransform] = React.useState({ x: 20, y: 20, scale: 1 });
+  const transformRef = React.useRef(transform);
+  React.useEffect(() => {
+    transformRef.current = transform;
+  }, [transform]);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [highlightIds, setHighlightIds] = React.useState<Set<string>>(new Set());
   const [isFullscreen, setIsFullscreen] = React.useState(false);
@@ -307,14 +315,16 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
 
   const selectedNode = selectedId ? nodeMap.get(selectedId) ?? null : null;
 
+  const layoutAutoFitKeyRef = React.useRef('');
+
   const fitToView = React.useCallback((targetLayout: NonNullable<typeof layout>) => {
-    const safeW = Math.max(1, size.w);
-    const safeH = Math.max(1, size.h);
+    const safeW = Math.max(1, sizeRef.current.w);
+    const safeH = Math.max(1, sizeRef.current.h);
     const scale = Math.max(0.35, Math.min(1.2, Math.min((safeW - 40) / targetLayout.width, (safeH - 40) / targetLayout.height)));
     const x = (safeW - targetLayout.width * scale) / 2;
     const y = (safeH - targetLayout.height * scale) / 2;
     setTransform({ x, y, scale });
-  }, [size.h, size.w]);
+  }, []);
 
   const centerOnNode = React.useCallback((id: string, nextScale?: number) => {
     if (!layout) return;
@@ -361,51 +371,68 @@ export const TroopTreeCanvas = ({ troops, query, tierFilter }: TroopTreeCanvasPr
     return () => observer.disconnect();
   }, [isFullscreen]);
 
+  const layoutStructureKey = React.useMemo(() => {
+    if (!layout) return '';
+    return `${layout.width}x${layout.height}|${layout.nodes.map(n => n.id).sort().join(',')}`;
+  }, [layout]);
+
+  React.useEffect(() => {
+    if (!layout || !layoutStructureKey) return;
+    if (layoutAutoFitKeyRef.current === layoutStructureKey) return;
+    layoutAutoFitKeyRef.current = layoutStructureKey;
+    fitToView(layout);
+  }, [layout, layoutStructureKey, fitToView]);
+
   React.useEffect(() => {
     if (!layout) return;
     fitToView(layout);
-  }, [layout, fitToView]);
+  }, [isFullscreen, layout, fitToView]);
 
   const applyWheelZoom = React.useCallback((clientX: number, clientY: number, deltaY: number, rect: DOMRect) => {
     const px = clientX - rect.left;
     const py = clientY - rect.top;
     const delta = -deltaY * 0.0012;
-    const nextScale = Math.max(0.3, Math.min(2.4, transform.scale * (1 + delta)));
-    const worldX = (px - transform.x) / transform.scale;
-    const worldY = (py - transform.y) / transform.scale;
-    setTransform({
-      scale: nextScale,
-      x: px - worldX * nextScale,
-      y: py - worldY * nextScale
+    setTransform(prev => {
+      const nextScale = Math.max(0.3, Math.min(2.4, prev.scale * (1 + delta)));
+      const worldX = (px - prev.x) / prev.scale;
+      const worldY = (py - prev.y) / prev.scale;
+      return {
+        scale: nextScale,
+        x: px - worldX * nextScale,
+        y: py - worldY * nextScale
+      };
     });
-  }, [transform.scale, transform.x, transform.y]);
+  }, []);
 
   React.useEffect(() => {
-    const handler = (ev: WheelEvent) => {
-      const el = containerRef.current;
-      if (!el) return;
+    const el = containerRef.current;
+    if (!el || !layout) return;
+    const onWheel = (ev: WheelEvent) => {
       if (!(ev.target instanceof Node) || !el.contains(ev.target)) return;
       ev.preventDefault();
+      ev.stopPropagation();
       const rect = el.getBoundingClientRect();
       applyWheelZoom(ev.clientX, ev.clientY, ev.deltaY, rect);
     };
-    window.addEventListener('wheel', handler, { passive: false, capture: true });
-    return () => window.removeEventListener('wheel', handler as EventListener);
-  }, [applyWheelZoom, isFullscreen]);
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [applyWheelZoom, layout, isFullscreen]);
 
   const applyDragMove = React.useCallback((clientX: number, clientY: number) => {
     if (!pointerRef.current.active) return;
     const dx = clientX - pointerRef.current.startX;
     const dy = clientY - pointerRef.current.startY;
-    setTransform({ x: pointerRef.current.baseX + dx, y: pointerRef.current.baseY + dy, scale: transform.scale });
-  }, [transform.scale]);
+    const scale = transformRef.current.scale;
+    setTransform({ x: pointerRef.current.baseX + dx, y: pointerRef.current.baseY + dy, scale });
+  }, []);
 
   const applyMouseMove = React.useCallback((clientX: number, clientY: number) => {
     if (!mouseRef.current.active) return;
     const dx = clientX - mouseRef.current.startX;
     const dy = clientY - mouseRef.current.startY;
-    setTransform({ x: mouseRef.current.baseX + dx, y: mouseRef.current.baseY + dy, scale: transform.scale });
-  }, [transform.scale]);
+    const scale = transformRef.current.scale;
+    setTransform({ x: mouseRef.current.baseX + dx, y: mouseRef.current.baseY + dy, scale });
+  }, []);
 
   React.useEffect(() => {
     const onMove = (ev: PointerEvent) => {

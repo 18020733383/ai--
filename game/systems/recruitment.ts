@@ -38,14 +38,17 @@ export function getRecruitmentPool(location: Location, mode: 'VOLUNTEER' | 'MERC
       'heavy_fire_cannon',
       'heavy_light_tank',
       'heavy_arcane_radar',
+      'heavy_siege_belfry',
       'roach_egg_thrower',
       'imposter_flux_mortar',
       'undead_soul_obelisk',
+      'undead_bone_siege_golem',
+      'undead_cathedral_colossus',
       'hotpot_broth_howler'
     ];
   }
   if (type === 'GRAVEYARD') {
-    if (mode === 'VOLUNTEER') return ['zombie', 'undead_grave_thrall', 'undead_rot_scout', 'undead_mire_digger', 'undead_bone_crawler', 'undead_ashen_runner', 'undead_coffin_bearer'];
+    if (mode === 'VOLUNTEER') return ['zombie', 'undead_grave_thrall', 'undead_rot_scout', 'undead_mire_digger', 'undead_bone_crawler', 'undead_ashen_runner', 'undead_coffin_bearer', 'undead_carrion_moth'];
     return [
       'skeleton_warrior',
       'specter',
@@ -65,7 +68,14 @@ export function getRecruitmentPool(location: Location, mode: 'VOLUNTEER' | 'MERC
       'undead_gargoyle',
       'undead_gargoyle_ancient',
       'undead_bone_mortar',
-      'undead_grave_bastion'
+      'undead_grave_bastion',
+      'undead_gloom_skimmer',
+      'undead_tomb_harrier',
+      'undead_night_gaunt',
+      'undead_eclipse_reaper',
+      'undead_grave_colossus',
+      'undead_bone_siege_golem',
+      'undead_cathedral_colossus'
     ];
   }
   if (type === 'HOTPOT_RESTAURANT') {
