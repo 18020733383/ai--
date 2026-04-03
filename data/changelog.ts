@@ -6,6 +6,11 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.12',
+    date: '2026-04-04',
+    items: ['关系界面新增「王国战略指令」只读面板：各势力模式、焦点据点、敌向与战略惯性周期']
+  },
+  {
     version: '0.13.11',
     date: '2026-04-04',
     items: [

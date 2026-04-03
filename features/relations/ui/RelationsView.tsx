@@ -1,7 +1,8 @@
 import { Button } from '../../../components/Button';
 import { FACTIONS, RACE_LABELS } from '../../../game/data';
 import { clampRelation, getRelationStateLabel } from '../../../game/systems/diplomacy';
-import { Location, PlayerState, RaceId, WorldDiplomacyState } from '../../../types';
+import { FactionStrategicMode, Location, PlayerState, RaceId, WorldDiplomacyState } from '../../../types';
+import { getFactionLocations } from '../../../game/systems/garrisonHelpers';
 
 type RelationsViewProps = {
   locations: Location[];
@@ -53,6 +54,12 @@ export const RelationsView = ({
 
   const diplomacyEvents = (worldDiplomacy.events ?? []).slice(0, 18);
   const personalEvents = (player.relationEvents ?? []).slice(0, 12);
+
+  const strategyModeLabel = (mode: FactionStrategicMode): string => {
+    if (mode === 'HOLD') return '固守整备';
+    if (mode === 'PRESS_ENEMY') return '对敌施压';
+    return '围城解围';
+  };
 
   return (
     <div className="max-w-6xl mx-auto px-4">
@@ -171,6 +178,65 @@ export const RelationsView = ({
             </table>
           </div>
           <div className="text-xs text-stone-500 mt-3">物种态度用于驱动“收复失地/反攻”倾向与长期敌视。</div>
+        </div>
+      </div>
+
+      <div className="bg-stone-900 border border-stone-700 rounded-lg p-4 mt-6">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-stone-200 font-semibold">王国战略指令</div>
+          <div className="text-xs text-stone-500">日结 AI 生成 · 只读</div>
+        </div>
+        <p className="text-xs text-stone-500 mb-3">
+          与各势力当前外交、据点与围城联动；带数日惯性。领主效用打分会参考此处，便于对照观察。
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+          {FACTIONS.map(faction => {
+            const dir = worldDiplomacy.factionStrategies?.[faction.id];
+            const hasTerritory = getFactionLocations(faction.id, locations).length > 0;
+            const focalName = dir
+              ? (locations.find(l => l.id === dir.focalLocationId)?.name ?? dir.focalLocationId)
+              : '';
+            const rivalName =
+              dir?.rivalFactionId != null
+                ? (FACTIONS.find(f => f.id === dir.rivalFactionId)?.shortName ?? dir.rivalFactionId)
+                : null;
+            return (
+              <div
+                key={faction.id}
+                className="rounded-lg border border-stone-800 bg-stone-950/60 p-3 text-sm"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: faction.color }} />
+                  <span className="text-stone-200 font-semibold">{faction.name}</span>
+                </div>
+                {!hasTerritory ? (
+                  <div className="text-xs text-stone-500">当前无控制据点</div>
+                ) : !dir ? (
+                  <div className="text-xs text-stone-500">尚无记录（经过游戏内一天后通常会出现）</div>
+                ) : (
+                  <ul className="space-y-1.5 text-xs text-stone-400 list-none">
+                    <li>
+                      <span className="text-stone-500">模式 </span>
+                      <span className="text-amber-200/90">{strategyModeLabel(dir.mode)}</span>
+                    </li>
+                    <li>
+                      <span className="text-stone-500">焦点 </span>
+                      <span className="text-stone-200">{focalName}</span>
+                    </li>
+                    {rivalName ? (
+                      <li>
+                        <span className="text-stone-500">主要敌向 </span>
+                        <span className="text-stone-200">{rivalName}</span>
+                      </li>
+                    ) : null}
+                    <li className="text-stone-500">
+                      第 {dir.setDay} 天确立 · 惯性至少至第 {dir.stableUntilDay} 天
+                    </li>
+                  </ul>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
