@@ -358,11 +358,24 @@ export type WorldDiplomacyEvent = {
   text: string;
 };
 
+/** 王国层战略目标（骑砍式：全军有一条「当前意向」供领主效用加分） */
+export type FactionStrategicMode = 'HOLD' | 'PRESS_ENEMY' | 'DEFEND_HOME';
+
+export type FactionStrategicDirective = {
+  mode: FactionStrategicMode;
+  focalLocationId: string;
+  setDay: number;
+  /** 惯性：此日之前不轻易改换战略 */
+  stableUntilDay: number;
+  rivalFactionId?: FactionId;
+};
+
 export type WorldDiplomacyState = {
   factionRelations: Record<FactionId, Record<FactionId, number>>;
   raceRelations: Record<RaceId, Record<RaceId, number>>;
   factionRaceRelations: Record<FactionId, Record<RaceId, number>>;
   events: WorldDiplomacyEvent[];
+  factionStrategies?: Partial<Record<FactionId, FactionStrategicDirective>>;
 };
 
 export interface Lord {

@@ -1,12 +1,12 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, SoldierInstance, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState } from './types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, SoldierInstance, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, LordState, NegotiationResult, WorldDiplomacyState } from './types';
 import { BUILDING_OPTIONS, CROP_DEF_MAP, ENCHANTMENT_RECIPES, ENDING_LIST, FACTIONS, FARM_MAX_PLOTS, getBuildingName, getSiegeEngineName, getEndingContent, getNewCovenantAvailable, HIDEOUT_GOV_EVENTS, HIDEOUT_UNLOCK_COST, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, SIEGE_ENGINE_COMBAT_STATS, SIEGE_ENGINE_OPTIONS, TROOP_TEMPLATES, createFarmState, createTroop, MAP_WIDTH, MAP_HEIGHT, MINE_CONFIGS, MINERAL_META, MINERAL_PURITY_LABELS, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
 import { attributesFromRatios } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
 import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
-import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildRandomizedHeroes, buildSupportTroops, buildWorkContractsForCity, getMysteryWorkChainDef, canHeroBattle, clampRelation, clampValue, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, buildGarrisonTroops as buildGarrisonTroopsImpl, getDefenderTroops as getDefenderTroopsImpl, getLocationRecruitId, getLocationRelationTarget, getPlayerReligion as getPlayerReligionFromLocations, getRecruitmentPool, FIELD_CAMP_PARLEY_RELATION_THRESHOLD, getFieldCampPlayerRelationValue, getRelationScale, getRelationTone, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isPlayerHideoutUnlocked, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, PRESTIGE, computeSealHabitatPrestige, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence, buildTroopsFromSoldiers as buildTroopsFromSoldiersImpl, buildWoundedEntriesFromSoldiers as buildWoundedEntriesFromSoldiersImpl, normalizePlayerSoldiers as normalizePlayerSoldiersImpl, markSoldiersWounded as markSoldiersWoundedImpl, removeSoldiersById as removeSoldiersByIdImpl, buildRaceComposition } from './game/systems';
+import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildRandomizedHeroes, buildSupportTroops, buildWorkContractsForCity, getMysteryWorkChainDef, canHeroBattle, clampRelation, clampValue, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, buildGarrisonTroops as buildGarrisonTroopsImpl, getDefenderTroops as getDefenderTroopsImpl, getLocationRecruitId, getLocationRelationTarget, getPlayerReligion as getPlayerReligionFromLocations, getRecruitmentPool, FIELD_CAMP_PARLEY_RELATION_THRESHOLD, getFieldCampPlayerRelationValue, getRelationScale, getRelationTone, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isPlayerHideoutUnlocked, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, PRESTIGE, computeSealHabitatPrestige, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence, advanceFactionStrategicDirectives, buildTroopsFromSoldiers as buildTroopsFromSoldiersImpl, buildWoundedEntriesFromSoldiers as buildWoundedEntriesFromSoldiersImpl, normalizePlayerSoldiers as normalizePlayerSoldiersImpl, markSoldiersWounded as markSoldiersWoundedImpl, removeSoldiersById as removeSoldiersByIdImpl, buildRaceComposition } from './game/systems';
 import { calculatePower } from './game/systems/combatPower';
 import { calculateXpGain } from './game/systems/xpGain';
 import { calculateFleeChance, calculateRearGuardPlan } from './features/battle/model/battleEscape';
@@ -3861,6 +3861,10 @@ export default function App() {
           }
           newLocations.push(camp);
         });
+      }
+
+      nextWorldDiplomacy = advanceFactionStrategicDirectives(nextWorldDiplomacy, newLocations, nextDay);
+
         const strongholds = newLocations.filter(loc => (
           loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE'
         ));
@@ -3898,6 +3902,13 @@ export default function App() {
             .sort((a, b) => a.dist - b.dist);
           const candidate = ranked[0]?.loc ?? null;
           return candidate && ranked[0].dist <= 160 ? candidate : null;
+        };
+        const lordTemperamentFactor = (lord: Lord, key: 'REST' | 'WAR' | 'DIPLO'): number => {
+          const t = lord.temperament ?? '';
+          if (key === 'REST' && (t.includes('慎') || t.includes('稳') || t.includes('保守'))) return 1.12;
+          if (key === 'WAR' && (t.includes('烈') || t.includes('进') || t.includes('莽') || t.includes('嚣'))) return 1.14;
+          if (key === 'DIPLO' && (t.includes('柔') || t.includes('和') || t.includes('温'))) return 1.1;
+          return 1;
         };
         nextLords = nextLords.map(lord => {
           const fief = getLocationById(lord.fiefId);
@@ -3967,18 +3978,61 @@ export default function App() {
             loc.factionRaidEtaDay >= nextDay
           ));
           const raidSource = raidSources.sort((a, b) => (a.factionRaidEtaDay ?? 0) - (b.factionRaidEtaDay ?? 0))[0];
-          let desiredState = nextLord.state;
+          const strat = nextLord.factionId ? nextWorldDiplomacy.factionStrategies?.[nextLord.factionId] : undefined;
+
+          let sRest = (needsRest ? 100 : 0) * lordTemperamentFactor(nextLord, 'REST');
+
+          let sMarsh = 0;
           if (reliefTarget && (!needsRest || reliefTarget.id === nextLord.fiefId) && partyCount >= 20) {
-            desiredState = 'MARSHALLING';
-          } else if (needsRest) {
-            desiredState = 'RESTING';
+            sMarsh = 95;
+            if (strat?.mode === 'DEFEND_HOME' && strat.focalLocationId === reliefTarget.id) sMarsh += 24;
           } else if (raidSource) {
-            desiredState = nextLord.fiefId === raidSource.id || nextLord.focus !== 'WAR' ? 'MARSHALLING' : 'BESIEGING';
-          } else if (nextDay % 14 === 0) {
-            desiredState = 'FEASTING';
-          } else {
-            desiredState = 'PATROLLING';
+            if (nextLord.fiefId === raidSource.id || nextLord.focus !== 'WAR') sMarsh = 82;
+          } else if (strat?.mode === 'PRESS_ENEMY' && partyCount >= 26 && !needsRest) {
+            sMarsh = 20 + (nextLord.focus === 'WAR' ? 14 : 0);
           }
+          sMarsh *= lordTemperamentFactor(nextLord, 'WAR');
+
+          let sSiege = 0;
+          if (raidSource && nextLord.fiefId !== raidSource.id && nextLord.focus === 'WAR') {
+            sSiege = 84;
+          }
+          sSiege *= lordTemperamentFactor(nextLord, 'WAR');
+
+          let sFeast = nextDay % 14 === 0 ? 38 : 0;
+          if (nextLord.focus === 'DIPLOMACY') sFeast += 14;
+          if (nextLord.focus === 'TRADE') sFeast += 10;
+          sFeast *= lordTemperamentFactor(nextLord, 'DIPLO');
+
+          let sPatrol = 26;
+          if (strat?.mode === 'HOLD' && strat.focalLocationId === nextLord.fiefId) sPatrol += 10;
+          if (strat?.mode === 'PRESS_ENEMY') sPatrol += 6;
+
+          if (nextLord.focus === 'WAR') {
+            sMarsh += 10;
+            sSiege += 12;
+            sPatrol += 6;
+          } else if (nextLord.focus === 'DEFENSE') {
+            sRest += 8;
+            sMarsh += 14;
+            sPatrol += 4;
+          } else if (nextLord.focus === 'TRADE') {
+            sFeast += 12;
+            sPatrol += 4;
+          } else if (nextLord.focus === 'DIPLOMACY') {
+            sFeast += 16;
+            sMarsh += 4;
+          }
+
+          const scored: { st: LordState; v: number }[] = [
+            { st: 'RESTING', v: sRest },
+            { st: 'MARSHALLING', v: sMarsh },
+            { st: 'BESIEGING', v: sSiege },
+            { st: 'FEASTING', v: sFeast },
+            { st: 'PATROLLING', v: sPatrol }
+          ];
+          scored.sort((a, b) => b.v - a.v);
+          let desiredState = scored[0].st;
           if (desiredState !== nextLord.state) {
             nextLord = { ...nextLord, state: desiredState, stateSinceDay: nextDay };
           }
@@ -4069,6 +4123,21 @@ export default function App() {
           } else {
             nextLord = recordLordAction(nextLord, patrolBase.id, `在${patrolBase.name}附近巡逻`);
           }
+          if (
+            strat?.mode === 'PRESS_ENEMY' &&
+            strat.focalLocationId &&
+            partyCount >= 28 &&
+            !needsRest
+          ) {
+            const focalLoc = getLocationById(strat.focalLocationId);
+            if (focalLoc && focalLoc.id !== nextLord.currentLocationId) {
+              const dice = (nextLord.id.charCodeAt(1) + nextDay + strat.setDay) % 10;
+              const threshold = nextLord.focus === 'WAR' ? (nextLord.currentLocationId === fief?.id ? 3 : 2) : 1;
+              if (dice < threshold) {
+                return moveTo(focalLoc, `响应王国诏令，向${focalLoc.name}方向机动`);
+              }
+            }
+          }
           /** 巡逻态长期不在封地则返回坐镇；阈值随 focus 变化（扩张型更久在外）。 */
           if (fief && fief.factionId === nextLord.factionId && nextLord.currentLocationId !== fief.id) {
             const anchorDay = typeof nextLord.arrivedDay === 'number' ? nextLord.arrivedDay : nextLord.stateSinceDay;
@@ -4091,7 +4160,6 @@ export default function App() {
           const trained = applyGarrisonTraining(nextLord.partyTroops, 2, getTroopTemplate);
           return { ...nextLord, partyTroops: trained };
         });
-      }
 
       const findLocationById = (id: string) => newLocations.find(loc => loc.id === id);
       const lordCampMap = new Map(

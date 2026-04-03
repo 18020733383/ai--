@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.11',
+    date: '2026-04-04',
+    items: [
+      '王国 AI：外交状态中新增各势力「战略指令」（固守/施压敌境/解围），带数日惯性；写入存档',
+      '领主 AI：每日结算（原每周才跑一次）；状态改用语义打分（休整/集结/围攻/赴宴/巡逻），叠 focus、王国指令与 temperament 汉字微调；战时可响应诏令向敌境方向机动'
+    ]
+  },
+  {
     version: '0.13.10',
     date: '2026-04-04',
     items: [

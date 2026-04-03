@@ -1,4 +1,4 @@
-import { RaceId, WorldDiplomacyState } from '../../types';
+import { FactionId, FactionStrategicMode, RaceId, WorldDiplomacyState } from '../../types';
 import { FACTIONS, RACE_LABELS, RACE_RELATION_MATRIX } from '../data';
 
 export const clampRelation = (value: number) => Math.max(-100, Math.min(100, Math.round(value)));
@@ -31,7 +31,7 @@ export const buildInitialWorldDiplomacy = (): WorldDiplomacyState => {
     return acc;
   }, {} as WorldDiplomacyState['factionRaceRelations']);
 
-  return { factionRelations, raceRelations, factionRaceRelations, events: [] };
+  return { factionRelations, raceRelations, factionRaceRelations, events: [], factionStrategies: {} };
 };
 
 export const normalizeWorldDiplomacy = (raw: any, currentDay: number): WorldDiplomacyState => {
@@ -42,8 +42,29 @@ export const normalizeWorldDiplomacy = (raw: any, currentDay: number): WorldDipl
     factionRelations: { ...base.factionRelations },
     raceRelations: { ...base.raceRelations },
     factionRaceRelations: { ...base.factionRaceRelations },
-    events: Array.isArray(raw?.events) ? raw.events.filter((e: any) => e && typeof e.text === 'string').slice(0, 60) : []
+    events: Array.isArray(raw?.events) ? raw.events.filter((e: any) => e && typeof e.text === 'string').slice(0, 60) : [],
+    factionStrategies: {}
   };
+
+  const rawStrat = raw?.factionStrategies && typeof raw.factionStrategies === 'object' ? raw.factionStrategies : {};
+  const modes: FactionStrategicMode[] = ['HOLD', 'PRESS_ENEMY', 'DEFEND_HOME'];
+  factionIds.forEach(fid => {
+    const s = (rawStrat as any)[fid];
+    if (!s || typeof s !== 'object') return;
+    const mode = modes.includes(s.mode) ? s.mode : 'HOLD';
+    const focalLocationId = String(s.focalLocationId ?? '');
+    if (!focalLocationId) return;
+    const setDay = Math.max(0, Math.floor(Number(s.setDay) || 0));
+    const stableUntilDay = Math.max(setDay, Math.floor(Number(s.stableUntilDay) || setDay));
+    const rival = s.rivalFactionId && FACTIONS.some(f => f.id === s.rivalFactionId) ? (s.rivalFactionId as FactionId) : undefined;
+    (next.factionStrategies as any)[fid] = {
+      mode,
+      focalLocationId,
+      setDay,
+      stableUntilDay,
+      rivalFactionId: rival
+    };
+  });
 
   factionIds.forEach(a => {
     const row = raw?.factionRelations?.[a];
