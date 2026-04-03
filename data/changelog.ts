@@ -6,6 +6,15 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.7',
+    date: '2026-04-03',
+    items: [
+      '新增真龙升级树：沉眠龙蛋（战力极弱、主要依靠参战蹭经验）→破壳幼龙',
+      '幼龙三分支：余烬线至焚界君龙、霜纹线至永冬龙王、疾风线至天穹暴君龙（后线为空中）',
+      '栖息地招募接入龙蛋与各级龙裔；城邦雇佣可偶遇幼龙与三系雏龙'
+    ]
+  },
+  {
     version: '0.13.6',
     date: '2026-04-03',
     items: [

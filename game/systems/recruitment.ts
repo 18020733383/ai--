@@ -99,12 +99,23 @@ export function getRecruitmentPool(location: Location, mode: 'VOLUNTEER' | 'MERC
         'beast_bear_cub',
         'beast_wolf_grey',
         'beast_croc_nile_juvenile',
-        'beast_bison_calf'
+        'beast_bison_calf',
+        'beast_dragon_egg'
       ];
     }
     return [
       'beast_roc',
       'beast_roc_alpha',
+      'beast_drake_hatchling',
+      'beast_cinder_drake',
+      'beast_rime_drake',
+      'beast_gale_drakeling',
+      'beast_magma_wyrm',
+      'beast_glacier_wyrm',
+      'beast_tempest_skydrake',
+      'beast_worldburn_sovereign',
+      'beast_eternal_frost_dragon_king',
+      'beast_firmament_tyrant',
       'beast_primate_adult_gorilla',
       'beast_rhino_black_subadult',
       'beast_hippo_swamp',
@@ -149,7 +160,8 @@ export function getRecruitmentPool(location: Location, mode: 'VOLUNTEER' | 'MERC
       'arcane_apprentice',
       'comet_squire',
       'goblin_boiler_brute',
-      'ashen_interrogator'
+      'ashen_interrogator',
+      'beast_drake_hatchling'
     ];
     if (location.type === 'CITY' || location.type === 'CASTLE' || location.type === 'VILLAGE') {
       const airPool = location.type === 'CITY' || location.type === 'CASTLE'
@@ -157,7 +169,15 @@ export function getRecruitmentPool(location: Location, mode: 'VOLUNTEER' | 'MERC
         : [];
       const cityElite =
         location.type === 'CITY' || location.type === 'CASTLE'
-          ? ['eclipse_lancer_human', 'goblin_scrap_reaper', 'pyre_high_confessor', 'void_rim_paladin']
+          ? [
+              'eclipse_lancer_human',
+              'goblin_scrap_reaper',
+              'pyre_high_confessor',
+              'void_rim_paladin',
+              'beast_cinder_drake',
+              'beast_rime_drake',
+              'beast_gale_drakeling'
+            ]
           : [];
       return [...basePool, ...factionMercs, ...airPool, ...cityElite];
     }
