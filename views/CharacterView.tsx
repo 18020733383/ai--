@@ -1,5 +1,5 @@
 import React from 'react';
-import { User, Sword, Shield, Heart, Flag, Activity, Anchor, Swords, EyeOff, Plus, MessageCircle, ShoppingBag, Award } from 'lucide-react';
+import { User, Sword, Shield, Heart, Flag, Activity, Anchor, Swords, EyeOff, Plus, MessageCircle, ShoppingBag, Award, Sparkles, Dice6 } from 'lucide-react';
 import { PlayerAttributes, PlayerState } from '../types';
 import { Button } from '../components/Button';
 
@@ -7,9 +7,14 @@ type CharacterViewProps = {
   player: PlayerState;
   spendAttributePoint: (attr: keyof PlayerAttributes) => void;
   onBackToMap: () => void;
+  onChuuniOath: () => void;
+  onChuuniFateRoll: () => void;
 };
 
-export const CharacterView = ({ player, spendAttributePoint, onBackToMap }: CharacterViewProps) => {
+export const CharacterView = ({ player, spendAttributePoint, onBackToMap, onChuuniOath, onChuuniFateRoll }: CharacterViewProps) => {
+  const res = player.chuuniResonance ?? 0;
+  const oathPending = !!player.chuuniOathNextBattle;
+  const fateToday = player.chuuniFateDiceDay === player.day;
   return (
     <div className="max-w-2xl mx-auto p-4 animate-fade-in pb-20 mt-10">
       <div className="flex justify-between items-center mb-6">
@@ -36,6 +41,46 @@ export const CharacterView = ({ player, spendAttributePoint, onBackToMap }: Char
           <div className="ml-auto text-right">
             <span className="block text-sm text-stone-500">可用属性点</span>
             <span className="text-3xl font-bold text-yellow-500">{player.attributePoints}</span>
+          </div>
+        </div>
+
+        <div className="mb-8 pb-8 border-b border-stone-800 space-y-4">
+          <div className="flex items-center gap-2 text-amber-500/95 font-serif">
+            <Sparkles size={18} />
+            <span className="font-bold text-lg">虚无刻印 · 共鸣权柄</span>
+          </div>
+          <p className="text-xs text-stone-500 leading-relaxed">
+            实战的胜利会喂养「中二共鸣」。燃烧 35 点共鸣可立誓：下一战实战全体微量强攻与士气加成，并附带……念出台词的特权。
+          </p>
+          <div className="flex items-center gap-4">
+            <div className="flex-1 h-3 rounded-full bg-stone-800 border border-stone-700 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-violet-900 via-amber-700 to-amber-400 transition-all duration-500"
+                style={{ width: `${Math.min(100, res)}%` }}
+              />
+            </div>
+            <span className="text-sm font-mono text-amber-200 w-16 text-right">{Math.min(100, res)}/100</span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="gold"
+              size="sm"
+              disabled={res < 35 || oathPending}
+              onClick={onChuuniOath}
+              className="flex items-center gap-2"
+            >
+              <Sparkles size={14} /> 真名誓约（-35 共鸣）
+            </Button>
+            {oathPending && <span className="text-xs text-amber-400 self-center">下一战已烙印</span>}
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={fateToday}
+              onClick={onChuuniFateRoll}
+              className="flex items-center gap-2 border-violet-900/50"
+            >
+              <Dice6 size={14} /> 命运宣告（每日一次）
+            </Button>
           </div>
         </div>
 

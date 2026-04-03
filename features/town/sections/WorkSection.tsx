@@ -1,6 +1,6 @@
 import React from 'react';
 import { Button } from '../../../components/Button';
-import { Location, PlayerState } from '../../../types';
+import { Location, PlayerState, WorkContract, WorkContractRewardKind } from '../../../types';
 
 type WorkSectionProps = {
   currentLocation: Location;
@@ -8,8 +8,14 @@ type WorkSectionProps = {
   workStateActive: boolean;
   miningStateActive: boolean;
   roachLureStateActive: boolean;
+  getTroopName: (troopId: string) => string;
   onStartWorkContract: (contractId: string) => void;
+  onRefreshWorkBoard: () => void;
 };
+
+function contractRewardKind(c: WorkContract): WorkContractRewardKind {
+  return c.rewardKind ?? 'GOLD';
+}
 
 export const WorkSection = ({
   currentLocation,
@@ -17,48 +23,94 @@ export const WorkSection = ({
   workStateActive,
   miningStateActive,
   roachLureStateActive,
-  onStartWorkContract
+  getTroopName,
+  onStartWorkContract,
+  onRefreshWorkBoard
 }: WorkSectionProps) => {
+  const board = currentLocation.workBoard;
+  const contracts = board?.contracts ?? [];
+  const commerce = Math.max(0, player.attributes.commerce ?? 0);
+  const commerceBonusRate = Math.min(0.5, commerce * 0.01);
+  const canManualRefresh =
+    !workStateActive &&
+    !miningStateActive &&
+    !roachLureStateActive &&
+    (board?.lastManualRefreshDay ?? -1) !== player.day;
+
+  const describeContract = (c: WorkContract) => {
+    const kind = contractRewardKind(c);
+    const payBase = Math.max(0, Math.floor(c.pay * (1 + commerceBonusRate)));
+    if (kind === 'GOLD') {
+      return { primary: `报酬 ${payBase} 金币`, secondary: null as string | null };
+    }
+    const stipend = Math.max(0, Math.floor(c.pay * (1 + commerceBonusRate) * 0.4));
+    if (kind === 'PLAYER_XP') {
+      return {
+        primary: `完成奖励：角色经验 +${c.rewardXp ?? 0}`,
+        secondary: `津贴 ${stipend} 金币`
+      };
+    }
+    const tid = c.rewardTroopId ?? '';
+    const cnt = c.rewardTroopCount ?? 0;
+    return {
+      primary: `完成奖励：援军 ${getTroopName(tid)} ×${cnt}`,
+      secondary: `津贴 ${stipend} 金币`
+    };
+  };
+
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
-        <p className="text-stone-400 text-sm">城里会定期发布不同等级的委托。接下委托后时间会自动快进，你可以中途退出。</p>
+        <p className="text-stone-400 text-sm">
+          各城委托标题与势力有关；商业等级越高，高星委托出现概率略升。偶有「经验」「援军」类特殊报酬。每日可手动刷新一次榜文。
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <Button
+          variant="secondary"
+          size="sm"
+          disabled={!canManualRefresh}
+          onClick={onRefreshWorkBoard}
+        >
+          今日刷新委托
+        </Button>
+        {!canManualRefresh && (board?.lastManualRefreshDay === player.day) ? (
+          <span className="text-xs text-stone-500">本日已刷新过。</span>
+        ) : null}
       </div>
       <div className="bg-stone-900/60 p-6 rounded border border-stone-800 space-y-4">
-        {((currentLocation.workBoard?.contracts ?? []).length <= 0) ? (
+        {contracts.length <= 0 ? (
           <div className="text-stone-500 text-sm">目前没有可接的委托。</div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {(currentLocation.workBoard?.contracts ?? []).map(c => (
-              <div key={c.id} className="bg-stone-950/40 border border-stone-800 rounded p-4">
-                {(() => {
-                  const commerce = Math.max(0, player.attributes.commerce ?? 0);
-                  const commerceBonusRate = Math.min(0.5, commerce * 0.01);
-                  const payWithBonus = Math.max(0, Math.floor(c.pay * (1 + commerceBonusRate)));
-                  return (
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <div className="text-stone-200 font-bold">{c.title}</div>
-                        <div className="text-xs text-stone-500 mt-1">
-                          等级 {c.tier} · 耗时 {c.days} 天 · 报酬 {payWithBonus}
-                          {commerce > 0 ? `（商业 ${commerce}：+${Math.round(commerceBonusRate * 100)}%）` : ''}
-                        </div>
-                      </div>
-                      <Button
-                        onClick={() => onStartWorkContract(c.id)}
-                        variant="gold"
-                        disabled={workStateActive || miningStateActive || roachLureStateActive}
-                      >
-                        接取
-                      </Button>
+            {contracts.map(c => {
+              const { primary, secondary } = describeContract(c);
+              const payLine =
+                contractRewardKind(c) === 'GOLD'
+                  ? `等级 ${c.tier} · 耗时 ${c.days} 天 · ${primary}${commerce > 0 ? `（商业 ${commerce}：+${Math.round(commerceBonusRate * 100)}%）` : ''}`
+                  : `等级 ${c.tier} · 耗时 ${c.days} 天 · ${primary}`;
+              return (
+                <div key={c.id} className="bg-stone-950/40 border border-stone-800 rounded p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="text-stone-200 font-bold">{c.title}</div>
+                      <div className="text-xs text-stone-500 mt-1">{payLine}</div>
+                      {secondary ? <div className="text-xs text-stone-500 mt-1">{secondary}</div> : null}
                     </div>
-                  );
-                })()}
-                <div className="text-xs text-stone-500 mt-2">
-                  中途退出：进度过半才有报酬，且只有 1/5。
+                    <Button
+                      onClick={() => onStartWorkContract(c.id)}
+                      variant="gold"
+                      disabled={workStateActive || miningStateActive || roachLureStateActive}
+                    >
+                      接取
+                    </Button>
+                  </div>
+                  <div className="text-xs text-stone-500 mt-2">
+                    中途退出：进度过半可领部分津贴（约 1/5）；经验与援军仅在整单完成时发放。
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

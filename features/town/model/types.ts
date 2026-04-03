@@ -1,4 +1,4 @@
-import { MineralId, MineralPurity } from '../../../types';
+import { MineralId, MineralPurity, WorkContractRewardKind } from '../../../types';
 
 export type TownTab =
   | 'RECRUIT'
@@ -33,7 +33,15 @@ export type WorkState = {
   contractTitle: string;
   totalDays: number;
   daysPassed: number;
+  /** 金币报酬（GOLD 为全额；特殊委托为津贴，含商业加成） */
   totalPay: number;
+  contractTier: number;
+  rewardKind: WorkContractRewardKind;
+  rewardXp?: number;
+  rewardTroopId?: string;
+  rewardTroopCount?: number;
+  /** 大地图委托面板一行摘要 */
+  rewardSummary: string;
 };
 
 export type MiningState = {

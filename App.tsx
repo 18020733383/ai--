@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, SoldierInstance, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState, WorkContract } from './types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, SoldierInstance, Troop, PlayerState, WoundedTroopEntry, GameView, Location, EnemyForce, BattleResult, BattleBrief, TroopTier, TerrainType, BattleRound, PlayerAttributes, RecruitOffer, Parrot, ParrotVariant, FallenRecord, FallenHeroRecord, BuildingType, SiegeEngineType, ConstructionQueueItem, SiegeEngineQueueItem, Hero, HeroChatLine, HeroPermanentMemory, PartyDiaryEntry, WorldBattleReport, MineralId, MineralPurity, Enchantment, StayParty, LordFocus, RaceId, TroopRace, Lord, NegotiationResult, WorldDiplomacyState } from './types';
 import { BUILDING_OPTIONS, CROP_DEF_MAP, ENCHANTMENT_RECIPES, ENDING_LIST, FACTIONS, FARM_MAX_PLOTS, getBuildingName, getSiegeEngineName, getEndingContent, getNewCovenantAvailable, HIDEOUT_GOV_EVENTS, HIDEOUT_UNLOCK_COST, INITIAL_PLAYER_STATE, INITIAL_HERO_ROSTER, LOCATIONS, ENEMY_TYPES, SIEGE_ENGINE_COMBAT_STATS, SIEGE_ENGINE_OPTIONS, TROOP_TEMPLATES, createFarmState, createTroop, MAP_WIDTH, MAP_HEIGHT, MINE_CONFIGS, MINERAL_META, MINERAL_PURITY_LABELS, PARROT_VARIANTS, ENEMY_QUOTES, parrotMischiefEvents, parrotChatter, IMPOSTER_TROOP_IDS, WORLD_BOOK, RACE_LABELS, getTroopRace, TROOP_RACE_LABELS } from './game/data';
 import { attributesFromRatios } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
@@ -40,13 +40,24 @@ import {
   ACHIEVEMENT_UNLOCK_EVENT,
   checkProgressAchievements,
   recordBattleWin,
+  recordChuuniOathPledged,
   recordManualSaveUnlock,
+  recordWorkContractComplete,
+  tryUnlockChuuniApotheosis,
   tryUnlockEndingWitness,
   tryUnlockMapExplorer,
   tryUnlockTroopArchive,
   type AchievementDef
 } from './app/achievements/achievementStore';
 import { AchievementUnlockToast } from './components/AchievementUnlockToast';
+import {
+  pickChuuniDefeatLine,
+  pickChuuniOathBattleLine,
+  pickChuuniOathPledgeLine,
+  pickChuuniTrainingWinLine,
+  pickChuuniVictoryLine,
+  rollChuuniFate
+} from './game/data/chuuniFlair';
 import { TroopArchiveView } from './views/TroopArchiveView';
 import { PartyView } from './views/PartyView';
 import { AsylumView } from './views/AsylumView';
@@ -76,7 +87,7 @@ export default function App() {
   const initialWorld = React.useMemo(() => buildInitialWorld(), []);
   const [player, setPlayer] = useState<PlayerState>(INITIAL_PLAYER_STATE);
   const [heroes, setHeroes] = useState<Hero[]>(() => buildRandomizedHeroes());
-  const [locations, setLocations] = useState<Location[]>(() => initialWorld.locations.map(l => l.type === 'CITY' ? { ...l, workBoard: { lastRefreshDay: INITIAL_PLAYER_STATE.day, contracts: buildWorkContractsForCity(l, INITIAL_PLAYER_STATE.day) } } : l));
+  const [locations, setLocations] = useState<Location[]>(() => initialWorld.locations.map(l => l.type === 'CITY' ? { ...l, workBoard: { lastRefreshDay: INITIAL_PLAYER_STATE.day, contracts: buildWorkContractsForCity(l, INITIAL_PLAYER_STATE.day, { commerceLevel: INITIAL_PLAYER_STATE.attributes.commerce }) } } : l));
   const [lords, setLords] = useState<Lord[]>(() => initialWorld.lords);
   const [view, setView] = useState<GameView>('MAIN_MENU');
   const [endingReturnView, setEndingReturnView] = useState<GameView>('GAME_OVER');
@@ -329,11 +340,45 @@ export default function App() {
       if (currentLocation.id !== workState.locationId) return;
 
       if (workState.daysPassed >= workState.totalDays) {
+        const snapshot = workState;
         const finishTimer = setTimeout(() => {
-          const earned = Math.max(0, Math.floor(workState.totalPay));
-          if (earned > 0) setPlayer(prev => ({ ...prev, gold: prev.gold + earned }));
-          setPlayer(prev => ({ ...prev, prestige: (prev.prestige ?? 0) + PRESTIGE.WORK_CONTRACT_COMPLETE }));
-          addLog(`委托完成，获得 ${earned} 第纳尔，威望 +${PRESTIGE.WORK_CONTRACT_COMPLETE}。`);
+          const kind = snapshot.rewardKind ?? 'GOLD';
+          const goldLine = Math.max(0, Math.floor(snapshot.totalPay));
+          let xpLogs: string[] = [];
+          setPlayer(prev => {
+            let next: PlayerState = {
+              ...prev,
+              prestige: (prev.prestige ?? 0) + PRESTIGE.WORK_CONTRACT_COMPLETE
+            };
+            if (goldLine > 0) next = { ...next, gold: next.gold + goldLine };
+            const xpAmt = snapshot.rewardXp ?? 0;
+            if (kind === 'PLAYER_XP' && xpAmt > 0) {
+              const r = calculateXpGain(next.xp, next.level, next.attributePoints, next.maxXp, xpAmt);
+              xpLogs = r.logs;
+              next = { ...next, xp: r.xp, level: r.level, attributePoints: r.attributePoints, maxXp: r.maxXp };
+            }
+            const troopId = snapshot.rewardTroopId;
+            const troopCount = snapshot.rewardTroopCount ?? 0;
+            if (kind === 'TROOP_BONUS' && troopId && troopCount > 0) {
+              next = { ...next, troops: mergeTroops(next.troops, [createTroop(troopId, troopCount)]) };
+            }
+            return next;
+          });
+          xpLogs.forEach(line => addLog(line));
+          const troopId = snapshot.rewardTroopId;
+          const troopCount = snapshot.rewardTroopCount ?? 0;
+          const troopName = troopId ? (TROOP_TEMPLATES[troopId]?.name ?? troopId) : '';
+          const bits: string[] = [];
+          if (kind === 'GOLD' && goldLine > 0) bits.push(`${goldLine} 第纳尔`);
+          else if (goldLine > 0) bits.push(`津贴 ${goldLine} 第纳尔`);
+          if (kind === 'PLAYER_XP' && (snapshot.rewardXp ?? 0) > 0) bits.push(`经验 +${snapshot.rewardXp}`);
+          if (kind === 'TROOP_BONUS' && troopId && troopCount > 0) bits.push(`援军 ${troopName}×${troopCount}`);
+          addLog(bits.length > 0 ? `委托完成：${bits.join('，')}；威望 +${PRESTIGE.WORK_CONTRACT_COMPLETE}。` : `委托完成，威望 +${PRESTIGE.WORK_CONTRACT_COMPLETE}。`);
+          recordWorkContractComplete({
+            tier: snapshot.contractTier,
+            rewardKind: kind,
+            cityId: snapshot.locationId
+          });
           setWorkState(null);
           if (currentLocation) {
             setView('TOWN');
@@ -1911,7 +1956,14 @@ export default function App() {
         const contracts = Array.isArray(board?.contracts) ? board!.contracts : [];
         const intervalDays = 3;
         if (contracts.length > 0 && nextDay - last < intervalDays) return loc;
-        return { ...loc, workBoard: { lastRefreshDay: nextDay, contracts: buildWorkContractsForCity(loc, nextDay) } };
+        return {
+          ...loc,
+          workBoard: {
+            lastRefreshDay: nextDay,
+            lastManualRefreshDay: board?.lastManualRefreshDay,
+            contracts: buildWorkContractsForCity(loc, nextDay, { commerceLevel: Math.max(0, nextPlayer.attributes?.commerce ?? 0) })
+          }
+        };
       });
       const religion = getPlayerReligion(newLocations);
       if (religion) {
@@ -4945,11 +4997,60 @@ export default function App() {
     }
   };
 
+  const pledgeChuuniOath = useCallback(() => {
+    const p = playerRef.current;
+    const r = p.chuuniResonance ?? 0;
+    if (p.chuuniOathNextBattle) {
+      addLog('真名誓约已悬于下一战……克制一下，别叠咏唱。');
+      return;
+    }
+    if (r < 35) {
+      addLog('共鸣亏虚。（需要至少 35 点中二共鸣，实战多赢几场，让世界颤抖吧。）');
+      return;
+    }
+    recordChuuniOathPledged();
+    setPlayer(prev => ({ ...prev, chuuniResonance: r - 35, chuuniOathNextBattle: true }));
+    addLog(`【虚无刻印】${pickChuuniOathPledgeLine()}`);
+  }, [addLog]);
+
+  const rollChuuniFateDice = useCallback(() => {
+    const p = playerRef.current;
+    if (p.chuuniFateDiceDay === p.day) {
+      addLog('今日的「命运宣告」已坠地……想作弊？时光不同意。');
+      return;
+    }
+    const { line, gold, renown, resonance } = rollChuuniFate();
+    setPlayer(prev => {
+      const nextRes = Math.max(0, Math.min(100, (prev.chuuniResonance ?? 0) + resonance));
+      tryUnlockChuuniApotheosis(nextRes);
+      return {
+        ...prev,
+        chuuniFateDiceDay: prev.day,
+        gold: Math.max(0, prev.gold + gold),
+        renown: Math.max(0, prev.renown + renown),
+        chuuniResonance: nextRes
+      };
+    });
+    addLog(`【命运宣告】${line}`);
+  }, [addLog]);
+
   const startBattle = async (isTraining: boolean = false, meta?: BattleEngagementMeta) => {
     if (!activeEnemy) return;
     const battleInfo = meta ?? { mode: 'FIELD' as const };
     const currentPlayer = playerRef.current;
+    const hadOath = !isTraining && !!currentPlayer.chuuniOathNextBattle;
     let battleTroops = getBattleTroops(currentPlayer, heroesRef.current);
+    if (hadOath) {
+      battleTroops = battleTroops.map(t => ({
+        ...t,
+        attributes: {
+          ...t.attributes,
+          attack: Math.min(255, Math.max(0, (t.attributes?.attack ?? 0) + 4)),
+          morale: Math.min(255, Math.max(0, (t.attributes?.morale ?? 0) + 6))
+        }
+      }));
+      addLog(`【真名誓约·展开】${pickChuuniOathBattleLine()}`);
+    }
 
     const buildAmmoState = (troops: Troop[], bullets: number) => {
       const ammoUsers = troops.filter(t => (t.ammoPerUnit ?? 0) > 0 && (t.count ?? 0) > 0);
@@ -5039,7 +5140,7 @@ export default function App() {
       }
       
       if (!isTraining) {
-        const prev = playerRef.current;
+        const prev = hadOath ? { ...playerRef.current, chuuniOathNextBattle: false } : playerRef.current;
         const settlement = computeBattleSettlement({
           prev,
           heroes: heroesRef.current,
@@ -5061,9 +5162,20 @@ export default function App() {
           buildWoundedEntriesFromSoldiers,
           calculateXpGain
         });
-        const ammoNextPlayer = ammoState.actualCost > 0
+        let ammoNextPlayer = ammoState.actualCost > 0
           ? { ...settlement.nextPlayer, bullets: Math.max(0, (settlement.nextPlayer.bullets ?? 0) - ammoState.actualCost) }
           : settlement.nextPlayer;
+        const cr = ammoNextPlayer.chuuniResonance ?? 0;
+        if (finalResult.outcome === 'A') {
+          const add = 6 + Math.floor(Math.random() * 7);
+          const nr = Math.min(100, cr + add);
+          ammoNextPlayer = { ...ammoNextPlayer, chuuniResonance: nr };
+          addLog(pickChuuniVictoryLine());
+          tryUnlockChuuniApotheosis(nr);
+        } else {
+          ammoNextPlayer = { ...ammoNextPlayer, chuuniResonance: Math.max(0, cr - 12) };
+          addLog(pickChuuniDefeatLine());
+        }
         setPlayer(ammoNextPlayer);
         setHeroes(settlement.nextHeroes);
         settlement.logs.forEach(addLog);
@@ -5100,6 +5212,9 @@ export default function App() {
           setHeroes(trainingResult.nextHeroes);
           addLog(trainingResult.log);
         }
+      }
+      if (isTraining && finalResult.outcome === 'A') {
+        addLog(pickChuuniTrainingWinLine());
       }
 
       if (finalResult.outcome === 'A') {
@@ -6249,7 +6364,7 @@ export default function App() {
         }
       };
       const seededLocations = world.locations.map(l => l.type === 'CITY'
-        ? { ...l, workBoard: { lastRefreshDay: basePlayer.day, contracts: buildWorkContractsForCity(l, basePlayer.day) } }
+        ? { ...l, workBoard: { lastRefreshDay: basePlayer.day, contracts: buildWorkContractsForCity(l, basePlayer.day, { commerceLevel: basePlayer.attributes.commerce }) } }
         : l
       );
       const seededHeroes = buildRandomizedHeroes();
@@ -7267,6 +7382,8 @@ export default function App() {
       player={player}
       spendAttributePoint={spendAttributePoint}
       onBackToMap={() => setView('MAP')}
+      onChuuniOath={pledgeChuuniOath}
+      onChuuniFateRoll={rollChuuniFateDice}
     />
   );
 
@@ -7666,7 +7783,7 @@ export default function App() {
     const freshWorld = buildInitialWorld();
     setPlayer(normalizePlayerSoldiers(INITIAL_PLAYER_STATE));
     setHeroes(buildRandomizedHeroes());
-    setLocations(freshWorld.locations.map(l => l.type === 'CITY' ? { ...l, workBoard: { lastRefreshDay: INITIAL_PLAYER_STATE.day, contracts: buildWorkContractsForCity(l, INITIAL_PLAYER_STATE.day) } } : l));
+    setLocations(freshWorld.locations.map(l => l.type === 'CITY' ? { ...l, workBoard: { lastRefreshDay: INITIAL_PLAYER_STATE.day, contracts: buildWorkContractsForCity(l, INITIAL_PLAYER_STATE.day, { commerceLevel: INITIAL_PLAYER_STATE.attributes.commerce }) } } : l));
     setLords(freshWorld.lords);
     setCurrentLocation(null);
     setView('MAIN_MENU');

@@ -71,7 +71,11 @@ export const MapScreen = ({
     const ratio = workState.totalDays > 0 ? workState.daysPassed / workState.totalDays : 0;
     const earned = ratio < 0.5 ? 0 : Math.max(0, Math.floor(workState.totalPay / 5));
     if (earned > 0) setPlayer(prev => ({ ...prev, gold: prev.gold + earned }));
-    addLog(earned > 0 ? `你中止了委托，领取了 ${earned} 第纳尔。` : '你中止了委托，但进度不足一半，拿不到报酬。');
+    addLog(
+      earned > 0
+        ? `你中止了委托，领取津贴 ${earned} 第纳尔。`
+        : '你中止了委托，但进度不足一半，拿不到津贴。'
+    );
     setWorkState(null);
   };
 

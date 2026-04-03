@@ -277,6 +277,12 @@ export interface PlayerState {
     outsiderHeroId?: string;
     outsiderCluePack?: string;
   };
+  /** 中二共鸣 0–100，实战胜利累积 */
+  chuuniResonance?: number;
+  /** 已支付共鸣，下一战实战获得微量属性加成（进入战斗时消耗） */
+  chuuniOathNextBattle?: boolean;
+  /** 上次投掷「命运宣告」时的游戏日（同日仅一次） */
+  chuuniFateDiceDay?: number;
 }
 
 export interface EnemyForce {
@@ -564,16 +570,27 @@ export type HideoutState = {
   };
 };
 
+export type WorkContractRewardKind = 'GOLD' | 'PLAYER_XP' | 'TROOP_BONUS';
+
 export type WorkContract = {
   id: string;
   title: string;
   tier: number;
   days: number;
   pay: number;
+  /** 缺省视为 GOLD（兼容旧存档） */
+  rewardKind?: WorkContractRewardKind;
+  /** 完成时角色经验（PLAYER_XP） */
+  rewardXp?: number;
+  /** 援军模板 id（TROOP_BONUS） */
+  rewardTroopId?: string;
+  rewardTroopCount?: number;
 };
 
 export type WorkBoard = {
   lastRefreshDay: number;
+  /** 上次玩家手动刷新委托的的游戏日，每日限一次 */
+  lastManualRefreshDay?: number;
   contracts: WorkContract[];
 };
 

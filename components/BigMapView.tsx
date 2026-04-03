@@ -1,20 +1,11 @@
 import React, { useState, useMemo } from 'react';
 import { AlertTriangle, Brain, Coffee, Coins, Eye, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, Shield, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Users, Utensils, Zap } from 'lucide-react';
 import { Location, MineralId, MineralPurity, PlayerState, WorldDiplomacyState } from '../types';
+import type { WorkState } from '../features/town/model/types';
 import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../game/data';
 import { isPlayerHideoutUnlocked } from '../game/systems/hideoutAccess';
 import { Button } from './Button';
 import { getTerrainType, type TerrainType } from '../game/utils/terrainNoise';
-
-type WorkState = {
-  isActive: boolean;
-  locationId: string;
-  contractId: string;
-  contractTitle: string;
-  totalDays: number;
-  daysPassed: number;
-  totalPay: number;
-};
 
 type MiningState = {
   isActive: boolean;
@@ -396,7 +387,7 @@ export const BigMapView = ({
             <div className="text-xs text-stone-400">
               进度：{workState.daysPassed} / {workState.totalDays} 天
             </div>
-            <div className="text-xs text-stone-500">中途退出：进度过半才有报酬，且只有 1/5。</div>
+            <div className="text-xs text-stone-500">中途退出：进度过半可领部分津贴（约 1/5）；经验与援军整单完成才发。</div>
             <Button variant="danger" size="sm" onClick={onAbortWork}>
               中止
             </Button>

@@ -9,7 +9,9 @@ import { ANOMALY_CATALOG } from '../constants';
 import { CROP_DEFS, CROP_DEF_MAP, createFarmState, FARM_MAX_PLOTS, FARM_PLOT_UNLOCK_COST, getTroopRace, HIDEOUT_UNLOCK_COST, TROOP_RACE_LABELS } from '../game/data';
 import { isPlayerHideoutUnlocked } from '../game/systems/hideoutAccess';
 import { FIELD_CAMP_PARLEY_RELATION_THRESHOLD, getFieldCampPlayerRelationValue, getRelationTone } from '../game/systems/relationHelpers';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, CropId, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, SoldierInstance, StayParty, Troop, TroopTier } from '../types';
+import { buildWorkContractsForCity } from '../game/systems/workContracts';
+import { recordWorkBoardManualRefresh } from '../app/achievements/achievementStore';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, CropId, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, SoldierInstance, StayParty, Troop, TroopTier, WorkContractRewardKind } from '../types';
 import type { AltarRecruitState, HabitatStayState, HideoutStayState, MiningState, RoachLureState, TownTab, WorkState } from '../features/town/model/types';
 
 export type TownViewProps = {
@@ -897,10 +899,23 @@ export const TownView = ({
     const commerce = Math.max(0, player.attributes.commerce ?? 0);
     const commerceBonusRate = Math.min(0.5, commerce * 0.01);
     const payWithBonus = Math.max(0, Math.floor(contract.pay * (1 + commerceBonusRate)));
+    const rewardKind: WorkContractRewardKind = contract.rewardKind ?? 'GOLD';
+    const totalPay =
+      rewardKind === 'GOLD' ? payWithBonus : Math.max(0, Math.floor(contract.pay * (1 + commerceBonusRate) * 0.4));
+    let rewardSummary = '';
+    if (rewardKind === 'GOLD') {
+      rewardSummary = `${totalPay} 金币`;
+    } else if (rewardKind === 'PLAYER_XP') {
+      rewardSummary = `经验 +${contract.rewardXp ?? 0} · 津贴 ${totalPay}`;
+    } else {
+      const nm = getTroopTemplate(contract.rewardTroopId ?? '')?.name ?? contract.rewardTroopId ?? '';
+      rewardSummary = `${nm}×${contract.rewardTroopCount ?? 0} · 津贴 ${totalPay}`;
+    }
     updateLocationState({
       ...currentLocation,
       workBoard: {
         lastRefreshDay: board?.lastRefreshDay ?? player.day,
+        lastManualRefreshDay: board?.lastManualRefreshDay,
         contracts: contracts.filter(c => c.id !== contractId)
       }
     });
@@ -911,9 +926,39 @@ export const TownView = ({
       contractTitle: contract.title,
       totalDays: Math.max(1, Math.floor(contract.days)),
       daysPassed: 0,
-      totalPay: payWithBonus
+      totalPay,
+      contractTier: Math.max(1, Math.floor(contract.tier)),
+      rewardKind,
+      rewardXp: contract.rewardXp,
+      rewardTroopId: contract.rewardTroopId,
+      rewardTroopCount: contract.rewardTroopCount,
+      rewardSummary
     });
     onBackToMap();
+  };
+
+  const handleRefreshWorkBoard = () => {
+    if (!isCity) return;
+    const board = currentLocation.workBoard;
+    if (!board) return;
+    if (workState?.isActive || miningState?.isActive || roachLureState?.isActive) return;
+    if (board.lastManualRefreshDay === player.day) {
+      addLog('今日已刷新过委托榜。');
+      return;
+    }
+    const commerce = Math.max(0, player.attributes.commerce ?? 0);
+    const contracts = buildWorkContractsForCity(currentLocation, player.day, { commerceLevel: commerce });
+    updateLocationState({
+      ...currentLocation,
+      workBoard: {
+        ...board,
+        lastRefreshDay: player.day,
+        lastManualRefreshDay: player.day,
+        contracts
+      }
+    });
+    recordWorkBoardManualRefresh();
+    addLog('已刷新城内委托（今日限一次）。');
   };
 
   const handleStartMining = () => {
@@ -3605,7 +3650,9 @@ export const TownView = ({
             workStateActive={!!workState?.isActive}
             miningStateActive={!!miningState?.isActive}
             roachLureStateActive={!!roachLureState?.isActive}
+            getTroopName={(id) => getTroopTemplate(id)?.name ?? id}
             onStartWorkContract={handleStartWorkContract}
+            onRefreshWorkBoard={handleRefreshWorkBoard}
           />
         )}
 
