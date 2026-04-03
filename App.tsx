@@ -4039,9 +4039,21 @@ export default function App() {
           }
           if (nextLord.state === 'FEASTING') {
             const options = friendlyStrongholds(nextLord.factionId).filter(loc => loc.type === 'CITY' || loc.type === 'CASTLE');
-            const feastHost = options.length > 0
-              ? [...options].sort((a, b) => getGarrisonCount(getLocationTroops(b)) - getGarrisonCount(getLocationTroops(a)))[0]
-              : currentLoc;
+            const ownFiefFeast =
+              fief &&
+              fief.factionId === nextLord.factionId &&
+              (fief.type === 'CITY' || fief.type === 'CASTLE' || fief.type === 'VILLAGE');
+            const feastRoll = ((nextLord.id.length + nextDay * 3) % 10) / 10;
+            const preferHomeFeast =
+              !!ownFiefFeast &&
+              (nextLord.focus === 'DEFENSE' ? feastRoll < 0.72 : feastRoll < 0.52);
+            const feastHost = preferHomeFeast && fief
+              ? fief
+              : options.length > 0
+                ? [...options].sort((a, b) => getGarrisonCount(getLocationTroops(b)) - getGarrisonCount(getLocationTroops(a)))[0]
+                : fief && (fief.type === 'CITY' || fief.type === 'CASTLE')
+                  ? fief
+                  : currentLoc;
             if (feastHost.id !== nextLord.currentLocationId) {
               return moveTo(feastHost, `前往${feastHost.name}赴宴`);
             }
@@ -4056,6 +4068,25 @@ export default function App() {
             nextLord = recordLordAction(nextLord, patrolBase.id, `率军清剿了 ${nearbyCamp.name}`);
           } else {
             nextLord = recordLordAction(nextLord, patrolBase.id, `在${patrolBase.name}附近巡逻`);
+          }
+          /** 巡逻态长期不在封地则返回坐镇；阈值随 focus 变化（扩张型更久在外）。 */
+          if (fief && fief.factionId === nextLord.factionId && nextLord.currentLocationId !== fief.id) {
+            const anchorDay = typeof nextLord.arrivedDay === 'number' ? nextLord.arrivedDay : nextLord.stateSinceDay;
+            const daysAway = Math.max(0, nextDay - (anchorDay ?? nextDay));
+            const threshold =
+              nextLord.focus === 'DEFENSE'
+                ? 2
+                : nextLord.focus === 'WAR'
+                  ? 5
+                  : nextLord.focus === 'TRADE'
+                    ? 4
+                    : nextLord.focus === 'DIPLOMACY'
+                      ? 3
+                      : 3;
+            const dayJitter = (nextLord.id.charCodeAt(0) + nextDay + nextLord.fiefId.charCodeAt(0)) % 3;
+            if (daysAway + dayJitter >= threshold + 1) {
+              return moveTo(fief, '返回封地坐镇');
+            }
           }
           const trained = applyGarrisonTraining(nextLord.partyTroops, 2, getTroopTemplate);
           return { ...nextLord, partyTroops: trained };

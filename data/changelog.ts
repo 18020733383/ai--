@@ -6,6 +6,13 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.10',
+    date: '2026-04-04',
+    items: [
+      '领主 AI：巡逻时在外驻留超过阈值会主动返回封地坐镇（防御型更早回防，战争型更久在外）；赴宴时更高概率在本城/本村设宴，减少据点长期无领主'
+    ]
+  },
+  {
     version: '0.13.9',
     date: '2026-04-03',
     items: [
