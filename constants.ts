@@ -5846,7 +5846,8 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
   },
   chuuniResonance: 0,
   chuuniOathNextBattle: false,
-  chuuniFateDiceDay: 0
+  chuuniFateDiceDay: 0,
+  mysteryWorkProgress: {}
 };
 
 // Initial state for locations, recruits will be generated at runtime

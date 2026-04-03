@@ -6,7 +6,7 @@ import { attributesFromRatios } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
 import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
-import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildRandomizedHeroes, buildSupportTroops, buildWorkContractsForCity, canHeroBattle, clampRelation, clampValue, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, buildGarrisonTroops as buildGarrisonTroopsImpl, getDefenderTroops as getDefenderTroopsImpl, getLocationRecruitId, getLocationRelationTarget, getPlayerReligion as getPlayerReligionFromLocations, getRecruitmentPool, FIELD_CAMP_PARLEY_RELATION_THRESHOLD, getFieldCampPlayerRelationValue, getRelationScale, getRelationTone, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isPlayerHideoutUnlocked, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, PRESTIGE, computeSealHabitatPrestige, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence, buildTroopsFromSoldiers as buildTroopsFromSoldiersImpl, buildWoundedEntriesFromSoldiers as buildWoundedEntriesFromSoldiersImpl, normalizePlayerSoldiers as normalizePlayerSoldiersImpl, markSoldiersWounded as markSoldiersWoundedImpl, removeSoldiersById as removeSoldiersByIdImpl, buildRaceComposition } from './game/systems';
+import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildRandomizedHeroes, buildSupportTroops, buildWorkContractsForCity, getMysteryWorkChainDef, canHeroBattle, clampRelation, clampValue, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, buildGarrisonTroops as buildGarrisonTroopsImpl, getDefenderTroops as getDefenderTroopsImpl, getLocationRecruitId, getLocationRelationTarget, getPlayerReligion as getPlayerReligionFromLocations, getRecruitmentPool, FIELD_CAMP_PARLEY_RELATION_THRESHOLD, getFieldCampPlayerRelationValue, getRelationScale, getRelationTone, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isPlayerHideoutUnlocked, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, PRESTIGE, computeSealHabitatPrestige, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence, buildTroopsFromSoldiers as buildTroopsFromSoldiersImpl, buildWoundedEntriesFromSoldiers as buildWoundedEntriesFromSoldiersImpl, normalizePlayerSoldiers as normalizePlayerSoldiersImpl, markSoldiersWounded as markSoldiersWoundedImpl, removeSoldiersById as removeSoldiersByIdImpl, buildRaceComposition } from './game/systems';
 import { calculatePower } from './game/systems/combatPower';
 import { calculateXpGain } from './game/systems/xpGain';
 import { calculateFleeChance, calculateRearGuardPlan } from './features/battle/model/battleEscape';
@@ -87,7 +87,7 @@ export default function App() {
   const initialWorld = React.useMemo(() => buildInitialWorld(), []);
   const [player, setPlayer] = useState<PlayerState>(INITIAL_PLAYER_STATE);
   const [heroes, setHeroes] = useState<Hero[]>(() => buildRandomizedHeroes());
-  const [locations, setLocations] = useState<Location[]>(() => initialWorld.locations.map(l => l.type === 'CITY' ? { ...l, workBoard: { lastRefreshDay: INITIAL_PLAYER_STATE.day, contracts: buildWorkContractsForCity(l, INITIAL_PLAYER_STATE.day, { commerceLevel: INITIAL_PLAYER_STATE.attributes.commerce }) } } : l));
+  const [locations, setLocations] = useState<Location[]>(() => initialWorld.locations.map(l => l.type === 'CITY' ? { ...l, workBoard: { lastRefreshDay: INITIAL_PLAYER_STATE.day, contracts: buildWorkContractsForCity(l, INITIAL_PLAYER_STATE.day, { commerceLevel: INITIAL_PLAYER_STATE.attributes.commerce, mysteryWorkProgress: INITIAL_PLAYER_STATE.mysteryWorkProgress }) } } : l));
   const [lords, setLords] = useState<Lord[]>(() => initialWorld.lords);
   const [view, setView] = useState<GameView>('MAIN_MENU');
   const [endingReturnView, setEndingReturnView] = useState<GameView>('GAME_OVER');
@@ -344,7 +344,9 @@ export default function App() {
         const finishTimer = setTimeout(() => {
           const kind = snapshot.rewardKind ?? 'GOLD';
           const goldLine = Math.max(0, Math.floor(snapshot.totalPay));
-          let xpLogs: string[] = [];
+          const mysteryDef = snapshot.mysteryChainId ? getMysteryWorkChainDef(snapshot.mysteryChainId) : undefined;
+          const isMysteryFinale = !!(mysteryDef && snapshot.mysteryStage === snapshot.mysteryTotalStages);
+          const xpLogBuffer: string[] = [];
           setPlayer(prev => {
             let next: PlayerState = {
               ...prev,
@@ -354,7 +356,7 @@ export default function App() {
             const xpAmt = snapshot.rewardXp ?? 0;
             if (kind === 'PLAYER_XP' && xpAmt > 0) {
               const r = calculateXpGain(next.xp, next.level, next.attributePoints, next.maxXp, xpAmt);
-              xpLogs = r.logs;
+              xpLogBuffer.push(...r.logs);
               next = { ...next, xp: r.xp, level: r.level, attributePoints: r.attributePoints, maxXp: r.maxXp };
             }
             const troopId = snapshot.rewardTroopId;
@@ -362,9 +364,36 @@ export default function App() {
             if (kind === 'TROOP_BONUS' && troopId && troopCount > 0) {
               next = { ...next, troops: mergeTroops(next.troops, [createTroop(troopId, troopCount)]) };
             }
+
+            if (mysteryDef) {
+              if (isMysteryFinale) {
+                const f = mysteryDef.finale;
+                next = { ...next, gold: next.gold + f.gold, prestige: (next.prestige ?? 0) + (f.prestige ?? 0) };
+                if (f.xp > 0) {
+                  const r2 = calculateXpGain(next.xp, next.level, next.attributePoints, next.maxXp, f.xp);
+                  xpLogBuffer.push(...r2.logs);
+                  next = { ...next, xp: r2.xp, level: r2.level, attributePoints: r2.attributePoints, maxXp: r2.maxXp };
+                }
+                if (f.troopId && f.troopCount > 0) {
+                  next = { ...next, troops: mergeTroops(next.troops, [createTroop(f.troopId, f.troopCount)]) };
+                }
+                next = {
+                  ...next,
+                  mysteryWorkProgress: { ...next.mysteryWorkProgress, [mysteryDef.id]: 'done' }
+                };
+              } else {
+                const cur = next.mysteryWorkProgress?.[mysteryDef.id];
+                const done = typeof cur === 'number' ? cur : 0;
+                next = {
+                  ...next,
+                  mysteryWorkProgress: { ...next.mysteryWorkProgress, [mysteryDef.id]: done + 1 }
+                };
+              }
+            }
+
             return next;
           });
-          xpLogs.forEach(line => addLog(line));
+          xpLogBuffer.forEach(line => addLog(line));
           const troopId = snapshot.rewardTroopId;
           const troopCount = snapshot.rewardTroopCount ?? 0;
           const troopName = troopId ? (TROOP_TEMPLATES[troopId]?.name ?? troopId) : '';
@@ -374,6 +403,20 @@ export default function App() {
           if (kind === 'PLAYER_XP' && (snapshot.rewardXp ?? 0) > 0) bits.push(`经验 +${snapshot.rewardXp}`);
           if (kind === 'TROOP_BONUS' && troopId && troopCount > 0) bits.push(`援军 ${troopName}×${troopCount}`);
           addLog(bits.length > 0 ? `委托完成：${bits.join('，')}；威望 +${PRESTIGE.WORK_CONTRACT_COMPLETE}。` : `委托完成，威望 +${PRESTIGE.WORK_CONTRACT_COMPLETE}。`);
+          if (mysteryDef) {
+            if (isMysteryFinale) {
+              const f = mysteryDef.finale;
+              const tn = TROOP_TEMPLATES[f.troopId]?.name ?? f.troopId;
+              addLog(
+                `【神秘委托】长线全段完成！秘藏回报：${f.gold} 第纳尔、经验 ${f.xp}、${tn}×${f.troopCount}` +
+                  `${f.prestige ? `、威望 +${f.prestige}` : ''}。`
+              );
+            } else {
+              addLog(
+                `【神秘委托】${snapshot.contractTitle} 已了结（第 ${snapshot.mysteryStage}/${snapshot.mysteryTotalStages} 段）。进城刷新榜文可接下一段。`
+              );
+            }
+          }
           recordWorkContractComplete({
             tier: snapshot.contractTier,
             rewardKind: kind,
@@ -1961,7 +2004,7 @@ export default function App() {
           workBoard: {
             lastRefreshDay: nextDay,
             lastManualRefreshDay: board?.lastManualRefreshDay,
-            contracts: buildWorkContractsForCity(loc, nextDay, { commerceLevel: Math.max(0, nextPlayer.attributes?.commerce ?? 0) })
+            contracts: buildWorkContractsForCity(loc, nextDay, { commerceLevel: Math.max(0, nextPlayer.attributes?.commerce ?? 0), mysteryWorkProgress: nextPlayer.mysteryWorkProgress })
           }
         };
       });
@@ -6364,7 +6407,7 @@ export default function App() {
         }
       };
       const seededLocations = world.locations.map(l => l.type === 'CITY'
-        ? { ...l, workBoard: { lastRefreshDay: basePlayer.day, contracts: buildWorkContractsForCity(l, basePlayer.day, { commerceLevel: basePlayer.attributes.commerce }) } }
+        ? { ...l, workBoard: { lastRefreshDay: basePlayer.day, contracts: buildWorkContractsForCity(l, basePlayer.day, { commerceLevel: basePlayer.attributes.commerce, mysteryWorkProgress: basePlayer.mysteryWorkProgress }) } }
         : l
       );
       const seededHeroes = buildRandomizedHeroes();
@@ -7783,7 +7826,7 @@ export default function App() {
     const freshWorld = buildInitialWorld();
     setPlayer(normalizePlayerSoldiers(INITIAL_PLAYER_STATE));
     setHeroes(buildRandomizedHeroes());
-    setLocations(freshWorld.locations.map(l => l.type === 'CITY' ? { ...l, workBoard: { lastRefreshDay: INITIAL_PLAYER_STATE.day, contracts: buildWorkContractsForCity(l, INITIAL_PLAYER_STATE.day, { commerceLevel: INITIAL_PLAYER_STATE.attributes.commerce }) } } : l));
+    setLocations(freshWorld.locations.map(l => l.type === 'CITY' ? { ...l, workBoard: { lastRefreshDay: INITIAL_PLAYER_STATE.day, contracts: buildWorkContractsForCity(l, INITIAL_PLAYER_STATE.day, { commerceLevel: INITIAL_PLAYER_STATE.attributes.commerce, mysteryWorkProgress: INITIAL_PLAYER_STATE.mysteryWorkProgress }) } } : l));
     setLords(freshWorld.lords);
     setCurrentLocation(null);
     setView('MAIN_MENU');

@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.9',
+    date: '2026-04-03',
+    items: [
+      '城内打工：新增三条「神秘长线委托」（裂符龙铃 / 盐茧密简 / 钥匠隐册），首段小概率出现并以紫色高亮',
+      '神秘委托按段推进，全部段完成后额外发放秘藏终奖（大额金币、经验、精锐援军）；进度记入存档'
+    ]
+  },
+  {
     version: '0.13.8',
     date: '2026-04-03',
     items: [

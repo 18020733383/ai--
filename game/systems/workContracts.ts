@@ -1,4 +1,5 @@
-import type { FactionId, Location, WorkContract, WorkContractRewardKind } from '../../types';
+import type { FactionId, Location, WorkContract, WorkContractRewardKind, PlayerState } from '../../types';
+import { appendMysteryWorkContracts } from './mysteryWorkContracts';
 
 type TierPool = { tier: number; daysRange: [number, number]; payRange: [number, number] };
 
@@ -152,6 +153,7 @@ function xpForContractTier(tier: number) {
 
 export type BuildWorkContractsOptions = {
   commerceLevel?: number;
+  mysteryWorkProgress?: PlayerState['mysteryWorkProgress'];
 };
 
 export function buildWorkContractsForCity(loc: Location, day: number, opts?: BuildWorkContractsOptions): WorkContract[] {
@@ -204,5 +206,5 @@ export function buildWorkContractsForCity(loc: Location, day: number, opts?: Bui
     };
     result.push(c);
   }
-  return result;
+  return appendMysteryWorkContracts(result, loc, day, opts?.mysteryWorkProgress);
 }

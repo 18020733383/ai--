@@ -283,6 +283,11 @@ export interface PlayerState {
   chuuniOathNextBattle?: boolean;
   /** 上次投掷「命运宣告」时的游戏日（同日仅一次） */
   chuuniFateDiceDay?: number;
+  /**
+   * 神秘委托进度：键为链 id，值为已完成段数（未接取前无记录）；
+   * 整条线完结后为 'done'，不再刷新该链。
+   */
+  mysteryWorkProgress?: Record<string, number | 'done'>;
 }
 
 export interface EnemyForce {
@@ -585,6 +590,11 @@ export type WorkContract = {
   /** 援军模板 id（TROOP_BONUS） */
   rewardTroopId?: string;
   rewardTroopCount?: number;
+  /** 神秘长线委托（界面紫色高亮） */
+  isMystery?: boolean;
+  mysteryChainId?: string;
+  mysteryStage?: number;
+  mysteryTotalStages?: number;
 };
 
 export type WorkBoard = {

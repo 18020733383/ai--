@@ -911,6 +911,9 @@ export const TownView = ({
       const nm = getTroopTemplate(contract.rewardTroopId ?? '')?.name ?? contract.rewardTroopId ?? '';
       rewardSummary = `${nm}×${contract.rewardTroopCount ?? 0} · 津贴 ${totalPay}`;
     }
+    if (contract.isMystery && contract.mysteryStage && contract.mysteryTotalStages) {
+      rewardSummary = `神秘 ${contract.mysteryStage}/${contract.mysteryTotalStages} · ${rewardSummary}`;
+    }
     updateLocationState({
       ...currentLocation,
       workBoard: {
@@ -932,7 +935,11 @@ export const TownView = ({
       rewardXp: contract.rewardXp,
       rewardTroopId: contract.rewardTroopId,
       rewardTroopCount: contract.rewardTroopCount,
-      rewardSummary
+      rewardSummary,
+      isMystery: contract.isMystery,
+      mysteryChainId: contract.mysteryChainId,
+      mysteryStage: contract.mysteryStage,
+      mysteryTotalStages: contract.mysteryTotalStages
     });
     onBackToMap();
   };
@@ -947,7 +954,10 @@ export const TownView = ({
       return;
     }
     const commerce = Math.max(0, player.attributes.commerce ?? 0);
-    const contracts = buildWorkContractsForCity(currentLocation, player.day, { commerceLevel: commerce });
+    const contracts = buildWorkContractsForCity(currentLocation, player.day, {
+      commerceLevel: commerce,
+      mysteryWorkProgress: player.mysteryWorkProgress
+    });
     updateLocationState({
       ...currentLocation,
       workBoard: {

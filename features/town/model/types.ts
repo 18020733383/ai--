@@ -42,6 +42,10 @@ export type WorkState = {
   rewardTroopCount?: number;
   /** 大地图委托面板一行摘要 */
   rewardSummary: string;
+  isMystery?: boolean;
+  mysteryChainId?: string;
+  mysteryStage?: number;
+  mysteryTotalStages?: number;
 };
 
 export type MiningState = {

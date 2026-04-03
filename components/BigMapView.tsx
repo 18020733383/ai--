@@ -352,12 +352,20 @@ export const BigMapView = ({
       `}</style>
       {workState?.isActive && (
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-50 pointer-events-auto">
-          <div className="bg-stone-900/90 border-2 border-amber-600 rounded-lg p-6 shadow-2xl flex flex-col items-center gap-4 min-w-[280px] animate-fade-in">
-            <div className="flex items-center gap-2 text-amber-500 text-xl font-bold font-serif">
+          <div
+            className={
+              workState.isMystery
+                ? 'bg-stone-900/95 border-2 border-purple-500 rounded-lg p-6 shadow-2xl shadow-purple-900/40 flex flex-col items-center gap-4 min-w-[280px] animate-fade-in'
+                : 'bg-stone-900/90 border-2 border-amber-600 rounded-lg p-6 shadow-2xl flex flex-col items-center gap-4 min-w-[280px] animate-fade-in'
+            }
+          >
+            <div
+              className={`flex items-center gap-2 text-xl font-bold font-serif ${workState.isMystery ? 'text-purple-300' : 'text-amber-500'}`}
+            >
               <Coins className="animate-pulse" />
-              <span>委托中...</span>
+              <span>{workState.isMystery ? '神秘委托进行中…' : '委托中...'}</span>
             </div>
-            <div className="text-stone-300 text-sm">{workState.contractTitle}</div>
+            <div className={`text-sm ${workState.isMystery ? 'text-purple-100' : 'text-stone-300'}`}>{workState.contractTitle}</div>
             <div className="flex items-center gap-6">
               <div className="text-center">
                 <div className="text-xs text-stone-500 uppercase tracking-wider mb-1">当前天数</div>
@@ -369,18 +377,20 @@ export const BigMapView = ({
                   </div>
                 </div>
               </div>
-              <div className="text-center">
-                <div className="text-xs text-stone-500 uppercase tracking-wider mb-1">委托报酬</div>
-                <div className="bg-black border border-stone-700 rounded px-3 py-2 min-w-[80px]">
-                  <div className="text-3xl font-mono text-yellow-500 font-bold">
-                    {workState.totalPay}
+              <div className="text-center min-w-[200px]">
+                <div className="text-xs text-stone-500 uppercase tracking-wider mb-1">完成报酬</div>
+                <div className="bg-black border border-stone-700 rounded px-3 py-2">
+                  <div
+                    className={`text-lg font-mono font-bold leading-snug break-words ${workState.isMystery ? 'text-purple-200' : 'text-yellow-500'}`}
+                  >
+                    {workState.rewardSummary || `${workState.totalPay} 金币`}
                   </div>
                 </div>
               </div>
             </div>
             <div className="w-full bg-stone-800 rounded-full h-2 mt-2">
               <div
-                className="bg-amber-600 h-2 rounded-full transition-all duration-500"
+                className={`h-2 rounded-full transition-all duration-500 ${workState.isMystery ? 'bg-purple-500' : 'bg-amber-600'}`}
                 style={{ width: `${(workState.daysPassed / workState.totalDays) * 100}%` }}
               />
             </div>

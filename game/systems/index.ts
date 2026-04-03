@@ -14,6 +14,7 @@ export * from './sealHabitat';
 export * from './troopTraining';
 export * from './relationHelpers';
 export * from './workContracts';
+export * from './mysteryWorkContracts';
 export * from './xpGain';
 export * from './worldInit';
 export * from './dailyCycle';

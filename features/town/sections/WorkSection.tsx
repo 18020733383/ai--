@@ -62,7 +62,8 @@ export const WorkSection = ({
     <div className="space-y-6 animate-fade-in">
       <div className="bg-stone-900/40 p-4 rounded border border-stone-800">
         <p className="text-stone-400 text-sm">
-          各城委托标题与势力有关；商业等级越高，高星委托出现概率略升。偶有「经验」「援军」类特殊报酬。每日可手动刷新一次榜文。
+          各城委托标题与势力有关；商业等级越高，高星委托出现概率略升。偶有「经验」「援军」类报酬。
+          紫色高亮为<span className="text-purple-300">神秘长线</span>：首段小概率出现，须按段完成；整线结束有秘藏重奖。每日可手动刷新一次榜文。
         </p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
@@ -85,17 +86,41 @@ export const WorkSection = ({
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {contracts.map(c => {
               const { primary, secondary } = describeContract(c);
+              const isMystery = !!c.isMystery;
+              const seg =
+                isMystery && c.mysteryStage && c.mysteryTotalStages
+                  ? `长线第 ${c.mysteryStage}/${c.mysteryTotalStages} 段`
+                  : '';
               const payLine =
                 contractRewardKind(c) === 'GOLD'
-                  ? `等级 ${c.tier} · 耗时 ${c.days} 天 · ${primary}${commerce > 0 ? `（商业 ${commerce}：+${Math.round(commerceBonusRate * 100)}%）` : ''}`
-                  : `等级 ${c.tier} · 耗时 ${c.days} 天 · ${primary}`;
+                  ? `${seg ? `${seg} · ` : ''}等级 ${c.tier} · 耗时 ${c.days} 天 · ${primary}${commerce > 0 ? `（商业 ${commerce}：+${Math.round(commerceBonusRate * 100)}%）` : ''}`
+                  : `${seg ? `${seg} · ` : ''}等级 ${c.tier} · 耗时 ${c.days} 天 · ${primary}`;
               return (
-                <div key={c.id} className="bg-stone-950/40 border border-stone-800 rounded p-4">
+                <div
+                  key={c.id}
+                  className={
+                    isMystery
+                      ? 'bg-purple-950/35 border-2 border-purple-500/70 rounded p-4 shadow-[0_0_20px_rgba(168,85,247,0.15)]'
+                      : 'bg-stone-950/40 border border-stone-800 rounded p-4'
+                  }
+                >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <div className="text-stone-200 font-bold">{c.title}</div>
-                      <div className="text-xs text-stone-500 mt-1">{payLine}</div>
-                      {secondary ? <div className="text-xs text-stone-500 mt-1">{secondary}</div> : null}
+                      {isMystery ? (
+                        <div className="text-xs font-semibold text-purple-300 uppercase tracking-wide mb-0.5">神秘委托</div>
+                      ) : null}
+                      <div className={isMystery ? 'text-purple-100 font-bold' : 'text-stone-200 font-bold'}>{c.title}</div>
+                      <div className={`text-xs mt-1 ${isMystery ? 'text-purple-200/80' : 'text-stone-500'}`}>{payLine}</div>
+                      {secondary ? (
+                        <div className={`text-xs mt-1 ${isMystery ? 'text-purple-200/70' : 'text-stone-500'}`}>{secondary}</div>
+                      ) : null}
+                      {isMystery ? (
+                        <div className="text-xs text-purple-300/90 mt-1">
+                          {c.mysteryStage === c.mysteryTotalStages
+                            ? '完成本段即可领取秘藏终奖（大额金币、经验、精锐援军）。'
+                            : '分段推进；中途放弃不会推进长线进度。'}
+                        </div>
+                      ) : null}
                     </div>
                     <Button
                       onClick={() => onStartWorkContract(c.id)}
