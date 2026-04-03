@@ -43,6 +43,7 @@ export function getRecruitmentPool(location: Location, mode: 'VOLUNTEER' | 'MERC
       'imposter_flux_mortar',
       'undead_soul_obelisk',
       'undead_bone_siege_golem',
+      'goblin_iron_idol',
       'undead_cathedral_colossus',
       'hotpot_broth_howler'
     ];
@@ -134,15 +135,31 @@ export function getRecruitmentPool(location: Location, mode: 'VOLUNTEER' | 'MERC
       'imperial_light_attendant',
       'imperial_spear_initiate',
       'imperial_squire_cavalry',
-      'imperial_rider_trainee'
+      'imperial_rider_trainee',
+      'starfall_initiate',
+      'goblin_spring_runner'
     ];
   } else {
-    const basePool = ['footman', 'archer', 'wolf_rider', 'alchemist', 'flagellant', 'arcane_apprentice'];
+    const basePool = [
+      'footman',
+      'archer',
+      'wolf_rider',
+      'alchemist',
+      'flagellant',
+      'arcane_apprentice',
+      'comet_squire',
+      'goblin_boiler_brute',
+      'ashen_interrogator'
+    ];
     if (location.type === 'CITY' || location.type === 'CASTLE' || location.type === 'VILLAGE') {
       const airPool = location.type === 'CITY' || location.type === 'CASTLE'
         ? ['arcane_glider', 'arcane_biplane', 'arcane_airship']
         : [];
-      return [...basePool, ...factionMercs, ...airPool];
+      const cityElite =
+        location.type === 'CITY' || location.type === 'CASTLE'
+          ? ['eclipse_lancer_human', 'goblin_scrap_reaper', 'pyre_high_confessor', 'void_rim_paladin']
+          : [];
+      return [...basePool, ...factionMercs, ...airPool, ...cityElite];
     }
     return basePool;
   }

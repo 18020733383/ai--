@@ -630,6 +630,70 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     equipment: ['符文巨剑', '振金板甲', '神圣光环'],
     attributes: troopAttr(200, 215, 160, 220, 5, 200)
   },
+  starfall_initiate: {
+    id: 'starfall_initiate',
+    name: '星坠宣誓者',
+    tier: TroopTier.TIER_1,
+    basePower: 11,
+    cost: 22,
+    upgradeCost: 48,
+    maxXp: 32,
+    upgradeTargetId: 'comet_squire',
+    description: '在观星塔下宣誓的见习骑士。【技能：流星步法】首回合敏捷略升。',
+    equipment: ['轻型骑枪', '星纹披布', '练习头盔'],
+    attributes: troopAttr(4, 3, 5, 4, 2, 5)
+  },
+  comet_squire: {
+    id: 'comet_squire',
+    name: '彗尾侍从',
+    tier: TroopTier.TIER_2,
+    basePower: 32,
+    cost: 75,
+    upgradeCost: 125,
+    maxXp: 95,
+    upgradeTargetId: 'eclipse_lancer_human',
+    description: '拖着彗尾般尾焰冲锋的扈从。【技能：余烬冲击】对单体首击杀伤略增。',
+    equipment: ['镶星短枪', '环甲片', '轻型骑兽'],
+    attributes: troopAttr(5, 4, 6, 5, 2, 6)
+  },
+  eclipse_lancer_human: {
+    id: 'eclipse_lancer_human',
+    name: '蚀骑突骑长',
+    tier: TroopTier.TIER_3,
+    basePower: 64,
+    cost: 230,
+    upgradeCost: 400,
+    maxXp: 220,
+    upgradeTargetId: 'void_rim_paladin',
+    description: '借月食之暗影遮掩枪轨。【技能：黑冕刺击】对中甲单位穿甲略升。',
+    equipment: ['蚀光骑枪', '月食圆盾', '黯银马甲'],
+    attributes: troopAttr(7, 5, 7, 6, 2, 7)
+  },
+  void_rim_paladin: {
+    id: 'void_rim_paladin',
+    name: '虚界边缘圣骑',
+    tier: TroopTier.TIER_4,
+    basePower: 118,
+    cost: 720,
+    upgradeCost: 0,
+    maxXp: 920,
+    upgradeTargetId: 'astrocalibur_paragon',
+    description: '界膜彼端投来一瞥，枪尖便知晓终局。【技能：界缘驱散】小幅压制敌方咒术发挥。',
+    equipment: ['裂界骑枪', '符文全身铠', '空洞圣徽'],
+    attributes: troopAttr(8, 7, 7, 8, 3, 9)
+  },
+  astrocalibur_paragon: {
+    id: 'astrocalibur_paragon',
+    name: '天枢御极星骑士',
+    tier: TroopTier.TIER_5,
+    basePower: 198,
+    cost: 1980,
+    upgradeCost: 0,
+    maxXp: 3200,
+    description: '群星为剑锷加冕。【连携：星轨】友方人类骑兵首轮冲锋杀伤提升。',
+    equipment: ['天枢大剑', '御极星冠', '熔星甲胄'],
+    attributes: troopAttr(10, 9, 8, 9, 2, 10)
+  },
   imperial_shieldbearer: {
     id: 'imperial_shieldbearer',
     name: '帝国盾卫',
@@ -1209,6 +1273,7 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     upgradeCost: 80,
     maxXp: 60,
     upgradeTargetId: 'flagellant',
+    upgradeTargetIds: ['ashen_interrogator'],
     description: '不知恐惧为何物。【技能：狂乱】生命值越低攻击力越高。',
     equipment: ['火把', '生锈铁锤', '破烂长袍'],
     attributes: troopAttr(5, 3, 4, 4, 1, 7)
@@ -1250,6 +1315,44 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     description: '与深渊签订契约。【技能：深渊之门】召唤触手缠绕并吞噬敌人。',
     equipment: ['死灵之书', '虚空裂隙', '暗影护盾'],
     attributes: troopAttr(10, 5, 6, 7, 8, 9)
+  },
+  ashen_interrogator: {
+    id: 'ashen_interrogator',
+    name: '灰烬审问官',
+    tier: TroopTier.TIER_3,
+    basePower: 48,
+    cost: 200,
+    upgradeCost: 380,
+    maxXp: 200,
+    upgradeTargetId: 'pyre_high_confessor',
+    description: '以余火书写供词的狂信执法者。【技能：烙印诘问】命中后降低敌军士气与命中。',
+    equipment: ['灰烬链枷', '铁面具', '烙铁徽记'],
+    attributes: troopAttr(6, 5, 5, 6, 3, 8)
+  },
+  pyre_high_confessor: {
+    id: 'pyre_high_confessor',
+    name: '炽焰高阶忏罪者',
+    tier: TroopTier.TIER_4,
+    basePower: 92,
+    cost: 620,
+    upgradeCost: 0,
+    maxXp: 720,
+    upgradeTargetId: 'crimson_apex_judge',
+    description: '烈焰是唯一的赦免。【技能：公开火刑台】对密集低士气球体额外压制。',
+    equipment: ['火忏长戟', '祷告香炉', '焦黑头袍'],
+    attributes: troopAttr(8, 6, 6, 7, 5, 9)
+  },
+  crimson_apex_judge: {
+    id: 'crimson_apex_judge',
+    name: '终焉绯色裁断王',
+    tier: TroopTier.TIER_5,
+    basePower: 188,
+    cost: 1950,
+    upgradeCost: 0,
+    maxXp: 3400,
+    description: '判决即宇宙常识……由你改写。【连携：审判庭】友方狂信系单位防御与士气上升。',
+    equipment: ['裁断巨锤', '绯红眼罩', '殉道冠冕'],
+    attributes: troopAttr(9, 8, 6, 8, 6, 10)
   },
 
   // --- UNDEAD TREE ---
@@ -2095,6 +2198,66 @@ const RAW_TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = {
     description: '挑最怪的蘑菇，熬最臭的汤。',
     equipment: ['菌菇篮', '酸汤袋', '小刀'],
     attributes: troopAttr(30, 30, 45, 50, 40, 55)
+  },
+  goblin_spring_runner: {
+    id: 'goblin_spring_runner',
+    name: '发条跃行者',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_1,
+    basePower: 8,
+    cost: 19,
+    upgradeCost: 42,
+    maxXp: 34,
+    upgradeTargetId: 'goblin_boiler_brute',
+    description: '背后发条狂转的小个子，跑得像受诅咒的耗子。【技能：过载蹦跳】偶发双倍移速判定。',
+    equipment: ['发条钥匙', '铜铆短靴', '护目镜'],
+    attributes: troopAttr(42, 28, 85, 38, 8, 48)
+  },
+  goblin_boiler_brute: {
+    id: 'goblin_boiler_brute',
+    name: '锅炉壮绿皮',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_2,
+    basePower: 24,
+    cost: 95,
+    upgradeCost: 155,
+    maxXp: 115,
+    upgradeTargetId: 'goblin_scrap_reaper',
+    description: '背着迷你蒸汽锅炉，用热情烫伤敌人。【技能：蒸汽糊脸】近战命中后降低目标命中。',
+    equipment: ['铜管锅炉', '隔热手套', '铁皮肩'],
+    attributes: troopAttr(88, 82, 55, 95, 15, 72)
+  },
+  goblin_scrap_reaper: {
+    id: 'goblin_scrap_reaper',
+    name: '废铁收割机',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_3,
+    basePower: 56,
+    cost: 240,
+    upgradeCost: 400,
+    maxXp: 220,
+    upgradeTargetId: 'goblin_iron_idol',
+    description: '砍刀连着自行车链，齿轮当护心镜。【技能：刺耳绞杀】对轻甲连环杀伤提升。',
+    equipment: ['链锯改刀', '齿轮胸甲', '废油喷嘴'],
+    attributes: troopAttr(120, 95, 88, 105, 25, 85)
+  },
+  goblin_iron_idol: {
+    id: 'goblin_iron_idol',
+    name: '锈铸绿皮巨偶',
+    race: 'GOBLIN',
+    tier: TroopTier.TIER_4,
+    basePower: 112,
+    cost: 780,
+    upgradeCost: 0,
+    maxXp: 900,
+    description: '铁锈与狂妄堆成的步行灾祸。【技能：偶像践踏】击退前列步兵。',
+    equipment: ['巨型扳手', '铆钉外骨骼', '漏水锅炉心'],
+    attributes: troopAttr(155, 160, 65, 170, 12, 110),
+    category: 'HEAVY',
+    heavyTier: 14,
+    ammoPerUnit: 0,
+    supportRole: 'TANK',
+    supportRules: '绿皮工程学奇迹；怕集火与破甲术士。'
   },
   goblin_raider: {
     id: 'goblin_raider',
@@ -5513,7 +5676,10 @@ export const INITIAL_PLAYER_STATE: PlayerState = {
     introSeen: false,
     mainQuest: 'CLEANSE_PORTALS',
     mainQuestStage: 0
-  }
+  },
+  chuuniResonance: 0,
+  chuuniOathNextBattle: false,
+  chuuniFateDiceDay: 0
 };
 
 // Initial state for locations, recruits will be generated at runtime
