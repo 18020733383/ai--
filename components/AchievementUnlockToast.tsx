@@ -2,6 +2,7 @@ import React from 'react';
 import { Trophy, X } from 'lucide-react';
 import type { AchievementDef } from '../app/achievements/achievementStore';
 import { ACHIEVEMENT_CATEGORY_LABELS } from '../app/achievements/achievementStore';
+import { AchievementArtOrPlaceholder } from './AchievementArt';
 import { Button } from './Button';
 
 type Props = {
@@ -25,9 +26,13 @@ export const AchievementUnlockToast = ({ achievement, onDismiss }: Props) => {
         role="alertdialog"
         aria-label="成就解锁"
       >
-        <div className="shrink-0 w-11 h-11 rounded-full bg-amber-900/40 border border-amber-500/60 flex items-center justify-center">
-          <Trophy className="text-amber-300" size={22} />
-        </div>
+        <AchievementArtOrPlaceholder
+          achievementId={achievement.id}
+          alt={achievement.title}
+          className="shrink-0 w-11 h-11 rounded-full bg-amber-900/40 border border-amber-500/60 overflow-hidden flex items-center justify-center"
+          imgClassName="w-full h-full object-cover"
+          fallback={<Trophy className="text-amber-300" size={22} aria-hidden />}
+        />
         <div className="min-w-0 flex-1">
           <div className="text-xs text-amber-400/90 font-medium uppercase tracking-wide">成就解锁</div>
           <div className="text-stone-100 font-bold text-lg mt-0.5">{achievement.title}</div>

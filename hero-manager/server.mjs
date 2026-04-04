@@ -10,18 +10,22 @@ const publicHeroRoot = path.join(rootDir, 'public', 'image', 'characters');
 const publicTroopRoot = path.join(rootDir, 'public', 'image', 'troops');
 const publicLocationRoot = path.join(rootDir, 'public', 'image', 'locations');
 const publicEndingRoot = path.join(rootDir, 'public', 'image', 'endings');
+const publicAchievementRoot = path.join(rootDir, 'public', 'image', 'achievements');
 const legacyHeroRoot = path.join(rootDir, 'image', 'characters');
 const legacyTroopRoot = path.join(rootDir, 'image', 'troops');
 const legacyLocationRoot = path.join(rootDir, 'image', 'locations');
 const legacyEndingRoot = path.join(rootDir, 'image', 'endings');
+const legacyAchievementRoot = path.join(rootDir, 'image', 'achievements');
 const heroRoots = [publicHeroRoot, legacyHeroRoot];
 const troopRoots = [publicTroopRoot, legacyTroopRoot];
 const locationRoots = [publicLocationRoot, legacyLocationRoot];
 const endingRoots = [publicEndingRoot, legacyEndingRoot];
+const achievementRoots = [publicAchievementRoot, legacyAchievementRoot];
 const heroRoot = publicHeroRoot;
 const troopRoot = publicTroopRoot;
 const locationRoot = publicLocationRoot;
 const endingRoot = publicEndingRoot;
+const achievementRoot = publicAchievementRoot;
 
 const FALLBACK_ENDING_LIST = [
   { id: 'PORTAL_CLEARED', title: '封堵裂隙', subtitle: '你夺回了回家的门。' },
@@ -185,6 +189,45 @@ const listEndingFiles = async (endingId) => {
       }
     }));
     return Array.from(new Set(lists.flat())).sort();
+  } catch {
+    return [];
+  }
+};
+
+const listAchievementFiles = async (achievementId) => {
+  const id = String(achievementId ?? '').trim();
+  if (!id) return [];
+  try {
+    const lists = await Promise.all(achievementRoots.map(async (root) => {
+      try {
+        const entries = await readdir(root, { withFileTypes: true });
+        return entries.filter(e => e.isFile() && e.name.startsWith(`${id}.`)).map(e => e.name);
+      } catch {
+        return [];
+      }
+    }));
+    return Array.from(new Set(lists.flat())).sort();
+  } catch {
+    return [];
+  }
+};
+
+const parseAchievementsFromStore = async () => {
+  try {
+    const filePath = path.join(rootDir, 'app', 'achievements', 'achievementStore.ts');
+    const text = await readFile(filePath, 'utf8');
+    const start = text.indexOf('export const ACHIEVEMENTS');
+    if (start < 0) return [];
+    const slice = text.slice(start);
+    const end = slice.indexOf('];');
+    const block = end >= 0 ? slice.slice(0, end) : slice;
+    const re = /\{\s*id:\s*'([^']+)'\s*,\s*title:\s*'([^']*)'\s*,\s*description:\s*'([^']*)'\s*,\s*category:\s*'([^']*)'\s*\}/g;
+    const out = [];
+    let m;
+    while ((m = re.exec(block)) !== null) {
+      out.push({ id: m[1], title: m[2], category: m[4] });
+    }
+    return out;
   } catch {
     return [];
   }
@@ -955,6 +998,13 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { endings, existing: Array.from(new Set(existing)).sort() });
   }
 
+  if (req.method === 'GET' && url.pathname === '/api/achievements') {
+    const achievements = await parseAchievementsFromStore();
+    const files = await readdir(publicAchievementRoot, { withFileTypes: true }).catch(() => []);
+    const existing = files.filter(e => e.isFile()).map(e => e.name.replace(/\.(png|jpg|jpeg)$/i, ''));
+    return sendJson(res, 200, { achievements, existing: Array.from(new Set(existing)).sort() });
+  }
+
   if (req.method === 'POST' && url.pathname === '/api/locations/redistribute') {
     try {
       const locations = await parseLocationsFromConstants();
@@ -1001,6 +1051,15 @@ const server = http.createServer(async (req, res) => {
       const endingId = decodeURIComponent(parts[2]);
       const files = await listEndingFiles(endingId);
       return sendJson(res, 200, { endingId, files });
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/api/achievement/')) {
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length === 3 && parts[2]) {
+      const achievementId = decodeURIComponent(parts[2]);
+      const files = await listAchievementFiles(achievementId);
+      return sendJson(res, 200, { achievementId, files });
     }
   }
 
@@ -1083,6 +1142,30 @@ const server = http.createServer(async (req, res) => {
       const fileName = decodeURIComponent(parts[1]);
       try {
         const filePath = await findFirstExisting(endingRoots, fileName);
+        if (!filePath) return sendText(res, 404, 'Not found');
+        const ext = path.extname(filePath).toLowerCase();
+        const contentType = ext === '.png'
+          ? 'image/png'
+          : ext === '.jpg'
+            ? 'image/jpeg'
+            : ext === '.jpeg'
+              ? 'image/jpeg'
+              : 'application/octet-stream';
+        const buffer = await readFile(filePath);
+        res.writeHead(200, { 'Content-Type': contentType, 'Cache-Control': 'no-store' });
+        return res.end(buffer);
+      } catch {
+        return sendText(res, 404, 'Not found');
+      }
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname.startsWith('/achievement-files/')) {
+    const parts = url.pathname.split('/').filter(Boolean);
+    if (parts.length === 2) {
+      const fileName = decodeURIComponent(parts[1]);
+      try {
+        const filePath = await findFirstExisting(achievementRoots, fileName);
         if (!filePath) return sendText(res, 404, 'Not found');
         const ext = path.extname(filePath).toLowerCase();
         const contentType = ext === '.png'
@@ -1199,6 +1282,31 @@ const server = http.createServer(async (req, res) => {
       await writeFile(filePath, parsed.buffer);
 
       return sendJson(res, 200, { ok: true, endingId, fileName });
+    } catch {
+      return sendJson(res, 500, { error: 'Upload failed' });
+    }
+  }
+
+  if (req.method === 'POST' && url.pathname === '/api/achievement/upload') {
+    try {
+      const body = await readBody(req);
+      const achievementId = String(body?.achievementId ?? '').trim();
+      const dataUrl = String(body?.dataUrl ?? '').trim();
+      if (!achievementId || !dataUrl) {
+        return sendJson(res, 400, { error: 'Missing fields' });
+      }
+      const parsed = parseDataUrl(dataUrl);
+      if (!parsed) return sendJson(res, 400, { error: 'Unsupported file type' });
+
+      await mkdir(achievementRoot, { recursive: true });
+      const targets = ['png', 'jpg', 'jpeg'].map(ext => path.join(achievementRoot, `${achievementId}.${ext}`));
+      await Promise.all(targets.map(file => rm(file, { force: true })));
+
+      const fileName = `${achievementId}.${parsed.ext}`;
+      const filePath = path.join(achievementRoot, fileName);
+      await writeFile(filePath, parsed.buffer);
+
+      return sendJson(res, 200, { ok: true, achievementId, fileName });
     } catch {
       return sendJson(res, 500, { error: 'Upload failed' });
     }

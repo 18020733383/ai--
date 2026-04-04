@@ -6,6 +6,13 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.22',
+    date: '2026-04-03',
+    items: [
+      '成就：支持自定义图标（public/image/achievements/{id}.png|jpg|jpeg），主菜单成就列表与解锁浮层显示；本地图片管理器新增「成就」上传页'
+    ]
+  },
+  {
     version: '0.13.21',
     date: '2026-04-03',
     items: [

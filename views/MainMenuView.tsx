@@ -1,5 +1,6 @@
 import React from 'react';
 import { Eye, Film, Play, Plus, Save, Skull, Trash2, Trophy } from 'lucide-react';
+import { AchievementArtOrPlaceholder } from '../components/AchievementArt';
 import { Button } from '../components/Button';
 import {
   ACHIEVEMENTS,
@@ -118,7 +119,9 @@ export const MainMenuView = ({
                   <div>
                     <div className="text-stone-300 font-bold">成就</div>
                     <div className="text-xs text-stone-500 mt-1">
-                      跨存档累计，数据保存在本机浏览器。已解锁 {unlockedCount} / {ACHIEVEMENTS.length}
+                      跨存档累计，数据保存在本机浏览器。已解锁 {unlockedCount} / {ACHIEVEMENTS.length}。自定义图标：置于仓库{' '}
+                      <span className="font-mono text-stone-400">public/image/achievements/</span>
+                      下，文件名与成就 id 相同（.png / .jpg 均可），亦可运行 <span className="font-mono">hero-manager</span> 在「成就」页上传。
                     </div>
                   </div>
                   <div className="flex flex-wrap gap-2">
@@ -147,19 +150,34 @@ export const MainMenuView = ({
                     return (
                       <div
                         key={a.id}
-                        className={`rounded border p-4 ${ok ? 'border-amber-700/70 bg-amber-950/20' : 'border-stone-800 bg-black/30 opacity-75'}`}
+                        className={`rounded border p-4 flex gap-3 ${ok ? 'border-amber-700/70 bg-amber-950/20' : 'border-stone-800 bg-black/30 opacity-75'}`}
                       >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="text-stone-200 font-bold">{a.title}</div>
-                          {ok ? (
-                            <span className="text-[10px] uppercase tracking-wide text-amber-400 shrink-0">已解锁</span>
-                          ) : (
-                            <span className="text-[10px] text-stone-600 shrink-0">未解锁</span>
-                          )}
+                        <AchievementArtOrPlaceholder
+                          achievementId={a.id}
+                          alt={a.title}
+                          className={`shrink-0 w-14 h-14 rounded-lg border overflow-hidden flex items-center justify-center ${ok ? 'border-amber-600/50 bg-black/40' : 'border-stone-700 bg-stone-900/50 grayscale opacity-90'}`}
+                          imgClassName="w-full h-full object-cover"
+                          fallback={
+                            <Trophy
+                              className={ok ? 'text-amber-500/80' : 'text-stone-600'}
+                              size={28}
+                              aria-hidden
+                            />
+                          }
+                        />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="text-stone-200 font-bold">{a.title}</div>
+                            {ok ? (
+                              <span className="text-[10px] uppercase tracking-wide text-amber-400 shrink-0">已解锁</span>
+                            ) : (
+                              <span className="text-[10px] text-stone-600 shrink-0">未解锁</span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-amber-700/90 mt-1">{ACHIEVEMENT_CATEGORY_LABELS[a.category]}</div>
+                          <p className="text-xs text-stone-400 mt-2 leading-relaxed">{a.description}</p>
+                          <div className="text-[10px] text-stone-600 mt-2 font-mono">{a.id}</div>
                         </div>
-                        <div className="text-[11px] text-amber-700/90 mt-1">{ACHIEVEMENT_CATEGORY_LABELS[a.category]}</div>
-                        <p className="text-xs text-stone-400 mt-2 leading-relaxed">{a.description}</p>
-                        <div className="text-[10px] text-stone-600 mt-2 font-mono">{a.id}</div>
                       </div>
                     );
                   })}
