@@ -920,12 +920,12 @@ export const BigMapView = ({
               <div
                 className="relative rounded-full border-2 transition-transform hover:scale-110 shadow-lg bg-stone-800 border-amber-600 p-1.5"
                 style={{
-                  borderColor: isCamp ? (loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8') : undefined
+                  borderColor: isCamp ? (loc.factionId ? (FACTION_ID_TO_COLOR[loc.factionId] ?? '#94a3b8') : '#94a3b8') : undefined
                 }}
               >
                 {loc.type === 'CITY' ? <Home className="text-amber-500" size={locIconPx} /> :
                   loc.type === 'CASTLE' ? <ShieldAlert className="text-stone-400" size={locIconPx} /> :
-                  loc.type === 'FIELD_CAMP' ? <Flag size={locIconPx} style={{ color: loc.factionId ? (factionColors[loc.factionId] ?? '#94a3b8') : '#94a3b8' }} /> :
+                  loc.type === 'FIELD_CAMP' ? <Flag size={locIconPx} style={{ color: loc.factionId ? (FACTION_ID_TO_COLOR[loc.factionId] ?? '#94a3b8') : '#94a3b8' }} /> :
                   loc.type === 'ROACH_NEST' ? <span className="leading-none" style={{ fontSize: locIconPx }}>🪳</span> :
                   loc.type === 'RUINS' ? <Ghost className="text-purple-400" size={locIconPx} /> :
                   loc.type === 'GRAVEYARD' ? <Skull className="text-stone-300" size={locIconPx} /> :
@@ -954,7 +954,7 @@ export const BigMapView = ({
                 {loc.factionId && loc.owner !== 'PLAYER' && (
                   <span
                     className="absolute -bottom-1 left-1/2 -translate-x-1/2 h-2 w-2 rounded-full border border-black/60 shadow"
-                    style={{ backgroundColor: factionColors[loc.factionId] ?? '#94a3b8' }}
+                    style={{ backgroundColor: FACTION_ID_TO_COLOR[loc.factionId] ?? '#94a3b8' }}
                   />
                 )}
                 {(loc.imposterAlertUntilDay ?? 0) >= player.day && (
