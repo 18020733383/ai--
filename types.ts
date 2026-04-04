@@ -47,6 +47,46 @@ export type TroopCategory = 'NORMAL' | 'HEAVY';
 export type HeavySupportRole = 'ARTILLERY' | 'TANK' | 'RADAR' | 'OTHER';
 export type CombatDomain = 'GROUND' | 'AIR' | 'HYBRID';
 
+/**
+ * 兵种作战职能标签（独立于 tier / 种族 / 重型科技树，用于档案、布阵提示与战演出等）
+ */
+export type TroopCombatRole =
+  | 'LEVY'
+  | 'MILITIA'
+  | 'LINE_INFANTRY'
+  | 'SHOCK_TROOPER'
+  | 'SPEAR_LINE'
+  | 'POLEARM'
+  | 'SHIELD_SPECIALIST'
+  | 'HEAVY_INFANTRY'
+  | 'SKIRMISHER'
+  | 'ARCHER'
+  | 'LONGBOW'
+  | 'CROSSBOW'
+  | 'SLINGER'
+  | 'GUNNER'
+  | 'JAVELINEER'
+  | 'LIGHT_CAVALRY'
+  | 'HEAVY_CAVALRY'
+  | 'LANCER'
+  | 'HORSE_ARCHER'
+  | 'BEAST_RIDER'
+  | 'BATTLE_MAGE'
+  | 'ELEMENTALIST'
+  | 'CURSE_HEXER'
+  | 'SUMMON_CHANNELER'
+  | 'AERIAL_SKIRMISH'
+  | 'AERIAL_STRIKE'
+  | 'AERIAL_BOMBER'
+  | 'SIEGE_ARTILLERY'
+  | 'SIEGE_TOWER'
+  | 'FIELD_ENGINE'
+  | 'SUPPORT_RADAR'
+  | 'SCOUT_STALKER'
+  | 'MONSTER_BEAST'
+  | 'CONSTRUCT_GOLEM'
+  | 'SWARM_INSECT';
+
 export interface Troop {
   id: string;
   name: string;
@@ -71,6 +111,8 @@ export interface Troop {
   supportRole?: HeavySupportRole;
   supportRules?: string;
   combatDomain?: CombatDomain;
+  /** 作战职能（可多选，优先序即数组序） */
+  combatRoles?: TroopCombatRole[];
   attackVsAir?: number;
   attackVsGround?: number;
   canCapture?: boolean;
@@ -288,6 +330,8 @@ export interface PlayerState {
    * 整条线完结后为 'done'，不再刷新该链。
    */
   mysteryWorkProgress?: Record<string, number | 'done'>;
+  /** 世界日志是否偶尔收录王国战略「流言」（默认开；关则只保留数据更迭、不打流言） */
+  strategyRumorLogEnabled?: boolean;
 }
 
 export interface EnemyForce {
@@ -361,6 +405,14 @@ export type WorldDiplomacyEvent = {
 /** 王国层战略目标（骑砍式：全军有一条「当前意向」供领主效用加分） */
 export type FactionStrategicMode = 'HOLD' | 'PRESS_ENEMY' | 'DEFEND_HOME';
 
+/** 最近一次「战略意向」变更原因（供关系界面叙事展示） */
+export type FactionStrategyShiftCode =
+  | 'SIEGE_HOME'
+  | 'FOCAL_INVALID'
+  | 'INERTIA_EXPIRED'
+  | 'PRESS_WAR'
+  | 'HOLD_RECENTER';
+
 export type FactionStrategicDirective = {
   mode: FactionStrategicMode;
   focalLocationId: string;
@@ -368,6 +420,11 @@ export type FactionStrategicDirective = {
   /** 惯性：此日之前不轻易改换战略 */
   stableUntilDay: number;
   rivalFactionId?: FactionId;
+  /** 最近一次战略意向变化时的纪要 */
+  lastShift?: {
+    day: number;
+    code: FactionStrategyShiftCode;
+  };
 };
 
 export type WorldDiplomacyState = {

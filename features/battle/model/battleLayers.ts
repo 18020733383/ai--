@@ -1,4 +1,4 @@
-import type { Troop } from '../../../types';
+import type { Troop, TroopCombatRole } from '../../../types';
 
 export const DEFAULT_BATTLE_LAYERS = [
   { id: 'layer-1', name: '先锋', hint: '承受正面冲击，适合盾兵与重装近战。' },
@@ -20,22 +20,78 @@ export function getTroopLayerDescriptor(troop: Troop, getTroopTemplate: GetTroop
   return `${troop.id} ${troop.name} ${equipment} ${description}`.toLowerCase();
 }
 
+function hasAnyRole(list: TroopCombatRole[], candidates: TroopCombatRole[]): boolean {
+  return candidates.some(r => list.includes(r));
+}
+
 export function getDefaultLayerId(troop: Troop, layers: LayerInfo[], getTroopTemplate: GetTroopTemplate): string {
-  const text = getTroopLayerDescriptor(troop, getTroopTemplate);
   const template = getTroopTemplate(troop.id);
+  const text = getTroopLayerDescriptor(troop, getTroopTemplate);
   const supportRole = template?.supportRole ?? troop.supportRole;
   const isHeavy = (template?.category ?? troop.category) === 'HEAVY' || troop.id.startsWith('heavy_');
-  const isRanged = /archer|bow|crossbow|ranger|marksman|sharpshooter|弓|弩|游侠|神射|猎手|射/.test(text);
-  const isMage = /mage|wizard|sorcerer|法师|术士|巫师/.test(text);
-  const isBard = /bard|吟游/.test(text);
-  const isShield = /shield|盾|phalanx|wall|守护/.test(text);
-  const isCavalry = /cavalry|rider|horse|knight|paladin|骑/.test(text);
+
+  const roleList: TroopCombatRole[] =
+    template?.combatRoles?.length ? (template.combatRoles as TroopCombatRole[]) : troop.combatRoles ?? [];
+
   if (troop.id === 'player_main') return layers[1]?.id ?? layers[0]?.id;
+
+  if (roleList.length > 0) {
+    if (
+      hasAnyRole(roleList, [
+        'SIEGE_ARTILLERY',
+        'SUPPORT_RADAR',
+        'AERIAL_BOMBER',
+        'ARCHER',
+        'LONGBOW',
+        'CROSSBOW',
+        'GUNNER',
+        'BATTLE_MAGE',
+        'ELEMENTALIST',
+        'CURSE_HEXER',
+        'SUMMON_CHANNELER'
+      ])
+    ) {
+      return layers[3]?.id ?? layers[layers.length - 1]?.id;
+    }
+    if (hasAnyRole(roleList, ['SHIELD_SPECIALIST', 'SPEAR_LINE']) && !hasAnyRole(roleList, ['HORSE_ARCHER', 'LIGHT_CAVALRY'])) {
+      return layers[0]?.id ?? layers[1]?.id;
+    }
+    if (
+      hasAnyRole(roleList, [
+        'LIGHT_CAVALRY',
+        'HEAVY_CAVALRY',
+        'LANCER',
+        'HORSE_ARCHER',
+        'BEAST_RIDER',
+        'AERIAL_SKIRMISH',
+        'AERIAL_STRIKE',
+        'SHOCK_TROOPER',
+        'SCOUT_STALKER'
+      ])
+    ) {
+      return layers[1]?.id ?? layers[0]?.id;
+    }
+    if (hasAnyRole(roleList, ['SKIRMISHER', 'JAVELINEER', 'SLINGER'])) {
+      return layers[2]?.id ?? layers[1]?.id;
+    }
+    if (hasAnyRole(roleList, ['FIELD_ENGINE', 'CONSTRUCT_GOLEM', 'HEAVY_INFANTRY', 'SIEGE_TOWER', 'MONSTER_BEAST'])) {
+      return layers[1]?.id ?? layers[2]?.id;
+    }
+    if (hasAnyRole(roleList, ['LEVY', 'MILITIA', 'LINE_INFANTRY', 'POLEARM', 'SWARM_INSECT'])) {
+      return layers[1]?.id ?? layers[0]?.id;
+    }
+  }
+
   if (isHeavy) {
     if (supportRole === 'ARTILLERY' || supportRole === 'RADAR') return layers[3]?.id ?? layers[layers.length - 1]?.id;
     if (supportRole === 'TANK') return layers[0]?.id ?? layers[1]?.id;
     return layers[2]?.id ?? layers[1]?.id;
   }
+  const isRanged = /archer|bow|crossbow|ranger|marksman|sharpshooter|弓|弩|游侠|神射|猎手|射/.test(text);
+  const isMage = /mage|wizard|sorcerer|法师|术士|巫师/.test(text);
+  const isBard = /bard|吟游/.test(text);
+  const isShield = /shield|盾|phalanx|wall|守护/.test(text);
+  const isCavalry = /cavalry|rider|horse|knight|paladin|骑/.test(text);
   if (isRanged || isMage || isBard) return layers[3]?.id ?? layers[layers.length - 1]?.id;
   if (isShield) return layers[0]?.id ?? layers[1]?.id;
   if (isCavalry) return layers[1]?.id ?? layers[0]?.id;

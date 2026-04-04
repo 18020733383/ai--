@@ -1,5 +1,6 @@
 
 import { Troop, TroopTier, Location, TerrainType, PlayerState, RecruitOffer, Hero, BugSummonRecipe, MineralId, Anomaly, TroopAttributes } from './types';
+import { assignCombatRoles } from './game/data/troopCombatRoles';
 export { MAP_WIDTH, MAP_HEIGHT, WORLD_BOOK } from './game/data/world';
 export { RACE_LABELS, RACE_RELATION_MATRIX } from './game/data/races';
 export { FACTIONS } from './game/data/factions';
@@ -5210,7 +5211,8 @@ export const TROOP_TEMPLATES: Record<string, Omit<Troop, 'count' | 'xp'>> = Obje
         ...template,
         upgradeTargetId,
         upgradeTargetIds,
-        attributes: normalizeAttributes(template.attributes, template.tier)
+        attributes: normalizeAttributes(template.attributes, template.tier),
+        combatRoles: assignCombatRoles(template, id)
       };
     })()
   ])

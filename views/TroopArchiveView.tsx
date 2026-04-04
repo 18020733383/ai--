@@ -1,6 +1,7 @@
 import React from 'react';
 import { Scroll } from 'lucide-react';
 import { Troop, TroopTier } from '../types';
+import { formatCombatRoleLabels } from '../game/data/troopCombatRoles';
 import { Button } from '../components/Button';
 import { TroopTreeCanvas } from '../components/TroopTreeCanvas';
 
@@ -127,7 +128,8 @@ export const TroopArchiveView = ({
   const query = troopArchiveQuery.trim().toLowerCase();
   const matchQuery = (t: Omit<Troop, 'count' | 'xp'>) => {
     if (!query) return true;
-    const text = `${t.id} ${t.name} ${(t.equipment ?? []).join(' ')} ${String(t.description ?? '')}`.toLowerCase();
+    const roleText = formatCombatRoleLabels(t.combatRoles).join(' ');
+    const text = `${t.id} ${t.name} ${(t.equipment ?? []).join(' ')} ${String(t.description ?? '')} ${roleText}`.toLowerCase();
     return text.includes(query);
   };
   const filtered = allTroops
@@ -554,6 +556,18 @@ export const TroopArchiveView = ({
                 <div className="text-xs text-stone-500">T{t.tier}</div>
               </div>
               <div className="text-xs text-stone-500">{t.id}</div>
+              {t.combatRoles && t.combatRoles.length > 0 && (
+                <div className="flex flex-wrap gap-1">
+                  {formatCombatRoleLabels(t.combatRoles).map((label, i) => (
+                    <span
+                      key={`${t.id}-role-${i}`}
+                      className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-950/60 text-indigo-200 border border-indigo-800/40"
+                    >
+                      {label}
+                    </span>
+                  ))}
+                </div>
+              )}
               {t.description && <div className="text-xs text-stone-300 leading-relaxed">{t.description}</div>}
               <div className="flex items-center justify-between">
                 <div className="text-xs text-stone-400">{(t.category ?? 'NORMAL') === 'HEAVY' ? '重型' : '常规'}</div>

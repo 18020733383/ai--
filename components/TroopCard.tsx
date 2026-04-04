@@ -2,6 +2,7 @@
 import React from 'react';
 import { Troop } from '../types';
 import { getTroopRace, TROOP_RACE_LABELS } from '../game/data';
+import { resolveTroopCombatRoles, TROOP_COMBAT_ROLE_LABELS } from '../game/data/troopCombatRoles';
 import { Bird, Shield, Users, Sword, ChevronUp, Hammer, ShieldAlert, Star } from 'lucide-react';
 
 interface TroopCardProps {
@@ -53,6 +54,7 @@ export const TroopCard: React.FC<TroopCardProps> = ({
   const isEvangelist = troop.evangelist || normalizedId.startsWith('altar_') || !!doctrineLabel;
   const troopRace = getTroopRace({ id: troop.id, name: troop.name, doctrine: troop.doctrine, evangelist: troop.evangelist });
   const raceLabel = TROOP_RACE_LABELS[troopRace];
+  const combatRoleIds = resolveTroopCombatRoles(troop);
 
   React.useEffect(() => {
     setPortraitSrc(null);
@@ -141,6 +143,14 @@ export const TroopCard: React.FC<TroopCardProps> = ({
                    {raceLabel}
                  </span>
                )}
+               {combatRoleIds.map(role => (
+                 <span
+                   key={role}
+                   className="bg-indigo-950/55 text-indigo-200 px-1 rounded border border-indigo-800/50"
+                 >
+                   {TROOP_COMBAT_ROLE_LABELS[role]}
+                 </span>
+               ))}
                <span>•</span>
                <span>{troop.equipment.join(', ')}</span>
             </div>

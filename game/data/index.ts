@@ -5,6 +5,7 @@ export * from './flavor';
 export * from './hideoutGov';
 export * from './enemies';
 export * from './troops';
+export * from './troopCombatRoles';
 export * from './heroes';
 export * from './player-state';
 export * from './buildings';
