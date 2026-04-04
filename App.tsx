@@ -1513,12 +1513,27 @@ export default function App() {
   }, [logs]);
 
   useEffect(() => {
-    const handleMouseMove = (e: MouseEvent) => {
-      setMousePos({ x: e.clientX, y: e.clientY });
+    const needsTooltipPos = view === 'MAP' || view === 'OBSERVER_MODE' || view === 'BATTLE';
+    if (!needsTooltipPos) return;
+    let raf = 0;
+    let pending: { x: number; y: number } | null = null;
+    const flush = () => {
+      raf = 0;
+      if (pending) {
+        setMousePos(pending);
+        pending = null;
+      }
     };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, []);
+    const handleMouseMove = (e: MouseEvent) => {
+      pending = { x: e.clientX, y: e.clientY };
+      if (!raf) raf = requestAnimationFrame(flush);
+    };
+    window.addEventListener('mousemove', handleMouseMove, { passive: true });
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [view]);
 
   useEffect(() => {
     if (view !== 'MAP') {
@@ -3863,7 +3878,11 @@ export default function App() {
         });
       }
 
-      nextWorldDiplomacy = advanceFactionStrategicDirectives(nextWorldDiplomacy, newLocations, nextDay);
+      const stratAdv = advanceFactionStrategicDirectives(nextWorldDiplomacy, newLocations, nextDay, {
+        enableRumors: nextPlayer.strategyRumorLogEnabled !== false
+      });
+      nextWorldDiplomacy = stratAdv.state;
+      stratAdv.rumorLines.forEach(line => logsToAdd.push(line));
 
         const strongholds = newLocations.filter(loc => (
           loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE'
@@ -6969,7 +6988,11 @@ export default function App() {
         relationEvents: Array.isArray((nextPlayer as any)?.relationEvents) ? (nextPlayer as any).relationEvents : [],
         locationRelations: ((nextPlayer as any)?.locationRelations && typeof (nextPlayer as any).locationRelations === 'object')
           ? (nextPlayer as any).locationRelations
-          : {}
+          : {},
+        strategyRumorLogEnabled:
+          typeof (nextPlayer as any)?.strategyRumorLogEnabled === 'boolean'
+            ? (nextPlayer as any).strategyRumorLogEnabled
+            : undefined
       };
       setPlayer(normalizePlayerSoldiers(normalizedPlayer));
       const normalizedHeroes = Array.isArray(nextHeroes) && nextHeroes.length > 0
@@ -7575,6 +7598,9 @@ export default function App() {
       player={player}
       worldDiplomacy={worldDiplomacy}
       onBackToMap={() => setView('MAP')}
+      onStrategyRumorLogEnabledChange={enabled =>
+        setPlayer(p => ({ ...p, strategyRumorLogEnabled: enabled }))
+      }
     />
   );
 
@@ -8602,6 +8628,9 @@ export default function App() {
               player={player}
               worldDiplomacy={worldDiplomacy}
               onBackToMap={() => setIsObserverRelationsOpen(false)}
+              onStrategyRumorLogEnabledChange={enabled =>
+                setPlayer(p => ({ ...p, strategyRumorLogEnabled: enabled }))
+              }
             />
            </div>
         </div>

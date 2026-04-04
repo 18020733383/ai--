@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.15',
+    date: '2026-04-04',
+    items: [
+      '大地图：地形由 96×96 DOM 格改为单块像素画布拉伸，势力突袭/结盟箭头等路径计算 memo，冬景雪花粒子略减并 paint contain，减轻滚动与季节切换卡顿',
+      '全局：鼠标坐标 tooltip 仅在需悬浮提示的视图注册并为 rAF 节流；顶栏与通用按钮增加过渡与按压反馈（index 全局样式）'
+    ]
+  },
+  {
     version: '0.13.14',
     date: '2026-04-04',
     items: [

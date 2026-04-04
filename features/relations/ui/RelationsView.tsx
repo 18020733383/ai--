@@ -1,7 +1,15 @@
+import React, { useState } from 'react';
 import { Button } from '../../../components/Button';
 import { FACTIONS, RACE_LABELS } from '../../../game/data';
 import { clampRelation, getRelationStateLabel } from '../../../game/systems/diplomacy';
-import { FactionStrategicMode, Location, PlayerState, RaceId, WorldDiplomacyState } from '../../../types';
+import {
+  buildFactionDiplomaticSummary,
+  computeFactionStrategyIntel,
+  describePlayerStrategicStance,
+  formatStrategyShiftNote,
+  modeLabel
+} from '../../../game/systems/factionStrategyCopy';
+import { Location, PlayerState, RaceId, WorldDiplomacyState } from '../../../types';
 import { getFactionLocations } from '../../../game/systems/garrisonHelpers';
 
 type RelationsViewProps = {
@@ -9,14 +17,17 @@ type RelationsViewProps = {
   player: PlayerState;
   worldDiplomacy: WorldDiplomacyState;
   onBackToMap: () => void;
+  onStrategyRumorLogEnabledChange?: (enabled: boolean) => void;
 };
 
 export const RelationsView = ({
   locations,
   player,
   worldDiplomacy,
-  onBackToMap
+  onBackToMap,
+  onStrategyRumorLogEnabledChange
 }: RelationsViewProps) => {
+  const [dossierOpen, setDossierOpen] = useState(false);
   const factionRows = FACTIONS.map(faction => ({
     id: faction.id,
     name: faction.name,
@@ -54,12 +65,6 @@ export const RelationsView = ({
 
   const diplomacyEvents = (worldDiplomacy.events ?? []).slice(0, 18);
   const personalEvents = (player.relationEvents ?? []).slice(0, 12);
-
-  const strategyModeLabel = (mode: FactionStrategicMode): string => {
-    if (mode === 'HOLD') return '固守整备';
-    if (mode === 'PRESS_ENEMY') return '对敌施压';
-    return '围城解围';
-  };
 
   return (
     <div className="max-w-6xl mx-auto px-4">
@@ -182,12 +187,23 @@ export const RelationsView = ({
       </div>
 
       <div className="bg-stone-900 border border-stone-700 rounded-lg p-4 mt-6">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
           <div className="text-stone-200 font-semibold">王国战略指令</div>
-          <div className="text-xs text-stone-500">日结 AI 生成 · 只读</div>
+          <div className="flex flex-wrap items-center gap-3 text-xs">
+            <label className="flex items-center gap-1.5 cursor-pointer text-stone-400">
+              <input
+                type="checkbox"
+                className="accent-amber-600"
+                checked={player.strategyRumorLogEnabled !== false}
+                onChange={e => onStrategyRumorLogEnabledChange?.(e.target.checked)}
+              />
+              战略变更时低概率写入世界日志（流言）
+            </label>
+            <span className="text-stone-500">日结 AI · 只读</span>
+          </div>
         </div>
         <p className="text-xs text-stone-500 mb-3">
-          与各势力当前外交、据点与围城联动；带数日惯性。领主效用打分会参考此处，便于对照观察。
+          与各势力当前外交、据点与围城联动；带数日惯性。领主效用打分会参考此处。地图可叠加极淡「战略目光」矢量。
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
           {FACTIONS.map(faction => {
@@ -200,6 +216,19 @@ export const RelationsView = ({
               dir?.rivalFactionId != null
                 ? (FACTIONS.find(f => f.id === dir.rivalFactionId)?.shortName ?? dir.rivalFactionId)
                 : null;
+            const summary = buildFactionDiplomaticSummary(
+              faction.id,
+              faction.name,
+              dir,
+              worldDiplomacy,
+              player
+            );
+            const shiftNote =
+              dir?.lastShift != null
+                ? `第 ${dir.lastShift.day} 天：${formatStrategyShiftNote(dir.lastShift.code, focalName)}`
+                : null;
+            const daysUntilReview =
+              dir != null ? Math.max(0, dir.stableUntilDay - player.day) : 0;
             return (
               <div
                 key={faction.id}
@@ -214,30 +243,93 @@ export const RelationsView = ({
                 ) : !dir ? (
                   <div className="text-xs text-stone-500">尚无记录（经过游戏内一天后通常会出现）</div>
                 ) : (
-                  <ul className="space-y-1.5 text-xs text-stone-400 list-none">
-                    <li>
-                      <span className="text-stone-500">模式 </span>
-                      <span className="text-amber-200/90">{strategyModeLabel(dir.mode)}</span>
-                    </li>
-                    <li>
-                      <span className="text-stone-500">焦点 </span>
-                      <span className="text-stone-200">{focalName}</span>
-                    </li>
-                    {rivalName ? (
+                  <>
+                    <p className="text-[11px] text-stone-500/95 leading-snug border-l-2 border-amber-600/40 pl-2 mb-2">
+                      {summary}
+                    </p>
+                    <ul className="space-y-1.5 text-xs text-stone-400 list-none">
                       <li>
-                        <span className="text-stone-500">主要敌向 </span>
-                        <span className="text-stone-200">{rivalName}</span>
+                        <span className="text-stone-500">模式 </span>
+                        <span className="text-amber-200/90">{modeLabel(dir.mode)}</span>
                       </li>
-                    ) : null}
-                    <li className="text-stone-500">
-                      第 {dir.setDay} 天确立 · 惯性至少至第 {dir.stableUntilDay} 天
-                    </li>
-                  </ul>
+                      <li>
+                        <span className="text-stone-500">焦点 </span>
+                        <span className="text-stone-200">{focalName}</span>
+                      </li>
+                      {rivalName ? (
+                        <li>
+                          <span className="text-stone-500">主要敌向 </span>
+                          <span className="text-stone-200">{rivalName}</span>
+                        </li>
+                      ) : null}
+                      <li className="text-stone-500">
+                        第 {dir.setDay} 天确立 · 惯性至少至第 {dir.stableUntilDay} 天
+                        {daysUntilReview > 0 ? (
+                          <span className="text-amber-200/80"> · 距下次可重审还有 {daysUntilReview} 天</span>
+                        ) : (
+                          <span className="text-amber-200/80"> · 已届重审窗口（仍可能因惯性未立即变）</span>
+                        )}
+                      </li>
+                      {shiftNote ? (
+                        <li className="text-stone-500 border-t border-stone-800 pt-1.5 mt-1">
+                          <span className="text-stone-600">上次意向更迭 </span>
+                          <span className="text-stone-300">{shiftNote}</span>
+                        </li>
+                      ) : null}
+                    </ul>
+                  </>
                 )}
               </div>
             );
           })}
         </div>
+
+        <div className="mt-4 border border-stone-800 rounded-lg overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setDossierOpen(o => !o)}
+            className="w-full flex items-center justify-between px-3 py-2 text-left text-xs font-semibold text-stone-300 bg-stone-950/80 hover:bg-stone-900/90"
+          >
+            <span>枢密院密档（数值摘要 · 折叠）</span>
+            <span className="text-stone-500">{dossierOpen ? '▼' : '▶'}</span>
+          </button>
+          {dossierOpen ? (
+            <div className="p-3 text-xs text-stone-400 bg-black/30">
+              <p className="text-stone-500 mb-2">
+                最小对外关系越负，压力指数越高；焦点距己方实控几何中心越远，外线倾向越强（归一示意，非战斗公式）。
+              </p>
+              <div className="overflow-x-auto">
+                <table className="min-w-[520px] w-full border-collapse">
+                  <thead>
+                    <tr className="text-stone-500 border-b border-stone-800">
+                      <th className="text-left p-2">势力</th>
+                      <th className="text-left p-2">压力（0–100）</th>
+                      <th className="text-left p-2">焦点—心脏距离</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {FACTIONS.map(f => {
+                      const intel = computeFactionStrategyIntel(f.id, worldDiplomacy.factionStrategies?.[f.id], locations, worldDiplomacy);
+                      return (
+                        <tr key={f.id} className="border-t border-stone-800/80">
+                          <td className="p-2 text-stone-200">{f.shortName}</td>
+                          <td className="p-2 font-mono tabular-nums">{intel ? intel.pressure : '—'}</td>
+                          <td className="p-2 font-mono tabular-nums">
+                            {intel?.focalToHeart != null ? `${intel.focalToHeart}` : '—'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          ) : null}
+        </div>
+
+        <p className="text-xs text-stone-500 mt-3 border-t border-stone-800 pt-3 italic">
+          观测者注：{describePlayerStrategicStance(player, locations)}
+        </p>
       </div>
 
       <div className="bg-stone-900 border border-stone-700 rounded-lg p-4 mt-6">

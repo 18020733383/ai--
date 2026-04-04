@@ -34,13 +34,13 @@ export const AppHeader = ({
   onOpenChangelog,
   onOpenSettings
 }: AppHeaderProps) => (
-  <header className="bg-stone-900 border-b border-stone-700 p-2 md:p-4 sticky top-0 z-30 shadow-lg flex flex-wrap gap-4 items-center justify-between">
+  <header className="bg-stone-900 border-b border-stone-700 p-2 md:p-4 sticky top-0 z-30 shadow-lg flex flex-wrap gap-4 items-center justify-between transition-shadow duration-300 hover:shadow-stone-900/50">
     <div className="flex items-center gap-2">
       {onFocusPlayerOnMap && (
         <button
           type="button"
           onClick={onFocusPlayerOnMap}
-          className="flex items-center justify-center w-9 h-9 rounded-lg border border-stone-600 bg-stone-800/80 text-amber-400 hover:bg-stone-700 hover:text-amber-300 transition-colors shrink-0"
+          className="nav-interactive flex items-center justify-center w-9 h-9 rounded-lg border border-stone-600 bg-stone-800/80 text-amber-400 hover:bg-stone-700 hover:text-amber-300 hover:shadow-md hover:shadow-amber-900/20 shrink-0"
           title="定位到队伍当前位置"
           aria-label="定位到队伍当前位置"
         >
@@ -49,7 +49,7 @@ export const AppHeader = ({
       )}
       <div
         onClick={onOpenCharacter}
-        className="flex items-center gap-2 cursor-pointer hover:bg-stone-800 p-1 rounded transition-colors"
+        className="nav-interactive flex items-center gap-2 cursor-pointer hover:bg-stone-800 p-1 rounded"
       >
         <div className="w-8 h-8 rounded-full bg-stone-700 border border-stone-500 flex items-center justify-center">
           <User size={16} className={player.status === 'INJURED' ? 'text-red-500' : 'text-stone-300'} />
@@ -77,48 +77,48 @@ export const AppHeader = ({
       </div>
       <button
         onClick={onToggleParty}
-        className="flex items-center gap-1 text-stone-200 hover:text-white px-2 rounded transition-colors"
+        className="nav-interactive flex items-center gap-1 text-stone-200 hover:text-white px-2 py-1 rounded hover:bg-stone-800/60"
       >
         <Users size={14} /> <span>{troopCount} / {maxTroops}</span>
       </button>
       <button
         onClick={onToggleBills}
-        className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
+        className="nav-interactive flex items-center gap-1 text-stone-400 hover:text-white px-2 py-1 rounded hover:bg-stone-800/50"
         title="账单"
       >
         <Scroll size={14} /> <span className="hidden md:inline">账单</span>
       </button>
       <button
         onClick={onOpenMapList}
-        className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
+        className="nav-interactive flex items-center gap-1 text-stone-400 hover:text-white px-2 py-1 rounded hover:bg-stone-800/50"
         title="据点列表"
       >
         <MapIcon size={14} /> <span className="hidden md:inline">据点</span>
       </button>
       <button
         onClick={onOpenWorldStats}
-        className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
+        className="nav-interactive flex items-center gap-1 text-stone-400 hover:text-white px-2 py-1 rounded hover:bg-stone-800/50"
         title="士兵统计"
       >
         <Activity size={14} /> <span className="hidden md:inline">统计</span>
       </button>
       <button
         onClick={onOpenRelations}
-        className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
+        className="nav-interactive flex items-center gap-1 text-stone-400 hover:text-white px-2 py-1 rounded hover:bg-stone-800/50"
         title="关系"
       >
         <Flag size={14} /> <span className="hidden md:inline">关系</span>
       </button>
       <button
         onClick={onOpenChangelog}
-        className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
+        className="nav-interactive flex items-center gap-1 text-stone-400 hover:text-white px-2 py-1 rounded hover:bg-stone-800/50"
         title="更新日志"
       >
         <MessageCircle size={14} /> <span className="hidden md:inline">更新</span>
       </button>
       <button
         onClick={onOpenSettings}
-        className="flex items-center gap-1 text-stone-400 hover:text-white px-2 rounded transition-colors"
+        className="nav-interactive flex items-center gap-1 text-stone-400 hover:text-white px-2 py-1 rounded hover:bg-stone-800/50"
         title="设置"
       >
         <Settings size={14} /> <span className="hidden md:inline">设置</span>

@@ -1,4 +1,4 @@
-import { FactionId, FactionStrategicMode, RaceId, WorldDiplomacyState } from '../../types';
+import { FactionId, FactionStrategicMode, FactionStrategyShiftCode, RaceId, WorldDiplomacyState } from '../../types';
 import { FACTIONS, RACE_LABELS, RACE_RELATION_MATRIX } from '../data';
 
 export const clampRelation = (value: number) => Math.max(-100, Math.min(100, Math.round(value)));
@@ -48,6 +48,13 @@ export const normalizeWorldDiplomacy = (raw: any, currentDay: number): WorldDipl
 
   const rawStrat = raw?.factionStrategies && typeof raw.factionStrategies === 'object' ? raw.factionStrategies : {};
   const modes: FactionStrategicMode[] = ['HOLD', 'PRESS_ENEMY', 'DEFEND_HOME'];
+  const shiftCodes: FactionStrategyShiftCode[] = [
+    'SIEGE_HOME',
+    'FOCAL_INVALID',
+    'INERTIA_EXPIRED',
+    'PRESS_WAR',
+    'HOLD_RECENTER'
+  ];
   factionIds.forEach(fid => {
     const s = (rawStrat as any)[fid];
     if (!s || typeof s !== 'object') return;
@@ -57,12 +64,21 @@ export const normalizeWorldDiplomacy = (raw: any, currentDay: number): WorldDipl
     const setDay = Math.max(0, Math.floor(Number(s.setDay) || 0));
     const stableUntilDay = Math.max(setDay, Math.floor(Number(s.stableUntilDay) || setDay));
     const rival = s.rivalFactionId && FACTIONS.some(f => f.id === s.rivalFactionId) ? (s.rivalFactionId as FactionId) : undefined;
+    const ls = s.lastShift;
+    const lastShift =
+      ls && typeof ls === 'object' && shiftCodes.includes(ls.code)
+        ? {
+            day: Math.max(0, Math.floor(Number(ls.day) || 0)),
+            code: ls.code as FactionStrategyShiftCode
+          }
+        : undefined;
     (next.factionStrategies as any)[fid] = {
       mode,
       focalLocationId,
       setDay,
       stableUntilDay,
-      rivalFactionId: rival
+      rivalFactionId: rival,
+      ...(lastShift ? { lastShift } : {})
     };
   });
 

@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useLayoutEffect } from 'react';
 import { AlertTriangle, Brain, Coffee, Coins, Eye, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, Shield, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Users, Utensils, Zap } from 'lucide-react';
 import { Location, MineralId, MineralPurity, PlayerState, WorldDiplomacyState } from '../types';
 import type { WorkState } from '../features/town/model/types';
 import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../game/data';
+import { focalFactionLabelsForLocation } from '../game/systems/factionStrategyCopy';
+import { getFactionLocations } from '../game/systems/garrisonHelpers';
 import { isPlayerHideoutUnlocked } from '../game/systems/hideoutAccess';
 import { Button } from './Button';
 import { getTerrainType, type TerrainType } from '../game/utils/terrainNoise';
@@ -135,6 +137,8 @@ const TERRAIN_SEASON_COLORS: Record<TerrainType, Record<MapSeason, string>> = {
 const TERRAIN_GRID_SIZE = 96;
 const TERRAIN_CELL_UNITS = MAP_WIDTH / TERRAIN_GRID_SIZE;
 
+const FACTION_ID_TO_COLOR: Record<string, string> = Object.fromEntries(FACTIONS.map(f => [f.id, f.color]));
+
 type BigMapViewProps = {
   zoom: number;
   camera: { x: number; y: number };
@@ -195,6 +199,7 @@ export const BigMapView = ({
   setHoveredLocation
 }: BigMapViewProps) => {
   const [season, setSeason] = useState<MapSeason>('summer');
+  const [strategicGazeOn, setStrategicGazeOn] = useState(true);
   const unitSize = 10 * zoom;
   /** 与 unitSize 一致用 zoom 缩放图标像素，不再对同一层叠套 CSS scale，避免 hover 命中区与视觉错位 */
   const iconPxAtZoom = (pxAtZoom1: number) => Math.max(8, Math.round(pxAtZoom1 * zoom));
@@ -211,23 +216,39 @@ export const BigMapView = ({
     }
     return grid;
   }, []);
+
+  const terrainCanvasRef = useRef<HTMLCanvasElement>(null);
+  useLayoutEffect(() => {
+    const canvas = terrainCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d', { alpha: false });
+    if (!ctx) return;
+    const n = TERRAIN_GRID_SIZE;
+    if (canvas.width !== n || canvas.height !== n) {
+      canvas.width = n;
+      canvas.height = n;
+    }
+    for (const cell of terrainGrid) {
+      ctx.fillStyle = TERRAIN_SEASON_COLORS[cell.terrain][season];
+      ctx.fillRect(cell.gx, cell.gy, 1, 1);
+    }
+  }, [terrainGrid, season]);
+
   const isTimeSkipActive = !!(workState?.isActive || miningState?.isActive || roachLureState?.isActive || habitatStayState?.isActive || hideoutStayState?.isActive);
-  const imposterPortal = locations.find(loc => loc.type === 'IMPOSTER_PORTAL');
-  const fieldCampCount = locations.filter(loc => loc.type === 'FIELD_CAMP').length;
+  const imposterPortal = useMemo(() => locations.find(loc => loc.type === 'IMPOSTER_PORTAL'), [locations]);
+  const fieldCampCount = useMemo(() => locations.reduce((n, loc) => n + (loc.type === 'FIELD_CAMP' ? 1 : 0), 0), [locations]);
   const hoveredFieldCampTarget =
     hoveredLocation?.type === 'FIELD_CAMP' && hoveredLocation.camp?.targetLocationId
       ? locations.find(l => l.id === hoveredLocation.camp!.targetLocationId) ?? null
       : null;
   const hoveredCampMeta = hoveredLocation?.type === 'FIELD_CAMP' ? hoveredLocation.camp : undefined;
-  const factionColors = FACTIONS.reduce<Record<string, string>>((acc, faction) => {
-    acc[faction.id] = faction.color;
-    return acc;
-  }, {});
-  const raidTarget = imposterPortal?.imposterRaidTargetId
-    ? locations.find(loc => loc.id === imposterPortal.imposterRaidTargetId)
-    : null;
+  const raidTarget = useMemo(() => {
+    const id = imposterPortal?.imposterRaidTargetId;
+    return id ? locations.find(loc => loc.id === id) ?? null : null;
+  }, [imposterPortal, locations]);
   const showRaidArrow = !!(imposterPortal && raidTarget && imposterPortal.imposterRaidEtaDay && imposterPortal.imposterRaidEtaDay >= player.day);
-  const raidPath = showRaidArrow && imposterPortal && raidTarget ? (() => {
+  const raidPath = useMemo(() => {
+    if (!showRaidArrow || !imposterPortal || !raidTarget) return null;
     const startX = imposterPortal.coordinates.x * unitSize;
     const startY = imposterPortal.coordinates.y * unitSize;
     const endX = raidTarget.coordinates.x * unitSize;
@@ -245,49 +266,54 @@ export const BigMapView = ({
     const dashLength = Math.max(8, 12 * zoom);
     const dashGap = Math.max(6, 8 * zoom);
     return { startX, startY, endX, endY, controlX, controlY, headSize, lineWidth, dashLength, dashGap };
-  })() : null;
-  const factionRaidPaths = locations.flatMap(loc => {
-    if (!loc.factionRaidTargetId || !loc.factionRaidEtaDay || loc.factionRaidEtaDay < player.day) return [];
-    const target = locations.find(item => item.id === loc.factionRaidTargetId);
-    if (!target) return [];
-    const startX = loc.coordinates.x * unitSize;
-    const startY = loc.coordinates.y * unitSize;
-    const endX = target.coordinates.x * unitSize;
-    const endY = target.coordinates.y * unitSize;
-    const dx = endX - startX;
-    const dy = endY - startY;
-    const length = Math.max(40, Math.hypot(dx, dy));
-    const nx = length > 0 ? -dy / length : 0;
-    const ny = length > 0 ? dx / length : 0;
-    const curveOffset = Math.max(24 * zoom, Math.min(80 * zoom, length * 0.2));
-    const controlX = (startX + endX) / 2 + nx * curveOffset;
-    const controlY = (startY + endY) / 2 + ny * curveOffset;
-    const headSize = Math.max(8, 12 * zoom);
-    const lineWidth = Math.max(2.5, 3.5 * zoom);
-    const dashLength = Math.max(6, 10 * zoom);
-    const dashGap = Math.max(5, 7 * zoom);
-    const color = loc.factionRaidFactionId ? (factionColors[loc.factionRaidFactionId] ?? '#60a5fa') : '#60a5fa';
-    return [{
-      id: `${loc.id}-${target.id}`,
-      sourceId: loc.id,
-      targetId: target.id,
-      startX,
-      startY,
-      endX,
-      endY,
-      controlX,
-      controlY,
-      headSize,
-      lineWidth,
-      dashLength,
-      dashGap,
-      color
-    }];
-  });
-  const factionRaidTargets = new Set(factionRaidPaths.map(path => path.targetId));
+  }, [showRaidArrow, imposterPortal, raidTarget, unitSize, zoom]);
 
-  // 结盟箭头：当天外交改善关系的势力对，绿色箭头 + 🤝（每天最多一个）
-  const alliancePath = (() => {
+  const factionRaidPaths = useMemo(
+    () =>
+      locations.flatMap(loc => {
+        if (!loc.factionRaidTargetId || !loc.factionRaidEtaDay || loc.factionRaidEtaDay < player.day) return [];
+        const target = locations.find(item => item.id === loc.factionRaidTargetId);
+        if (!target) return [];
+        const startX = loc.coordinates.x * unitSize;
+        const startY = loc.coordinates.y * unitSize;
+        const endX = target.coordinates.x * unitSize;
+        const endY = target.coordinates.y * unitSize;
+        const dx = endX - startX;
+        const dy = endY - startY;
+        const length = Math.max(40, Math.hypot(dx, dy));
+        const nx = length > 0 ? -dy / length : 0;
+        const ny = length > 0 ? dx / length : 0;
+        const curveOffset = Math.max(24 * zoom, Math.min(80 * zoom, length * 0.2));
+        const controlX = (startX + endX) / 2 + nx * curveOffset;
+        const controlY = (startY + endY) / 2 + ny * curveOffset;
+        const headSize = Math.max(8, 12 * zoom);
+        const lineWidth = Math.max(2.5, 3.5 * zoom);
+        const dashLength = Math.max(6, 10 * zoom);
+        const dashGap = Math.max(5, 7 * zoom);
+        const color = loc.factionRaidFactionId ? (FACTION_ID_TO_COLOR[loc.factionRaidFactionId] ?? '#60a5fa') : '#60a5fa';
+        return [{
+          id: `${loc.id}-${target.id}`,
+          sourceId: loc.id,
+          targetId: target.id,
+          startX,
+          startY,
+          endX,
+          endY,
+          controlX,
+          controlY,
+          headSize,
+          lineWidth,
+          dashLength,
+          dashGap,
+          color
+        }];
+      }),
+    [locations, player.day, unitSize, zoom]
+  );
+
+  const factionRaidTargets = useMemo(() => new Set(factionRaidPaths.map(path => path.targetId)), [factionRaidPaths]);
+
+  const alliancePath = useMemo(() => {
     if (!worldDiplomacy?.events?.length) return null;
     const todayEvent = worldDiplomacy.events.find(
       e => e.kind === 'FACTION_FACTION' && (e.delta ?? 0) > 0 && e.day === player.day
@@ -308,7 +334,10 @@ export const BigMapView = ({
     const curveOffset = Math.max(24 * zoom, Math.min(80 * zoom, length * 0.2));
     return {
       id: `alliance_${todayEvent.aId}_${todayEvent.bId}`,
-      startX, startY, endX, endY,
+      startX,
+      startY,
+      endX,
+      endY,
       controlX: (startX + endX) / 2 + nx * curveOffset,
       controlY: (startY + endY) / 2 + ny * curveOffset,
       headSize: Math.max(8, 12 * zoom),
@@ -317,7 +346,50 @@ export const BigMapView = ({
       dashGap: Math.max(5, 7 * zoom),
       color: '#22c55e'
     };
-  })();
+  }, [worldDiplomacy?.events, player.day, locations, unitSize, zoom]);
+
+  const strategicGazePaths = useMemo(() => {
+    if (!strategicGazeOn || !worldDiplomacy?.factionStrategies) return [];
+    return FACTIONS.flatMap(faction => {
+      const dir = worldDiplomacy.factionStrategies?.[faction.id];
+      if (!dir) return [];
+      const my = getFactionLocations(faction.id, locations).filter(l => l.owner !== 'ENEMY');
+      if (my.length === 0) return [];
+      let sx = 0;
+      let sy = 0;
+      for (const l of my) {
+        sx += l.coordinates.x;
+        sy += l.coordinates.y;
+      }
+      const hc = sx / my.length;
+      const vc = sy / my.length;
+      const cx = hc * unitSize;
+      const cy = vc * unitSize;
+      const focal = locations.find(l => l.id === dir.focalLocationId);
+      if (!focal) return [];
+      const endX = focal.coordinates.x * unitSize;
+      const endY = focal.coordinates.y * unitSize;
+      const dx = endX - cx;
+      const dy = endY - cy;
+      const length = Math.max(8, Math.hypot(dx, dy));
+      if (length < 2) return [];
+      const nx = -dy / length;
+      const ny = dx / length;
+      const curveOffset = Math.max(12 * zoom, Math.min(48 * zoom, length * 0.12));
+      const controlX = (cx + endX) / 2 + nx * curveOffset;
+      const controlY = (cy + endY) / 2 + ny * curveOffset;
+      return [{
+        id: faction.id,
+        color: faction.color,
+        startX: cx,
+        startY: cy,
+        endX,
+        endY,
+        controlX,
+        controlY
+      }];
+    });
+  }, [strategicGazeOn, worldDiplomacy?.factionStrategies, locations, unitSize, zoom]);
 
   return (
     <div
@@ -557,8 +629,8 @@ export const BigMapView = ({
         </div>
       )}
       {season === 'winter' && (
-        <div className="absolute inset-0 pointer-events-none z-[25] overflow-hidden" aria-hidden>
-          {Array.from({ length: 40 }).map((_, i) => (
+        <div className="absolute inset-0 pointer-events-none z-[25] overflow-hidden" style={{ contain: 'paint' }} aria-hidden>
+          {Array.from({ length: 28 }).map((_, i) => (
             <div
               key={i}
               className="absolute rounded-full bg-white/70"
@@ -583,9 +655,18 @@ export const BigMapView = ({
             top: Math.min(window.innerHeight - (hoveredLocation.type === 'FIELD_CAMP' && hoveredCampMeta ? 140 : 80), mousePos.y + 16)
           }}
         >
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="font-bold text-amber-400">{hoveredLocation.name}</span>
             <span className="text-[10px] bg-stone-800 px-1.5 py-0.5 rounded text-stone-400 uppercase">{hoveredLocation.type}</span>
+            {(() => {
+              const gaze = focalFactionLabelsForLocation(hoveredLocation.id, worldDiplomacy?.factionStrategies);
+              if (gaze.length === 0) return null;
+              return (
+                <span className="text-[10px] bg-amber-900/50 text-amber-100 px-1.5 py-0.5 rounded">
+                  战略目光 {gaze.join('、')}
+                </span>
+              );
+            })()}
           </div>
           {hoveredLocation.type === 'HIDEOUT' && hoveredLocation.owner === 'PLAYER' && !isPlayerHideoutUnlocked(hoveredLocation) && (
             <div className="mt-2 text-xs text-amber-200/80 border-t border-stone-700/80 pt-2">
@@ -633,20 +714,13 @@ export const BigMapView = ({
           willChange: 'transform'
         }}
       >
-        {/* 网格地形：苔原/雨林/稀树草原等 + 森林/草原/沙漠/丘陵/湿地，随季节变化 */}
-        <div className="absolute inset-0 z-0" style={{ display: 'grid', gridTemplateColumns: `repeat(${TERRAIN_GRID_SIZE}, 1fr)`, gridTemplateRows: `repeat(${TERRAIN_GRID_SIZE}, 1fr)` }}>
-          {terrainGrid.map(({ gx, gy, terrain }) => (
-            <div
-              key={`${gx}-${gy}`}
-              className="border border-black/[0.04]"
-              style={{
-                backgroundColor: TERRAIN_SEASON_COLORS[terrain][season],
-                transition: 'background-color 1.6s cubic-bezier(0.4, 0, 0.2, 1)'
-              }}
-              aria-hidden
-            />
-          ))}
-        </div>
+        {/* 网格地形：96×96 像素画布拉伸，避免 ~9k DOM 单元格 */}
+        <canvas
+          ref={terrainCanvasRef}
+          className="absolute inset-0 z-0 h-full w-full pointer-events-none"
+          style={{ imageRendering: 'pixelated' }}
+          aria-hidden
+        />
         <div className="absolute top-[10%] left-[10%] z-[5]" style={{ opacity: seasonStyle.mountain.opacity }}><Mountain size={400 * zoom} color={seasonStyle.mountain.color} /></div>
         <div className="absolute top-[80%] left-[20%] z-[5]" style={{ opacity: seasonStyle.trees.opacity }}><Trees size={300 * zoom} color={seasonStyle.trees.color} /></div>
         <div className="absolute top-[20%] left-[70%] z-[5]" style={{ opacity: seasonStyle.snowflake.opacity }}><Snowflake size={350 * zoom} color={seasonStyle.snowflake.color} /></div>
@@ -771,6 +845,27 @@ export const BigMapView = ({
             >
               🤝
             </text>
+          </svg>
+        )}
+        {strategicGazePaths.length > 0 && (
+          <svg
+            className="absolute left-0 top-0 pointer-events-none z-[12]"
+            width={MAP_WIDTH * unitSize}
+            height={MAP_HEIGHT * unitSize}
+            viewBox={`0 0 ${MAP_WIDTH * unitSize} ${MAP_HEIGHT * unitSize}`}
+            aria-hidden
+          >
+            {strategicGazePaths.map(path => (
+              <path
+                key={path.id}
+                d={`M ${path.startX} ${path.startY} Q ${path.controlX} ${path.controlY} ${path.endX} ${path.endY}`}
+                fill="none"
+                stroke={path.color}
+                strokeOpacity={0.22}
+                strokeWidth={Math.max(1, 1.6 * zoom)}
+                strokeDasharray={`${Math.max(4, 6 * zoom)} ${Math.max(3, 5 * zoom)}`}
+              />
+            ))}
           </svg>
         )}
         {[...locations]
@@ -954,7 +1049,19 @@ export const BigMapView = ({
       <div className="absolute top-4 left-4 bg-black/60 text-stone-300 p-2 rounded text-xs select-none pointer-events-none z-30">
         WASD 或 拖拽移动视野 | 滚轮缩放 ({Math.round(zoom * 100)}%) | 行军营地 {fieldCampCount}
       </div>
-      <div className="absolute top-4 right-4 flex gap-1 z-30 pointer-events-auto">
+      <div className="absolute top-4 right-4 flex flex-wrap justify-end gap-1 z-30 pointer-events-auto max-w-[min(100%,380px)]">
+        <button
+          type="button"
+          onClick={() => setStrategicGazeOn(v => !v)}
+          className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${
+            strategicGazeOn
+              ? 'bg-amber-900/80 text-amber-100 border border-amber-600/60'
+              : 'bg-black/60 text-stone-500 border border-stone-700 hover:text-stone-300'
+          }`}
+          title="显示各王国战略焦点的大略矢量（极淡）"
+        >
+          战略目光
+        </button>
         <span className="bg-black/60 text-stone-400 px-2 py-1 rounded-l text-xs self-center">季节</span>
         {(['spring', 'summer', 'autumn', 'winter'] as MapSeason[]).map((s) => (
           <button

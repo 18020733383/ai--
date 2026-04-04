@@ -57,6 +57,27 @@
       .thinking-dot { animation: thinkingDot 1.2s ease-in-out infinite; }
       .thinking-dot-2 { animation: thinkingDot 1.2s ease-in-out 0.15s infinite; }
       .thinking-dot-3 { animation: thinkingDot 1.2s ease-in-out 0.3s infinite; }
+      @keyframes navPress {
+        0% { transform: scale(1); }
+        50% { transform: scale(0.94); }
+        100% { transform: scale(1); }
+      }
+      @keyframes mainViewFadeIn {
+        from { opacity: 0.88; transform: translateY(6px); }
+        to { opacity: 1; transform: translateY(0); }
+      }
+      .nav-interactive {
+        transition: transform 0.2s ease-out, color 0.2s ease, background-color 0.2s ease, box-shadow 0.2s ease;
+      }
+      .nav-interactive:hover {
+        transform: translateY(-1px);
+      }
+      .nav-interactive:active {
+        transform: scale(0.96) translateY(0);
+      }
+      .app-main-view-enter {
+        animation: mainViewFadeIn 0.32s ease-out;
+      }
     </style>
   <script type="importmap">
 {

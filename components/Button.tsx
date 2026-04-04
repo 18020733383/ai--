@@ -12,7 +12,8 @@ export const Button: React.FC<ButtonProps> = ({
   className = '', 
   ...props 
 }) => {
-  const baseStyles = "font-serif tracking-wider uppercase border transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed";
+  const baseStyles =
+    "font-serif tracking-wider uppercase border transition-all duration-200 ease-out hover:-translate-y-0.5 hover:shadow-md active:translate-y-0 active:scale-[0.97] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0 disabled:active:scale-100";
   
   const variants = {
     primary: "bg-stone-800 border-stone-600 text-stone-200 hover:bg-stone-700 hover:border-stone-500 shadow-md",
