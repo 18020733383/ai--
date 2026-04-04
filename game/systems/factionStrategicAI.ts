@@ -98,7 +98,7 @@ export function advanceFactionStrategicDirectives(
         }
       }
 
-      const WARLIKE = -32;
+      const WARLIKE = -22;
 
       if (worstId && worstRel <= WARLIKE) {
         const enemyHeld = locations.filter(

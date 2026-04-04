@@ -6,7 +6,7 @@ import { attributesFromRatios } from './constants';
 import { AltarTroopTreeResult, buildBattlePrompt, buildHeroChatPrompt, chatHeroChatter, chatWithAuthor, chatWithHero, chatWithUndead, generateWorldNewspaper, listOpenAIModels, proposeShapedTroop, resolveNegotiation, ShaperDecision } from './services/geminiService';
 import { buildUpdatedProfiles, buildAIConfigFromSettings, createNextAIProfile, loadAISettingsFromStorage, persistAISettingsToStorage, selectAIProfileState } from './app/providers/ai-settings';
 import { AUTO_SAVE_ID, readSaveIndex, SAVE_DATA_PREFIX, SAVE_SELECTED_KEY, type SaveSlotMeta, writeSaveIndex } from './app/save-load/storage';
-import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildRandomizedHeroes, buildSupportTroops, buildWorkContractsForCity, getMysteryWorkChainDef, canHeroBattle, clampRelation, clampValue, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, buildGarrisonTroops as buildGarrisonTroopsImpl, getDefenderTroops as getDefenderTroopsImpl, getLocationRecruitId, getLocationRelationTarget, getPlayerReligion as getPlayerReligionFromLocations, getRecruitmentPool, FIELD_CAMP_PARLEY_RELATION_THRESHOLD, getFieldCampPlayerRelationValue, getRelationScale, getRelationTone, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isPlayerHideoutUnlocked, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, PRESTIGE, computeSealHabitatPrestige, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence, advanceFactionStrategicDirectives, buildTroopsFromSoldiers as buildTroopsFromSoldiersImpl, buildWoundedEntriesFromSoldiers as buildWoundedEntriesFromSoldiersImpl, normalizePlayerSoldiers as normalizePlayerSoldiersImpl, markSoldiersWounded as markSoldiersWoundedImpl, removeSoldiersById as removeSoldiersByIdImpl, buildRaceComposition } from './game/systems';
+import { applyGarrisonTraining, applyWorldDiplomacyDelta, buildBanditTroops, buildImposterTroops, buildInitialWorld, buildInitialWorldDiplomacy, buildRandomizedHeroes, buildSupportTroops, buildWorkContractsForCity, getMysteryWorkChainDef, canHeroBattle, clampRelation, clampValue, computePreachPlan, ensureEnemyHeroTroops, ensureLocationLords, findLocationAtPosition, getBattleTroops, getCityReligionTierCap, getDefaultGarrisonBaseLimit, getEncounterChance, getEnemyRace, getFactionLocations, getGarrisonCount, getGarrisonLimit, getHeroRoleLabel, getHpRatio, getLocationDefenseDetails, getLocationRace, buildGarrisonTroops as buildGarrisonTroopsImpl, getDefenderTroops as getDefenderTroopsImpl, getLocationRecruitId, getLocationRelationTarget, getPlayerReligion as getPlayerReligionFromLocations, getRecruitmentPool, FIELD_CAMP_PARLEY_RELATION_THRESHOLD, getFieldCampPlayerRelationValue, getRelationScale, getRelationTone, getRelationValue, getTroopCount, getWorldFactionRelation, getWorldFactionRaceRelation, getWorldRaceRelation, getXenoAcceptanceScore, isCastleLikeLocation, isPlayerHideoutUnlocked, isUndeadFortressLocation, mergeTroops, normalizeRelationMatrix, normalizeWorldDiplomacy, pickImposterTarget, PRESTIGE, computeSealHabitatPrestige, processBanditSpawn, processCaravanMovement, processCaravanSpawn, processSealHabitatDaily, randomInt, rollBinomial, rollMineralPurity, seedStayParties, splitTroops, syncLordPresence, advanceFactionStrategicDirectives, advanceWeeklyFactionFriction, buildTroopsFromSoldiers as buildTroopsFromSoldiersImpl, buildWoundedEntriesFromSoldiers as buildWoundedEntriesFromSoldiersImpl, normalizePlayerSoldiers as normalizePlayerSoldiersImpl, markSoldiersWounded as markSoldiersWoundedImpl, removeSoldiersById as removeSoldiersByIdImpl, buildRaceComposition } from './game/systems';
 import { calculatePower } from './game/systems/combatPower';
 import { calculateXpGain } from './game/systems/xpGain';
 import { calculateFleeChance, calculateRearGuardPlan } from './features/battle/model/battleEscape';
@@ -3716,6 +3716,16 @@ export default function App() {
       }
 
       if (nextDay % 7 === 0) {
+        const friction = advanceWeeklyFactionFriction({
+          state: nextWorldDiplomacy,
+          locations: newLocations,
+          lords: nextLords,
+          day: nextDay,
+          mapDiagonal: Math.hypot(MAP_WIDTH, MAP_HEIGHT)
+        });
+        nextWorldDiplomacy = friction.state;
+        friction.logs.forEach(l => logsToAdd.push(l));
+
         const councilFactions = FACTIONS.filter(faction => getFactionLocations(faction.id, newLocations).length > 0);
         councilFactions.forEach(faction => {
           const factionLocations = getFactionLocations(faction.id, newLocations);
@@ -3776,7 +3786,7 @@ export default function App() {
             if (loc.owner === 'PLAYER') return false;
             if (loc.factionId && FACTIONS.some(f => f.id === loc.factionId) && loc.factionId !== faction.id) {
               const relation = getWorldFactionRelation(nextWorldDiplomacy, faction.id, loc.factionId);
-              return relation <= -20;
+              return relation <= -12;
             }
             if (isImposterControlledLocation(loc) && loc.claimFactionId === faction.id) return true;
             return false;

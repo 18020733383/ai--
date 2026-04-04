@@ -2,6 +2,7 @@ export * from './hideoutAccess';
 export * from './banditTroops';
 export * from './combatPower';
 export * from './diplomacy';
+export * from './factionDiplomacyFriction';
 export * from './factionStrategicAI';
 export * from './imposterTroops';
 export * from './garrisonHelpers';

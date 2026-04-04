@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.20',
+    date: '2026-04-03',
+    items: [
+      '世界外交：每周边境摩擦（相邻势力据点略损好感）与好战领主 occasional 跨界挑衅；议会远征人类目标的好感门槛由 -20 放宽至 -12',
+      '王国战略：敌意阈值由 -32 放宽至 -22，更易进入施压敌境（PRESS_ENEMY）'
+    ]
+  },
+  {
     version: '0.13.19',
     date: '2026-04-04',
     items: [
