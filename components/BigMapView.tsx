@@ -1,10 +1,11 @@
-import React, { useState, useMemo, useRef, useLayoutEffect } from 'react';
+import React, { useState, useMemo, useRef, useLayoutEffect, useEffect, useCallback } from 'react';
 import { AlertTriangle, Brain, Coffee, Coins, Eye, Flag, Ghost, Hammer, History, Home, MapPin, Mountain, Scroll, Shield, ShieldAlert, ShoppingBag, Skull, Snowflake, Star, Sun, Swords, Tent, Trees, Users, Utensils, Zap } from 'lucide-react';
 import { Location, MineralId, MineralPurity, PlayerState, WorldDiplomacyState } from '../types';
 import type { WorkState } from '../features/town/model/types';
 import { FACTIONS, MAP_HEIGHT, MAP_WIDTH } from '../game/data';
 import { focalFactionLabelsForLocation } from '../game/systems/factionStrategyCopy';
-import { getFactionLocations } from '../game/systems/garrisonHelpers';
+import { getFactionLocations, getGarrisonCount } from '../game/systems/garrisonHelpers';
+import { getSiegeEngineName } from '../game/data/siegeEngines';
 import { isPlayerHideoutUnlocked } from '../game/systems/hideoutAccess';
 import { Button } from './Button';
 import { getTerrainType, type TerrainType } from '../game/utils/terrainNoise';
@@ -137,6 +138,27 @@ const TERRAIN_SEASON_COLORS: Record<TerrainType, Record<MapSeason, string>> = {
 const TERRAIN_GRID_SIZE = 96;
 const TERRAIN_CELL_UNITS = MAP_WIDTH / TERRAIN_GRID_SIZE;
 
+/** 日结后地图上单位插值移动时长（毫秒），与逻辑上「一天一步」对齐观感 */
+const MAP_MOTION_MS = 580;
+
+function interpolateMapMotion(
+  motions: Map<string, { from: { x: number; y: number }; to: { x: number; y: number }; start: number }>,
+  id: string,
+  logical: { x: number; y: number },
+  durationMs: number
+): { x: number; y: number } {
+  const m = motions.get(id);
+  if (!m) return logical;
+  const elapsed = performance.now() - m.start;
+  if (elapsed >= durationMs) return logical;
+  const t = elapsed / durationMs;
+  const e = 1 - (1 - t) ** 3;
+  return {
+    x: m.from.x + (m.to.x - m.from.x) * e,
+    y: m.from.y + (m.to.y - m.from.y) * e
+  };
+}
+
 const FACTION_ID_TO_COLOR: Record<string, string> = Object.fromEntries(FACTIONS.map(f => [f.id, f.color]));
 
 type BigMapViewProps = {
@@ -200,6 +222,74 @@ export const BigMapView = ({
 }: BigMapViewProps) => {
   const [season, setSeason] = useState<MapSeason>('summer');
   const [strategicGazeOn, setStrategicGazeOn] = useState(true);
+  const motionRef = useRef(
+    new Map<string, { from: { x: number; y: number }; to: { x: number; y: number }; start: number }>()
+  );
+  const prevLocsRef = useRef<Location[] | null>(null);
+  const prevPlayerPosRef = useRef<{ x: number; y: number } | null>(null);
+  const mapMotionRaf = useRef(0);
+  const [mapMotionTick, setMapMotionTick] = useState(0);
+  const [hoveredSiegeStronghold, setHoveredSiegeStronghold] = useState<Location | null>(null);
+
+  const scheduleMapMotionRefresh = useCallback(() => {
+    const step = () => {
+      const now = performance.now();
+      let active = false;
+      for (const m of motionRef.current.values()) {
+        if (now - m.start < MAP_MOTION_MS) {
+          active = true;
+          break;
+        }
+      }
+      setMapMotionTick(n => n + 1);
+      if (active) {
+        mapMotionRaf.current = requestAnimationFrame(step);
+      } else {
+        for (const [k, m] of [...motionRef.current.entries()]) {
+          if (now - m.start >= MAP_MOTION_MS) motionRef.current.delete(k);
+        }
+      }
+    };
+    cancelAnimationFrame(mapMotionRaf.current);
+    mapMotionRaf.current = requestAnimationFrame(step);
+  }, []);
+
+  useLayoutEffect(() => {
+    const prev = prevLocsRef.current;
+    const prevP = prevPlayerPosRef.current;
+    prevLocsRef.current = locations;
+    prevPlayerPosRef.current = { ...player.position };
+    let added = false;
+    if (prev) {
+      const prevCampMap = new Map(
+        prev.filter(l => l.type === 'FIELD_CAMP').map(l => [l.id, l.coordinates])
+      );
+      for (const loc of locations) {
+        if (loc.type !== 'FIELD_CAMP') continue;
+        const was = prevCampMap.get(loc.id);
+        if (was && (was.x !== loc.coordinates.x || was.y !== loc.coordinates.y)) {
+          motionRef.current.set(loc.id, {
+            from: { ...was },
+            to: { ...loc.coordinates },
+            start: performance.now()
+          });
+          added = true;
+        }
+      }
+    }
+    if (prevP && (prevP.x !== player.position.x || prevP.y !== player.position.y)) {
+      motionRef.current.set('__player__', {
+        from: { ...prevP },
+        to: { ...player.position },
+        start: performance.now()
+      });
+      added = true;
+    }
+    if (added) scheduleMapMotionRefresh();
+  }, [locations, player.position, scheduleMapMotionRefresh]);
+
+  useEffect(() => () => cancelAnimationFrame(mapMotionRaf.current), []);
+
   const unitSize = 10 * zoom;
   /** 与 unitSize 一致用 zoom 缩放图标像素，不再对同一层叠套 CSS scale，避免 hover 命中区与视觉错位 */
   const iconPxAtZoom = (pxAtZoom1: number) => Math.max(8, Math.round(pxAtZoom1 * zoom));
@@ -237,6 +327,25 @@ export const BigMapView = ({
   const isTimeSkipActive = !!(workState?.isActive || miningState?.isActive || roachLureState?.isActive || habitatStayState?.isActive || hideoutStayState?.isActive);
   const imposterPortal = useMemo(() => locations.find(loc => loc.type === 'IMPOSTER_PORTAL'), [locations]);
   const fieldCampCount = useMemo(() => locations.reduce((n, loc) => n + (loc.type === 'FIELD_CAMP' ? 1 : 0), 0), [locations]);
+
+  /** 被围攻据点旁虚拟围城营坐标（不写入存档，仅地图展示兵力构成） */
+  const siegeRingMarkers = useMemo(() => {
+    const R = 14;
+    return locations.flatMap(loc => {
+      if (!loc.activeSiege) return [];
+      let h = 0;
+      for (let i = 0; i < loc.id.length; i++) h = (h * 31 + loc.id.charCodeAt(i)) | 0;
+      const angle = ((Math.abs(h) % 360) * Math.PI) / 180;
+      return [
+        {
+          key: `siege_ring_${loc.id}`,
+          stronghold: loc,
+          x: loc.coordinates.x + Math.cos(angle) * R,
+          y: loc.coordinates.y + Math.sin(angle) * R
+        }
+      ];
+    });
+  }, [locations]);
   const hoveredFieldCampTarget =
     hoveredLocation?.type === 'FIELD_CAMP' && hoveredLocation.camp?.targetLocationId
       ? locations.find(l => l.id === hoveredLocation.camp!.targetLocationId) ?? null
@@ -391,18 +500,20 @@ export const BigMapView = ({
     });
   }, [strategicGazeOn, worldDiplomacy?.factionStrategies, locations, unitSize, zoom]);
 
-  /** 行军营地 → 目标据点方向短箭头（像素坐标，已内缩避免压住图标中心） */
+  /** 行军营地 → 目标据点方向短箭头（像素坐标，已内缩避免压住图标中心；起点随插值移动） */
   const fieldCampArrows = useMemo(() => {
     const pad = Math.max(10, 16 * zoom);
     const headLen = Math.max(5, 8 * zoom);
+    const motions = motionRef.current;
     return locations.flatMap(loc => {
       if (loc.type !== 'FIELD_CAMP') return [];
       const tid = loc.camp?.targetLocationId;
       if (!tid) return [];
       const target = locations.find(l => l.id === tid);
       if (!target) return [];
-      const sx = loc.coordinates.x * unitSize;
-      const sy = loc.coordinates.y * unitSize;
+      const pos = interpolateMapMotion(motions, loc.id, loc.coordinates, MAP_MOTION_MS);
+      const sx = pos.x * unitSize;
+      const sy = pos.y * unitSize;
       const ex = target.coordinates.x * unitSize;
       const ey = target.coordinates.y * unitSize;
       const dx = ex - sx;
@@ -428,7 +539,9 @@ export const BigMapView = ({
       const ry = by + wing * Math.cos(angle);
       return [{ id: loc.id, x1, y1, x2, y2, tipX, tipY, lx, ly, rx, ry, color }];
     });
-  }, [locations, unitSize, zoom]);
+  }, [locations, unitSize, zoom, mapMotionTick]);
+
+  const playerDisp = interpolateMapMotion(motionRef.current, '__player__', player.position, MAP_MOTION_MS);
 
   return (
     <div
@@ -686,14 +799,61 @@ export const BigMapView = ({
           ))}
         </div>
       )}
-      {hoveredLocation && (
+      {(hoveredLocation || hoveredSiegeStronghold) && (
         <div
           className="fixed z-50 bg-stone-900 border border-amber-500/50 px-3 py-2 rounded shadow-2xl pointer-events-none text-left max-w-[min(320px,calc(100vw-32px))]"
           style={{
             left: Math.min(window.innerWidth - 280, mousePos.x + 16),
-            top: Math.min(window.innerHeight - (hoveredLocation.type === 'FIELD_CAMP' && hoveredCampMeta ? 140 : 80), mousePos.y + 16)
+            top: Math.min(
+              window.innerHeight -
+                (hoveredSiegeStronghold?.activeSiege
+                  ? 160
+                  : hoveredLocation?.type === 'FIELD_CAMP' && hoveredCampMeta
+                    ? 140
+                    : 80),
+              mousePos.y + 16
+            )
           }}
         >
+          {hoveredSiegeStronghold?.activeSiege ? (
+            <>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-bold text-red-300">
+                  {hoveredSiegeStronghold.activeSiege.attackerName}·围城营
+                </span>
+                <span className="text-[10px] bg-red-950/80 px-1.5 py-0.5 rounded text-red-200 uppercase">围攻中</span>
+              </div>
+              <div className="mt-2 space-y-1 text-xs text-stone-300 border-t border-stone-700/80 pt-2">
+                <div>
+                  <span className="text-stone-500">目标据点：</span>
+                  <span className="text-amber-200/90">{hoveredSiegeStronghold.name}</span>
+                </div>
+                <div>
+                  <span className="text-stone-500">围城兵力：</span>
+                  <span className="text-stone-200 tabular-nums">
+                    {getGarrisonCount(hoveredSiegeStronghold.activeSiege.troops)} 人
+                  </span>
+                  <span className="text-stone-500 ml-2">战力</span>
+                  <span className="text-amber-200/90 tabular-nums ml-1">
+                    {Math.round(hoveredSiegeStronghold.activeSiege.totalPower)}
+                  </span>
+                </div>
+                {hoveredSiegeStronghold.activeSiege.siegeEngines &&
+                  hoveredSiegeStronghold.activeSiege.siegeEngines.length > 0 && (
+                    <div>
+                      <span className="text-stone-500">器械：</span>
+                      <span className="text-stone-200">
+                        {hoveredSiegeStronghold.activeSiege.siegeEngines
+                          .map(t => getSiegeEngineName(t))
+                          .join('、')}
+                      </span>
+                    </div>
+                  )}
+                <div className="text-[10px] text-stone-500">点击可定位至该据点（围城部队为地图示意）。</div>
+              </div>
+            </>
+          ) : hoveredLocation ? (
+            <>
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-bold text-amber-400">{hoveredLocation.name}</span>
             <span className="text-[10px] bg-stone-800 px-1.5 py-0.5 rounded text-stone-400 uppercase">{hoveredLocation.type}</span>
@@ -742,6 +902,8 @@ export const BigMapView = ({
               </div>
             </div>
           )}
+            </>
+          ) : null}
         </div>
       )}
       <div
@@ -944,6 +1106,9 @@ export const BigMapView = ({
           })
           .map(loc => {
             const isCamp = loc.type === 'FIELD_CAMP';
+            const disp = isCamp
+              ? interpolateMapMotion(motionRef.current, loc.id, loc.coordinates, MAP_MOTION_MS)
+              : loc.coordinates;
             /** 与缩放一致的点击范围，避免 unitSize 已乘 zoom 再 scale(zoom) 导致悬浮命中错位 */
             const hitPx = isCamp
               ? Math.max(26, Math.min(88, Math.round(36 * zoom)))
@@ -957,8 +1122,8 @@ export const BigMapView = ({
             key={loc.id}
             className={`absolute group ${isCamp ? 'z-20' : 'z-30'} hover:z-50`}
             style={{
-              left: `${loc.coordinates.x * unitSize}px`,
-              top: `${loc.coordinates.y * unitSize}px`,
+              left: `${disp.x * unitSize}px`,
+              top: `${disp.y * unitSize}px`,
               width: 0,
               height: 0,
               pointerEvents: 'none'
@@ -984,7 +1149,10 @@ export const BigMapView = ({
                 if (isTimeSkipActive) return;
                 moveTo(loc.coordinates.x, loc.coordinates.y, loc.id);
               }}
-              onMouseEnter={() => setHoveredLocation(loc)}
+              onMouseEnter={() => {
+                setHoveredSiegeStronghold(null);
+                setHoveredLocation(loc);
+              }}
               onMouseLeave={() => setHoveredLocation(null)}
             >
               <div
@@ -1073,12 +1241,82 @@ export const BigMapView = ({
           </div>
             );
           })}
+        {siegeRingMarkers.map(({ key, stronghold, x, y }) => {
+          const hitPx = Math.max(26, Math.min(88, Math.round(36 * zoom)));
+          const locIconPx = iconPxAtZoom(40);
+          const campIconPx = Math.max(8, Math.round(locIconPx * 0.6));
+          const fac = stronghold.activeSiege?.attackerFactionId;
+          const ringColor = fac ? (FACTION_ID_TO_COLOR[fac] ?? '#f87171') : '#f87171';
+          return (
+            <div
+              key={key}
+              className="absolute group z-[19] hover:z-50"
+              style={{
+                left: `${x * unitSize}px`,
+                top: `${y * unitSize}px`,
+                width: 0,
+                height: 0,
+                pointerEvents: 'none'
+              }}
+            >
+              <button
+                type="button"
+                className="absolute flex items-center justify-center rounded-full border-0 bg-transparent p-0 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-red-500 focus-visible:ring-offset-2 focus-visible:ring-offset-black/80 animate-pulse"
+                style={{
+                  pointerEvents: 'auto',
+                  left: 0,
+                  top: 0,
+                  width: hitPx,
+                  height: hitPx,
+                  transform: 'translate(-50%, -50%)'
+                }}
+                onClick={e => {
+                  e.stopPropagation();
+                  if (isObserverMode) {
+                    onLocationSelect?.(stronghold);
+                    return;
+                  }
+                  if (isTimeSkipActive) return;
+                  moveTo(stronghold.coordinates.x, stronghold.coordinates.y, stronghold.id);
+                }}
+                onMouseEnter={() => {
+                  setHoveredLocation(null);
+                  setHoveredSiegeStronghold(stronghold);
+                }}
+                onMouseLeave={() => setHoveredSiegeStronghold(null)}
+                aria-label={`围攻 ${stronghold.name} 的营地`}
+              >
+                <div
+                  className="relative rounded-full border-2 transition-transform hover:scale-110 shadow-lg bg-stone-900/90 p-1.5"
+                  style={{ borderColor: ringColor }}
+                >
+                  <Flag size={campIconPx} style={{ color: ringColor }} />
+                  <span className="absolute -bottom-0.5 -right-0.5 bg-red-700 text-white rounded-full p-0.5 shadow border border-black/40">
+                    <Swords size={10} />
+                  </span>
+                </div>
+              </button>
+              {zoom > 0.8 && (
+                <div
+                  className="absolute pointer-events-none whitespace-nowrap font-serif text-[10px] font-bold text-red-100 bg-red-950/85 px-2 py-0.5 rounded shadow border border-red-800/60"
+                  style={{
+                    left: 0,
+                    top: 0,
+                    transform: `translate(-50%, ${Math.round(hitPx * 0.52 + 6)}px) scale(${zoom})`
+                  }}
+                >
+                  围城营
+                </div>
+              )}
+            </div>
+          );
+        })}
         {!isObserverMode && (
           <div
             className="absolute transform -translate-x-1/2 -translate-y-1/2 z-40 pointer-events-none"
             style={{
-              left: `${player.position.x * unitSize}px`,
-              top: `${player.position.y * unitSize}px`
+              left: `${playerDisp.x * unitSize}px`,
+              top: `${playerDisp.y * unitSize}px`
             }}
           >
             <div className="text-red-700 animate-bounce drop-shadow-xl" style={{ transform: `scale(${zoom})` }}>
@@ -1117,7 +1355,8 @@ export const BigMapView = ({
         })()}
       </div>
       <div className="absolute top-4 left-4 bg-black/60 text-stone-300 p-2 rounded text-xs select-none pointer-events-none z-30">
-        WASD 或 拖拽移动视野 | 滚轮缩放 ({Math.round(zoom * 100)}%) | 行军营地 {fieldCampCount}
+        WASD 或 拖拽移动视野 | 滚轮缩放 ({Math.round(zoom * 100)}%) | 行军 {fieldCampCount} · 围城营{' '}
+        {siegeRingMarkers.length}
       </div>
       <div className="absolute top-4 right-4 flex flex-wrap justify-end gap-1 z-30 pointer-events-auto max-w-[min(100%,380px)]">
         <button

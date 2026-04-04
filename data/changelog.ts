@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.21',
+    date: '2026-04-03',
+    items: [
+      '大地图：日结后行军营地/商队等临时营地与玩家标点插值移动动画（约 0.58s 缓出），方向箭头与营地位置同步',
+      '大地图：被围攻据点外侧显示「围城营」示意标记，悬浮可见兵力、战力与攻城器械；点击进入据点视野'
+    ]
+  },
+  {
     version: '0.13.20',
     date: '2026-04-03',
     items: [
