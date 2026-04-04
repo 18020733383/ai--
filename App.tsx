@@ -12,6 +12,7 @@ import { calculateXpGain } from './game/systems/xpGain';
 import { calculateFleeChance, calculateRearGuardPlan } from './features/battle/model/battleEscape';
 import { DEFAULT_BATTLE_LAYERS, getDefaultLayerId } from './features/battle/model/battleLayers';
 import { applyMemoryEdits, applyPartyDiaryEdits, normalizeDiaryEdits, normalizeHeroChat, normalizeHeroEmotion, normalizeHeroMemory, normalizeMemoryEdits, normalizePartyDiary, splitHeroReply } from './features/hero/model/heroChatUtils';
+import { getLordDeployRatio, splitLordPartyForCommitment } from './game/systems/militaryOrbat';
 import { collectWorldTroops as collectWorldTroopsFromWorld, getBelieverStats as getBelieverStatsFromWorld } from './features/world-board/model/worldStats';
 import { runBattlePipeline } from './features/battle/model/battlePipeline';
 import { calculateLocalBattleRewards, computeBattleSettlement, computeTrainingXpRewards } from './features/battle/model/battleSettlement';
@@ -4090,12 +4091,19 @@ export default function App() {
             }
             if (targetLoc && targetLoc.id === nextLord.currentLocationId) {
               if (!targetLoc.activeSiege && targetLoc.owner !== 'PLAYER') {
-                const raidPower = calculatePower(nextLord.partyTroops);
+                const stratHere = nextLord.factionId ? nextWorldDiplomacy.factionStrategies?.[nextLord.factionId] : undefined;
+                const deployR = getLordDeployRatio(nextLord, stratHere);
+                const { committed, retained } = splitLordPartyForCommitment(
+                  nextLord.partyTroops.map(t => ({ ...t })),
+                  deployR
+                );
+                nextLord = { ...nextLord, partyTroops: retained };
+                const raidPower = calculatePower(committed);
                 const updatedTarget = {
                   ...targetLoc,
                   activeSiege: {
                     attackerName: `${nextLord.title}${nextLord.name}`,
-                    troops: nextLord.partyTroops.map(t => ({ ...t })),
+                    troops: committed.map(t => ({ ...t })),
                     startDay: nextDay,
                     totalPower: raidPower,
                     siegeEngines: ['SIMPLE_LADDER' as SiegeEngineType]
@@ -7531,6 +7539,9 @@ export default function App() {
     <WorldTroopStatsModal
       collectWorldTroops={collectWorldTroops}
       getTroopTemplate={getTroopTemplate}
+      locations={locations}
+      lords={lords}
+      worldDiplomacy={worldDiplomacy}
       worldTroopRaceFilter={worldTroopRaceFilter}
       setWorldTroopRaceFilter={setWorldTroopRaceFilter}
       worldTroopTierFilter={worldTroopTierFilter}

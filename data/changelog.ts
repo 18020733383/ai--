@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.18',
+    date: '2026-04-04',
+    items: [
+      '统计弹窗「各国编制」：按势力汇总总兵力与 T1–T5 结构、城村驻防散布、在城领主行营与状态；账面军师旅团级单位锚点与姿态（固守/预备/攻势/扩编/休整），随王国战略焦点生成',
+      '领主 AI 开启围城时仅投入部分行营（splitTroops；比例受战略模式、focus、性情与状态影响）'
+    ]
+  },
+  {
     version: '0.13.17',
     date: '2026-04-04',
     items: [

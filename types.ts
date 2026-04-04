@@ -435,6 +435,39 @@ export type WorldDiplomacyState = {
   factionStrategies?: Partial<Record<FactionId, FactionStrategicDirective>>;
 };
 
+/** 战役层编制姿态（账面单位任务属性，驱动 AI 出动比例等） */
+export type MilitaryPosture = 'DEFEND' | 'RESERVE' | 'OFFENSE' | 'BUILDUP' | 'REST';
+
+export type FactionMilitaryHoldingRow = {
+  locationId: string;
+  locationName: string;
+  locationType: Location['type'];
+  strength: number;
+  byTier: { tier: TroopTier; count: number }[];
+  lords: Array<{ id: string; name: string; title: string; partyStrength: number; state: LordState }>;
+};
+
+export type FactionFormalUnitRow = {
+  id: string;
+  echelonLabel: string;
+  posture: MilitaryPosture;
+  postureLabel: string;
+  anchorLocationId: string;
+  anchorName: string;
+  bookStrength: number;
+  byTier: { tier: TroopTier; count: number }[];
+};
+
+export type FactionMilitaryOverview = {
+  factionId: FactionId;
+  factionName: string;
+  color: string;
+  totalStrength: number;
+  byTier: { tier: TroopTier; count: number }[];
+  holdings: FactionMilitaryHoldingRow[];
+  formalUnits: FactionFormalUnitRow[];
+};
+
 export interface Lord {
   id: string;
   name: string;
