@@ -8229,7 +8229,8 @@ export default function App() {
             openAIKey,
             openAIModel,
             recentLogs: logs.slice(0, 12),
-            playerReligionName: getPlayerReligion()?.religionName ?? null
+            playerReligionName: getPlayerReligion()?.religionName ?? null,
+            worldDiplomacy
           },
           townActions: {
             setHeroDialogue,

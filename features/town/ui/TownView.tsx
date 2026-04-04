@@ -37,6 +37,7 @@ export type TownState = Pick<
   | 'openAIModel'
   | 'recentLogs'
   | 'playerReligionName'
+  | 'worldDiplomacy'
 >;
 
 export type TownActions = Pick<

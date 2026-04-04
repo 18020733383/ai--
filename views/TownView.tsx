@@ -11,7 +11,8 @@ import { isPlayerHideoutUnlocked } from '../game/systems/hideoutAccess';
 import { FIELD_CAMP_PARLEY_RELATION_THRESHOLD, getFieldCampPlayerRelationValue, getRelationTone } from '../game/systems/relationHelpers';
 import { buildWorkContractsForCity } from '../game/systems/workContracts';
 import { recordWorkBoardManualRefresh } from '../app/achievements/achievementStore';
-import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, CropId, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, SoldierInstance, StayParty, Troop, TroopTier, WorkContractRewardKind } from '../types';
+import { AIProvider, AltarDoctrine, AltarTroopDraft, Anomaly, BuildingType, CropId, EnemyForce, Enchantment, Hero, Location, Lord, LordFocus, MineralId, MineralPurity, PlayerState, RecruitOffer, SiegeEngineType, SoldierInstance, StayParty, Troop, TroopTier, WorldDiplomacyState, WorkContractRewardKind } from '../types';
+import { resolveLordAttackDeployRatio } from '../game/systems/militaryOrbat';
 import type { AltarRecruitState, HabitatStayState, HideoutStayState, MiningState, RoachLureState, TownTab, WorkState } from '../features/town/model/types';
 
 export type TownViewProps = {
@@ -110,6 +111,7 @@ export type TownViewProps = {
   openAIModel: string;
   recentLogs: string[];
   playerReligionName: string | null;
+  worldDiplomacy: WorldDiplomacyState;
   onPreachInCity: (locationId: string) => void;
   onInspectHideout: (layerIndex: number) => void;
   /** 付费开通玩家隐匿点（未解锁前无功能） */
@@ -215,6 +217,7 @@ export const TownView = ({
   openAIModel,
   recentLogs,
   playerReligionName,
+  worldDiplomacy,
   onPreachInCity,
   onInspectHideout,
   onUnlockPlayerHideout,
@@ -858,8 +861,14 @@ export const TownView = ({
         updateLordData({ relation: nextRelation, memories: nextMemories });
       }
       if (response.attack) {
-        const attackRatio = Number(response.attackRatio ?? 0.4);
-        const attackPlan = buildLordAttackPlan(Number.isFinite(attackRatio) ? attackRatio : 0.4);
+        const strat =
+          currentLord.factionId ? worldDiplomacy.factionStrategies?.[currentLord.factionId] : undefined;
+        const attackRatio = resolveLordAttackDeployRatio(
+          Number(response.attackRatio),
+          currentLord,
+          strat
+        );
+        const attackPlan = buildLordAttackPlan(attackRatio);
         if (attackPlan) {
           const reasonText = String(response.attackReason ?? '').trim();
           const locationId = currentLocation.id;

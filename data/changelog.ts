@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.19',
+    date: '2026-04-04',
+    items: [
+      '编制统计纳入虫巢与亡灵堡（death_ 墓园）据点；锚点排序与姿态规则相应调整',
+      '城内领主 AI 挑衅出兵：`resolveLordAttackDeployRatio` 混合模型建议比例与王国战略/编制出动率'
+    ]
+  },
+  {
     version: '0.13.18',
     date: '2026-04-04',
     items: [

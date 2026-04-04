@@ -11,6 +11,7 @@ import type {
   TroopTier
 } from '../../types';
 import { FACTIONS } from '../data/factions';
+import { isUndeadFortressLocation } from './worldInit';
 import { getDefenderTroops, getGarrisonCount, mergeTroops, splitTroops } from './garrisonHelpers';
 import type { GetTroopTemplate } from './garrisonHelpers';
 
@@ -63,7 +64,39 @@ const postureForAnchor = (
   if (locType === 'CASTLE') return 'DEFEND';
   if (locType === 'CITY') return 'RESERVE';
   if (locType === 'VILLAGE') return 'BUILDUP';
+  if (locType === 'ROACH_NEST') return 'DEFEND';
+  if (locType === 'GRAVEYARD') return 'DEFEND';
   return 'REST';
+};
+
+const isFactionMilitaryAnchor = (loc: Location) =>
+  loc.type === 'CITY' ||
+  loc.type === 'CASTLE' ||
+  loc.type === 'VILLAGE' ||
+  loc.type === 'ROACH_NEST' ||
+  isUndeadFortressLocation(loc);
+
+/** 据点排序：城 > 堡 > 亡灵堡 > 虫巢 > 村 */
+const anchorSortRank = (loc: Location): number => {
+  if (loc.type === 'CITY') return 0;
+  if (loc.type === 'CASTLE') return 1;
+  if (isUndeadFortressLocation(loc)) return 2;
+  if (loc.type === 'ROACH_NEST') return 3;
+  if (loc.type === 'VILLAGE') return 4;
+  return 9;
+};
+
+/**
+ * AI 给出的出战比例与编制规则混合（偏「不会动员全城」）。
+ */
+export const resolveLordAttackDeployRatio = (
+  aiSuggested: number | undefined,
+  lord: Lord,
+  strat?: FactionStrategicDirective
+): number => {
+  const base = getLordDeployRatio(lord, strat);
+  const ai = Number.isFinite(aiSuggested) ? Math.min(0.95, Math.max(0.12, Number(aiSuggested))) : 0.42;
+  return Math.min(0.88, Math.max(0.2, ai * 0.42 + base * 0.58));
 };
 
 /** 领主围城 / 出击时投入行营比例（与王国战略、性情、状态挂钩） */
@@ -111,11 +144,11 @@ export function buildFactionMilitaryOverviews(input: BuildInput): FactionMilitar
     const friendly = locations.filter(loc => loc.factionId === factionId && loc.owner !== 'ENEMY');
 
     const strongholds = friendly
-      .filter(loc => loc.type === 'CITY' || loc.type === 'CASTLE' || loc.type === 'VILLAGE')
+      .filter(isFactionMilitaryAnchor)
       .sort((a, b) => {
-        const pa = a.type === 'CITY' ? 0 : a.type === 'CASTLE' ? 1 : 2;
-        const pb = b.type === 'CITY' ? 0 : b.type === 'CASTLE' ? 1 : 2;
-        if (pa !== pb) return pa - pb;
+        const ra = anchorSortRank(a);
+        const rb = anchorSortRank(b);
+        if (ra !== rb) return ra - rb;
         return getGarrisonCount(getDefenderTroops(b, getTroopTemplate)) - getGarrisonCount(getDefenderTroops(a, getTroopTemplate));
       });
 
