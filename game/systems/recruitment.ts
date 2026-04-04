@@ -49,7 +49,7 @@ export function getRecruitmentPool(location: Location, mode: 'VOLUNTEER' | 'MERC
     ];
   }
   if (type === 'GRAVEYARD') {
-    if (mode === 'VOLUNTEER') return ['zombie', 'undead_grave_thrall', 'undead_rot_scout', 'undead_mire_digger', 'undead_bone_crawler', 'undead_ashen_runner', 'undead_coffin_bearer', 'undead_carrion_moth'];
+    if (mode === 'VOLUNTEER') return ['zombie', 'undead_grave_thrall', 'undead_rot_scout', 'undead_mire_digger', 'undead_bone_crawler', 'undead_ashen_runner', 'undead_coffin_bearer', 'undead_carrion_moth', 'undead_rime_crawler', 'undead_wisp_snarer'];
     return [
       'skeleton_warrior',
       'specter',
@@ -76,7 +76,15 @@ export function getRecruitmentPool(location: Location, mode: 'VOLUNTEER' | 'MERC
       'undead_eclipse_reaper',
       'undead_grave_colossus',
       'undead_bone_siege_golem',
-      'undead_cathedral_colossus'
+      'undead_cathedral_colossus',
+      'undead_permafrost_skull',
+      'undead_glacier_revenant',
+      'undead_frost_abomination',
+      'undead_frostgrave_overlord',
+      'undead_soul_warden',
+      'undead_crypt_animancer',
+      'undead_marrow_regent',
+      'undead_oblivion_archlich'
     ];
   }
   if (type === 'HOTPOT_RESTAURANT') {

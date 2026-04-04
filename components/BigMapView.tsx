@@ -391,6 +391,45 @@ export const BigMapView = ({
     });
   }, [strategicGazeOn, worldDiplomacy?.factionStrategies, locations, unitSize, zoom]);
 
+  /** 行军营地 → 目标据点方向短箭头（像素坐标，已内缩避免压住图标中心） */
+  const fieldCampArrows = useMemo(() => {
+    const pad = Math.max(10, 16 * zoom);
+    const headLen = Math.max(5, 8 * zoom);
+    return locations.flatMap(loc => {
+      if (loc.type !== 'FIELD_CAMP') return [];
+      const tid = loc.camp?.targetLocationId;
+      if (!tid) return [];
+      const target = locations.find(l => l.id === tid);
+      if (!target) return [];
+      const sx = loc.coordinates.x * unitSize;
+      const sy = loc.coordinates.y * unitSize;
+      const ex = target.coordinates.x * unitSize;
+      const ey = target.coordinates.y * unitSize;
+      const dx = ex - sx;
+      const dy = ey - sy;
+      const len = Math.hypot(dx, dy);
+      if (len < pad * 2 + headLen) return [];
+      const ux = dx / len;
+      const uy = dy / len;
+      const x1 = sx + ux * pad;
+      const y1 = sy + uy * pad;
+      const tipX = ex - ux * pad;
+      const tipY = ey - uy * pad;
+      const x2 = tipX - ux * headLen;
+      const y2 = tipY - uy * headLen;
+      const color = loc.factionId ? (FACTION_ID_TO_COLOR[loc.factionId] ?? '#a8a29e') : '#a8a29e';
+      const angle = Math.atan2(tipY - y2, tipX - x2);
+      const wing = headLen * 0.5;
+      const bx = tipX - headLen * Math.cos(angle);
+      const by = tipY - headLen * Math.sin(angle);
+      const lx = bx + wing * Math.sin(angle);
+      const ly = by - wing * Math.cos(angle);
+      const rx = bx - wing * Math.sin(angle);
+      const ry = by + wing * Math.cos(angle);
+      return [{ id: loc.id, x1, y1, x2, y2, tipX, tipY, lx, ly, rx, ry, color }];
+    });
+  }, [locations, unitSize, zoom]);
+
   return (
     <div
       className="relative w-full flex-1 min-h-[70vh] bg-black overflow-hidden cursor-move select-none"
@@ -868,6 +907,35 @@ export const BigMapView = ({
             ))}
           </svg>
         )}
+        {fieldCampArrows.length > 0 && (
+          <svg
+            className="absolute left-0 top-0 pointer-events-none z-[9]"
+            width={MAP_WIDTH * unitSize}
+            height={MAP_HEIGHT * unitSize}
+            viewBox={`0 0 ${MAP_WIDTH * unitSize} ${MAP_HEIGHT * unitSize}`}
+            aria-hidden
+          >
+            {fieldCampArrows.map(a => (
+              <g key={a.id}>
+                <line
+                  x1={a.x1}
+                  y1={a.y1}
+                  x2={a.x2}
+                  y2={a.y2}
+                  stroke={a.color}
+                  strokeOpacity={0.72}
+                  strokeWidth={Math.max(1.1, 1.65 * zoom)}
+                  strokeLinecap="round"
+                />
+                <polygon
+                  points={`${a.tipX},${a.tipY} ${a.lx},${a.ly} ${a.rx},${a.ry}`}
+                  fill={a.color}
+                  fillOpacity={0.85}
+                />
+              </g>
+            ))}
+          </svg>
+        )}
         {[...locations]
           .sort((a, b) => {
             const pa = a.type === 'FIELD_CAMP' ? 0 : 1;
@@ -880,8 +948,10 @@ export const BigMapView = ({
             const hitPx = isCamp
               ? Math.max(26, Math.min(88, Math.round(36 * zoom)))
               : Math.max(36, Math.min(104, Math.round(52 * zoom)));
-            /** 全据点统一图标像素（约 40×zoom），避免城邦/emoji 据点大一圈 */
+            /** 全据点统一图标像素（约 40×zoom）；行军营地单独缩小便于与据点区分 */
             const locIconPx = iconPxAtZoom(40);
+            const campIconPx = Math.max(8, Math.round(locIconPx * 0.6));
+            const iconPx = isCamp ? campIconPx : locIconPx;
             return (
           <div
             key={loc.id}
@@ -923,34 +993,34 @@ export const BigMapView = ({
                   borderColor: isCamp ? (loc.factionId ? (FACTION_ID_TO_COLOR[loc.factionId] ?? '#94a3b8') : '#94a3b8') : undefined
                 }}
               >
-                {loc.type === 'CITY' ? <Home className="text-amber-500" size={locIconPx} /> :
-                  loc.type === 'CASTLE' ? <ShieldAlert className="text-stone-400" size={locIconPx} /> :
-                  loc.type === 'FIELD_CAMP' ? <Flag size={locIconPx} style={{ color: loc.factionId ? (FACTION_ID_TO_COLOR[loc.factionId] ?? '#94a3b8') : '#94a3b8' }} /> :
-                  loc.type === 'ROACH_NEST' ? <span className="leading-none" style={{ fontSize: locIconPx }}>🪳</span> :
-                  loc.type === 'RUINS' ? <Ghost className="text-purple-400" size={locIconPx} /> :
-                  loc.type === 'GRAVEYARD' ? <Skull className="text-stone-300" size={locIconPx} /> :
-                  loc.type === 'TRAINING_GROUNDS' ? <Swords className="text-blue-400" size={locIconPx} /> :
-                  loc.type === 'ASYLUM' ? <Brain className="text-pink-500" size={locIconPx} /> :
-                  loc.type === 'MARKET' ? <ShoppingBag className="text-green-500" size={locIconPx} /> :
-                  loc.type === 'HOTPOT_RESTAURANT' ? <Utensils className="text-red-500" size={locIconPx} /> :
-                  loc.type === 'COFFEE' ? <Coffee className="text-amber-300" size={locIconPx} /> :
-                  loc.type === 'BANDIT_CAMP' ? <Tent className="text-red-600" size={locIconPx} /> :
-                  loc.type === 'HEAVY_TRIAL_GROUNDS' ? <span className="leading-none" style={{ fontSize: locIconPx }}>🏗️</span> :
-                  loc.type === 'IMPOSTER_PORTAL' ? <Zap className="text-fuchsia-400" size={locIconPx} /> :
-                  loc.type === 'MYSTERIOUS_CAVE' ? <Scroll className="text-indigo-400" size={locIconPx} /> :
-                  loc.type === 'WORLD_BOARD' ? <History className="text-slate-300" size={locIconPx} /> :
-                  loc.type === 'VOID_BUFFER_MINE' || loc.type === 'MEMORY_OVERFLOW_MINE' || loc.type === 'LOGIC_PARADOX_MINE' ? <Mountain className="text-emerald-400" size={locIconPx} /> :
-                  loc.type === 'HERO_CRYSTAL_MINE' ? <Mountain className="text-purple-300" size={locIconPx} /> :
-                  loc.type === 'BLACKSMITH' ? <Hammer className="text-orange-400" size={locIconPx} /> :
-                  loc.type === 'CRYSTAL_FOUNDRY' ? <Hammer className="text-cyan-300" size={locIconPx} /> :
-                  loc.type === 'MEGA_FARM' ? <Coins className="text-lime-300" size={locIconPx} /> :
-                  loc.type === 'ALTAR' ? <span className="leading-none" style={{ fontSize: locIconPx }}>🛐</span> :
-                  loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={locIconPx} /> :
-                  loc.type === 'SOURCE_RECOMPILER' ? <Brain className="text-fuchsia-300" size={locIconPx} /> :
-                  loc.type === 'HABITAT' ? <MapPin className="text-emerald-300" size={locIconPx} /> :
-                  loc.type === 'SEAL_HABITAT' ? <span className="leading-none" style={{ fontSize: locIconPx }}>🦭</span> :
-                  loc.type === 'HIDEOUT' ? <Shield className="text-emerald-300" size={locIconPx} /> :
-                  <Tent className="text-green-500" size={locIconPx} />}
+                {loc.type === 'CITY' ? <Home className="text-amber-500" size={iconPx} /> :
+                  loc.type === 'CASTLE' ? <ShieldAlert className="text-stone-400" size={iconPx} /> :
+                  loc.type === 'FIELD_CAMP' ? <Flag size={iconPx} style={{ color: loc.factionId ? (FACTION_ID_TO_COLOR[loc.factionId] ?? '#94a3b8') : '#94a3b8' }} /> :
+                  loc.type === 'ROACH_NEST' ? <span className="leading-none" style={{ fontSize: iconPx }}>🪳</span> :
+                  loc.type === 'RUINS' ? <Ghost className="text-purple-400" size={iconPx} /> :
+                  loc.type === 'GRAVEYARD' ? <Skull className="text-stone-300" size={iconPx} /> :
+                  loc.type === 'TRAINING_GROUNDS' ? <Swords className="text-blue-400" size={iconPx} /> :
+                  loc.type === 'ASYLUM' ? <Brain className="text-pink-500" size={iconPx} /> :
+                  loc.type === 'MARKET' ? <ShoppingBag className="text-green-500" size={iconPx} /> :
+                  loc.type === 'HOTPOT_RESTAURANT' ? <Utensils className="text-red-500" size={iconPx} /> :
+                  loc.type === 'COFFEE' ? <Coffee className="text-amber-300" size={iconPx} /> :
+                  loc.type === 'BANDIT_CAMP' ? <Tent className="text-red-600" size={iconPx} /> :
+                  loc.type === 'HEAVY_TRIAL_GROUNDS' ? <span className="leading-none" style={{ fontSize: iconPx }}>🏗️</span> :
+                  loc.type === 'IMPOSTER_PORTAL' ? <Zap className="text-fuchsia-400" size={iconPx} /> :
+                  loc.type === 'MYSTERIOUS_CAVE' ? <Scroll className="text-indigo-400" size={iconPx} /> :
+                  loc.type === 'WORLD_BOARD' ? <History className="text-slate-300" size={iconPx} /> :
+                  loc.type === 'VOID_BUFFER_MINE' || loc.type === 'MEMORY_OVERFLOW_MINE' || loc.type === 'LOGIC_PARADOX_MINE' ? <Mountain className="text-emerald-400" size={iconPx} /> :
+                  loc.type === 'HERO_CRYSTAL_MINE' ? <Mountain className="text-purple-300" size={iconPx} /> :
+                  loc.type === 'BLACKSMITH' ? <Hammer className="text-orange-400" size={iconPx} /> :
+                  loc.type === 'CRYSTAL_FOUNDRY' ? <Hammer className="text-cyan-300" size={iconPx} /> :
+                  loc.type === 'MEGA_FARM' ? <Coins className="text-lime-300" size={iconPx} /> :
+                  loc.type === 'ALTAR' ? <span className="leading-none" style={{ fontSize: iconPx }}>🛐</span> :
+                  loc.type === 'MAGICIAN_LIBRARY' ? <Star className="text-sky-400" size={iconPx} /> :
+                  loc.type === 'SOURCE_RECOMPILER' ? <Brain className="text-fuchsia-300" size={iconPx} /> :
+                  loc.type === 'HABITAT' ? <MapPin className="text-emerald-300" size={iconPx} /> :
+                  loc.type === 'SEAL_HABITAT' ? <span className="leading-none" style={{ fontSize: iconPx }}>🦭</span> :
+                  loc.type === 'HIDEOUT' ? <Shield className="text-emerald-300" size={iconPx} /> :
+                  <Tent className="text-green-500" size={iconPx} />}
                 {loc.factionId && loc.owner !== 'PLAYER' && (
                   <span
                     className="absolute -bottom-1 left-1/2 -translate-x-1/2 h-2 w-2 rounded-full border border-black/60 shadow"

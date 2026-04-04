@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.16',
+    date: '2026-04-04',
+    items: [
+      '大地图：行军营地向目标据点显示短方向箭头；营地图标缩小为据点约 60% 便于区分',
+      '兵种：新增亡灵两条完整升级线——冥霜骨缚（霜噬爬行者→寒墓君临者）、魂链咒监（拘魂烛灵→湮灭大巫妖）；墓地志愿/雇佣池已接入'
+    ]
+  },
+  {
     version: '0.13.15',
     date: '2026-04-04',
     items: [
