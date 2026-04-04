@@ -226,3 +226,44 @@ export const normalizeOpenAIBattle = (parsed: any): BattleResult | null => {
   const xpGained = Number.isFinite(source?.xpGained) ? source.xpGained : 0;
   return { rounds, outcome, lootGold, renownGained, xpGained };
 };
+
+/** 模型常夹带前言或 Markdown 围栏；截取可解析 JSON 再 JSON.parse */
+export const extractBattleJsonText = (raw: string): string => {
+  const t = String(raw ?? '').trim();
+  if (!t) return t;
+
+  const canParse = (s: string) => {
+    try {
+      JSON.parse(s);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (canParse(t)) return t;
+
+  const fenceRe = /```(?:json)?\s*([\s\S]*?)```/gi;
+  let m: RegExpExecArray | null;
+  while ((m = fenceRe.exec(t)) !== null) {
+    const inner = (m[1] ?? '').trim();
+    if (inner && canParse(inner)) return inner;
+  }
+
+  const rk = t.indexOf('"rounds"');
+  if (rk >= 0) {
+    const start = t.lastIndexOf('{', rk);
+    const end = t.lastIndexOf('}');
+    if (start >= 0 && end > start) {
+      const slice = t.slice(start, end + 1);
+      if (canParse(slice)) return slice;
+    }
+  }
+
+  const start = t.indexOf('{');
+  const end = t.lastIndexOf('}');
+  if (start >= 0 && end > start) {
+    const slice = t.slice(start, end + 1);
+    if (canParse(slice)) return slice;
+  }
+  return t;
+};

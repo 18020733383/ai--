@@ -6,6 +6,14 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.17',
+    date: '2026-04-04',
+    items: [
+      '亡灵咖啡馆：膳牌式菜单（分区点选），扩充饮品与甜咸小食',
+      '对战：OpenAI 兼容返回若夹带前言或 ```json 围栏，服务端先抽取 JSON 再解析；prompt 与 user 铁律强化禁 Markdown/前言'
+    ]
+  },
+  {
     version: '0.13.16',
     date: '2026-04-04',
     items: [

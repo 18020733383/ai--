@@ -298,11 +298,24 @@ export const TownView = ({
   const [habitatStayDays, setHabitatStayDays] = React.useState(10);
 
   const coffeeGiftItems = [
-    { id: 'coffee_black', name: '黑咖啡', price: 30, itemType: 'COFFEE' as const },
-    { id: 'coffee_milk', name: '奶咖', price: 60, itemType: 'COFFEE' as const },
-    { id: 'coffee_sigil', name: '符文浓缩咖啡', price: 120, itemType: 'COFFEE' as const },
-    { id: 'cake_bone', name: '骨粉小蛋糕', price: 80, itemType: 'FOOD' as const },
-    { id: 'stew_midnight', name: '午夜炖肉', price: 160, itemType: 'FOOD' as const }
+    { id: 'coffee_black', name: '黑咖啡', price: 30, itemType: 'COFFEE' as const, category: '浓醇饮品', blurb: '冷透仍苦' },
+    { id: 'coffee_milk', name: '奶咖', price: 60, itemType: 'COFFEE' as const, category: '浓醇饮品', blurb: '乳脂裹苦' },
+    { id: 'coffee_sigil', name: '符文浓缩咖啡', price: 120, itemType: 'COFFEE' as const, category: '浓醇饮品', blurb: '一圈微光浮于杯沿' },
+    { id: 'coffee_honey_latte', name: '蜜渍拿铁', price: 55, itemType: 'COFFEE' as const, category: '浓醇饮品', blurb: '甜与烬同存' },
+    { id: 'coffee_ash_americano', name: '灰烬美式', price: 45, itemType: 'COFFEE' as const, category: '冷萃与特调', blurb: '似炉灰沉降' },
+    { id: 'coffee_soul_espresso', name: '魂萃短饮', price: 95, itemType: 'COFFEE' as const, category: '冷萃与特调', blurb: '一小口如忆刺喉' },
+    { id: 'coffee_moss_matcha', name: '苔痕抹茶拿铁', price: 72, itemType: 'COFFEE' as const, category: '冷萃与特调', blurb: '石绿混冥白' },
+    { id: 'coffee_cold_brew_crypt', name: '墓穴冷萃', price: 68, itemType: 'COFFEE' as const, category: '冷萃与特调', blurb: '隔夜慢滴，味凉而长' },
+    { id: 'cake_bone', name: '骨粉小蛋糕', price: 80, itemType: 'FOOD' as const, category: '烘焙与咸点', blurb: '酥得作响' },
+    { id: 'stew_midnight', name: '午夜炖肉', price: 160, itemType: 'FOOD' as const, category: '烘焙与咸点', blurb: '陶罐余温' },
+    { id: 'food_tomb_quiche', name: '墓碑咸派', price: 110, itemType: 'FOOD' as const, category: '烘焙与咸点', blurb: '奶蛋与腌肉' },
+    { id: 'food_candle_waffle', name: '烛泪华夫', price: 90, itemType: 'FOOD' as const, category: '烘焙与咸点', blurb: '枫糖如蜡滴' },
+    { id: 'food_marrow_cookie', name: '髓霜曲奇', price: 52, itemType: 'FOOD' as const, category: '亡灵甜典', blurb: '糖粒似碎骨' },
+    { id: 'food_shroud_tiramisu', name: '裹尸提拉米苏', price: 138, itemType: 'FOOD' as const, category: '亡灵甜典', blurb: '可可厚如夜' },
+    { id: 'food_whisper_macaron', name: '低语马卡龙（一盒）', price: 96, itemType: 'FOOD' as const, category: '亡灵甜典', blurb: '五色夹心，碎语满口' },
+    { id: 'food_plasma_jelly', name: '血浆果冻杯', price: 64, itemType: 'FOOD' as const, category: '亡灵甜典', blurb: '玫红凝动' },
+    { id: 'food_charcoal_bread', name: '炭纹酸面包', price: 42, itemType: 'FOOD' as const, category: '烘焙与咸点', blurb: '硬壳软芯' },
+    { id: 'food_soul_bun', name: '拘魂豆沙包', price: 38, itemType: 'FOOD' as const, category: '烘焙与咸点', blurb: '甜馅微凉' }
   ];
   const giftableHeroes = heroes.filter(h => h.recruited && h.status !== 'DEAD');
   const [coffeeGiftHeroId, setCoffeeGiftHeroId] = React.useState<string>(() => giftableHeroes[0]?.id ?? '');

@@ -1,7 +1,7 @@
 
 import { GoogleGenAI, Type, Schema } from "@google/genai";
 import { AIProvider, AltarDoctrine, AltarTroopDraft, BattleResult, BattleRound, EnemyForce, Hero, HeroChatLine, HeroRole, Location, Lord, NegotiationResult, PartyDiaryEntry, PlayerState, TerrainType, Troop, TroopAttributes, TroopRace } from '../types';
-import { normalizeOpenAIBattle, parseCasualties, parseInjuries, parseOutcome } from './battleParsing';
+import { extractBattleJsonText, normalizeOpenAIBattle, parseCasualties, parseInjuries, parseOutcome } from './battleParsing';
 import { WORLD_BOOK, FACTIONS, attributesFromRatios } from '../constants';
 
 const getGeminiClient = (apiKey?: string) => new GoogleGenAI({ apiKey: apiKey?.trim() || process.env.API_KEY });
@@ -223,7 +223,8 @@ ${attributeMeta.map(attr => {
   const outputHint = outputMode === 'ndjson'
     ? `- 使用 NDJSON，每行一个 JSON，不要输出多余文本。
 - 每个回合输出: {"type":"round","round":{"roundNumber":1,"description":"...","casualtiesA":[{"name":"兵种名","count":0,"cause":"死因"}],"keyUnitDamageA":[{"name":"A方核心单位","hpLoss":12,"cause":"受伤原因"}],"keyUnitDamageB":[{"name":"B方指挥核心","hpLoss":8,"cause":"受伤原因"}],"casualtiesB":[{"name":"兵种名","count":0,"cause":"死因"}]}}
-- 战斗结束后输出总结: {"type":"summary","outcome":"A|B"}`
+- 战斗结束后输出总结: {"type":"summary","outcome":"A|B"}
+- 【严禁】思考过程、「我来分析」类前言、「关键约束」复述、Markdown、代码围栏 \`\`\`；每行必须自第一个字符起就是合法 JSON。`
     : `- 只返回以下结构的 JSON，禁止包裹在 battle_report 或其他外层字段：
   {
     "rounds": [
@@ -242,10 +243,15 @@ ${attributeMeta.map(attr => {
       }
     ],
     "outcome": "A|B"
-  }`;
+  }
+- 【严禁】输出战报 JSON 以外的任何字符：禁止「我来分析」「让我理解」「关键约束」等前言或后记；禁止使用 Markdown 与 \`\`\` 代码围栏；禁止解释。客户端只能解析纯 JSON：第一个非空白字符必须是 { ，全文最后一个字符必须是 } 。`;
 
   return `
     你是一个硬核中世纪奇幻战略游戏的 Game Master。请模拟并解决一场战斗。
+
+    【输出格式铁律 — 违者战报无法入库】
+    - 仅输出一段合法 JSON 文本；不得输出思考过程、战术摘要、编号列表等正文以外的内容。
+    - 第一个非空白字符必须是 { ，最后一个字符必须是 } ；不得用 \`\`\`json 包裹。
     
     ${traitBlock}
     【环境信息】
@@ -350,7 +356,7 @@ export const resolveBattle = async (
               model: openAIConfig.model,
               messages: [
                 { role: 'system', content: prompt },
-                { role: 'user', content: '只输出 NDJSON。' }
+                { role: 'user', content: '【铁律】仅输出 NDJSON 行：每行从首字符起即为 {；禁止任何前言、禁止 Markdown、禁止代码围栏。' }
               ],
               temperature: 0.7
             }),
@@ -483,7 +489,8 @@ export const resolveBattle = async (
 
         if (!summary && fullContent.trim()) {
           try {
-            const raw = JSON.parse(fullContent);
+            const jsonStr = extractBattleJsonText(fullContent);
+            const raw = JSON.parse(jsonStr);
             const normalized = normalizeOpenAIBattle(raw);
             if (normalized) return normalized;
           } catch {
@@ -504,7 +511,7 @@ export const resolveBattle = async (
           model: openAIConfig.model,
           messages: [
             { role: 'system', content: prompt },
-            { role: 'user', content: '只返回 JSON。' }
+            { role: 'user', content: '【铁律】只输出一个 JSON 对象本身：首字符为 {，末字符为 }；禁止前言、禁止 Markdown、禁止 ``` 代码块。' }
           ],
           temperature: 0.7,
           jsonOnly: true
@@ -521,7 +528,8 @@ export const resolveBattle = async (
       if (!text) throw new Error('OpenAI 返回为空');
       let parsed: BattleResult;
       try {
-        const raw = JSON.parse(text);
+        const jsonStr = extractBattleJsonText(text);
+        const raw = JSON.parse(jsonStr);
         const normalized = normalizeOpenAIBattle(raw);
         if (!normalized) throw new Error('OpenAI 返回格式不正确');
         parsed = normalized;
