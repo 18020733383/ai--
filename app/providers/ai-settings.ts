@@ -18,6 +18,9 @@ export type AISettingsState = {
   openAIProfiles: OpenAIProfile[];
   activeOpenAIProfileId: string | null;
   openAIProfileName: string;
+  /** OpenAI 兼容请求中，在 system 之后插入一轮 user→assistant 伪对话，用于固化语气/格式（两者均非空时生效） */
+  replyStyleUserMessage: string;
+  replyStyleAssistantMessage: string;
   battleStreamEnabled: boolean;
   battleResolutionMode: 'AI' | 'PROGRAM';
   heroChatterEnabled: boolean;
@@ -53,6 +56,8 @@ export const loadAISettingsFromStorage = (): AISettingsState => {
   const chatterEnabled = localStorage.getItem('hero.chatter.enabled');
   const chatterMin = localStorage.getItem('hero.chatter.minMinutes');
   const chatterMax = localStorage.getItem('hero.chatter.maxMinutes');
+  const replyStyleUser = localStorage.getItem('ai.replyStyle.user') ?? '';
+  const replyStyleAssistant = localStorage.getItem('ai.replyStyle.assistant') ?? '';
 
   let profiles: OpenAIProfile[] = [];
   if (profilesRaw) {
@@ -86,6 +91,8 @@ export const loadAISettingsFromStorage = (): AISettingsState => {
     openAIProfiles: profiles,
     activeOpenAIProfileId: activeProfile.id,
     openAIProfileName: activeProfile.name,
+    replyStyleUserMessage: replyStyleUser,
+    replyStyleAssistantMessage: replyStyleAssistant,
     battleStreamEnabled: battleStream === '1' || battleStream === 'true',
     battleResolutionMode: battleMode === 'PROGRAM' ? 'PROGRAM' : 'AI',
     heroChatterEnabled: chatterEnabled === '1' || chatterEnabled === 'true',
@@ -110,13 +117,41 @@ export const persistAISettingsToStorage = (settings: AISettingsState) => {
   localStorage.setItem('hero.chatter.enabled', settings.heroChatterEnabled ? '1' : '0');
   localStorage.setItem('hero.chatter.minMinutes', String(settings.heroChatterMinMinutes));
   localStorage.setItem('hero.chatter.maxMinutes', String(settings.heroChatterMaxMinutes));
+  localStorage.setItem('ai.replyStyle.user', settings.replyStyleUserMessage ?? '');
+  localStorage.setItem('ai.replyStyle.assistant', settings.replyStyleAssistantMessage ?? '');
 };
 
-export const buildAIConfigFromSettings = (settings: Pick<AISettingsState, 'aiProvider' | 'doubaoApiKey' | 'geminiApiKey' | 'openAIBaseUrl' | 'openAIKey' | 'openAIModel'>) => {
+const replyStylePreambleFromSettings = (settings: Pick<AISettingsState, 'replyStyleUserMessage' | 'replyStyleAssistantMessage'>) => {
+  const u = settings.replyStyleUserMessage?.trim() ?? '';
+  const a = settings.replyStyleAssistantMessage?.trim() ?? '';
+  if (!u || !a) return undefined;
+  return { user: u, assistant: a };
+};
+
+export const buildAIConfigFromSettings = (
+  settings: Pick<
+    AISettingsState,
+    | 'aiProvider'
+    | 'doubaoApiKey'
+    | 'geminiApiKey'
+    | 'openAIBaseUrl'
+    | 'openAIKey'
+    | 'openAIModel'
+    | 'replyStyleUserMessage'
+    | 'replyStyleAssistantMessage'
+  >
+) => {
+  const replyStylePreamble = replyStylePreambleFromSettings(settings);
   if (settings.aiProvider === 'GEMINI') {
     const key = settings.geminiApiKey.trim();
     if (!key) return undefined;
-    return { baseUrl: '', apiKey: key, model: 'gemini-3-flash-preview', provider: settings.aiProvider };
+    return {
+      baseUrl: '',
+      apiKey: key,
+      model: 'gemini-3-flash-preview',
+      provider: settings.aiProvider,
+      ...(replyStylePreamble ? { replyStylePreamble } : {})
+    };
   }
   if (settings.aiProvider === 'DOUBAO') {
     const key = settings.doubaoApiKey.trim();
@@ -126,7 +161,8 @@ export const buildAIConfigFromSettings = (settings: Pick<AISettingsState, 'aiPro
       baseUrl: settings.openAIBaseUrl.trim() || 'https://ark.cn-beijing.volces.com/api/v3',
       apiKey: key,
       model,
-      provider: settings.aiProvider
+      provider: settings.aiProvider,
+      ...(replyStylePreamble ? { replyStylePreamble } : {})
     };
   }
   const key = settings.openAIKey.trim();
@@ -136,7 +172,8 @@ export const buildAIConfigFromSettings = (settings: Pick<AISettingsState, 'aiPro
     baseUrl: settings.openAIBaseUrl.trim() || 'https://api.openai.com',
     apiKey: key,
     model,
-    provider: settings.aiProvider
+    provider: settings.aiProvider,
+    ...(replyStylePreamble ? { replyStylePreamble } : {})
   };
 };
 

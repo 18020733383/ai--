@@ -234,6 +234,8 @@ export default function App() {
   const [isModelsLoading, setIsModelsLoading] = useState(false);
   const [battleStreamEnabled, setBattleStreamEnabled] = useState(false);
   const [battleResolutionMode, setBattleResolutionMode] = useState<'AI' | 'PROGRAM'>('AI');
+  const [replyStyleUserMessage, setReplyStyleUserMessage] = useState('');
+  const [replyStyleAssistantMessage, setReplyStyleAssistantMessage] = useState('');
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [saveDataText, setSaveDataText] = useState('');
   const [saveDataNotice, setSaveDataNotice] = useState<string | null>(null);
@@ -1225,7 +1227,9 @@ export default function App() {
       geminiApiKey,
       openAIBaseUrl,
       openAIKey,
-      openAIModel
+      openAIModel,
+      replyStyleUserMessage,
+      replyStyleAssistantMessage
     });
   };
 
@@ -1504,6 +1508,8 @@ export default function App() {
     setHeroChatterEnabled(settings.heroChatterEnabled);
     setHeroChatterMinMinutes(settings.heroChatterMinMinutes);
     setHeroChatterMaxMinutes(settings.heroChatterMaxMinutes);
+    setReplyStyleUserMessage(settings.replyStyleUserMessage ?? '');
+    setReplyStyleAssistantMessage(settings.replyStyleAssistantMessage ?? '');
   }, []);
 
   useEffect(() => {
@@ -6307,6 +6313,8 @@ export default function App() {
       openAIProfiles: updatedProfiles,
       activeOpenAIProfileId: activeId,
       openAIProfileName,
+      replyStyleUserMessage,
+      replyStyleAssistantMessage,
       battleStreamEnabled,
       battleResolutionMode,
       heroChatterEnabled,
@@ -6389,6 +6397,8 @@ export default function App() {
       heroChatterEnabled?: boolean;
       heroChatterMinMinutes?: number;
       heroChatterMaxMinutes?: number;
+      replyStyleUserMessage?: string;
+      replyStyleAssistantMessage?: string;
       openAIProfiles: typeof openAIProfiles;
       openAIActiveProfileId: typeof activeOpenAIProfileId;
       openAI: {
@@ -6452,6 +6462,8 @@ export default function App() {
       heroChatterEnabled,
       heroChatterMinMinutes,
       heroChatterMaxMinutes,
+      replyStyleUserMessage,
+      replyStyleAssistantMessage,
       openAI: {
         baseUrl: openAIBaseUrl,
         key: openAIKey,
@@ -7374,6 +7386,14 @@ export default function App() {
         setHeroChatterMaxMinutes(v);
         localStorage.setItem('hero.chatter.maxMinutes', String(v));
       }
+      if (typeof save?.settings?.replyStyleUserMessage === 'string') {
+        setReplyStyleUserMessage(save.settings.replyStyleUserMessage);
+        localStorage.setItem('ai.replyStyle.user', save.settings.replyStyleUserMessage);
+      }
+      if (typeof save?.settings?.replyStyleAssistantMessage === 'string') {
+        setReplyStyleAssistantMessage(save.settings.replyStyleAssistantMessage);
+        localStorage.setItem('ai.replyStyle.assistant', save.settings.replyStyleAssistantMessage);
+      }
       setOpenAIModels([]);
       setActiveEnemy(null);
       setBattleResult(null);
@@ -7730,6 +7750,10 @@ export default function App() {
       setHeroChatterMinMinutes={setHeroChatterMinMinutes}
       heroChatterMaxMinutes={heroChatterMaxMinutes}
       setHeroChatterMaxMinutes={setHeroChatterMaxMinutes}
+      replyStyleUserMessage={replyStyleUserMessage}
+      setReplyStyleUserMessage={setReplyStyleUserMessage}
+      replyStyleAssistantMessage={replyStyleAssistantMessage}
+      setReplyStyleAssistantMessage={setReplyStyleAssistantMessage}
       saveDataText={saveDataText}
       setSaveDataText={setSaveDataText}
       saveDataNotice={saveDataNotice}
@@ -8607,8 +8631,8 @@ export default function App() {
           onLordDialogue={(lines) => setObserverLordDialogue(prev => ({ ...prev, [observerLocationModal.id]: lines }))}
           onChatWithLord={async (locationId, lord, dialogue) => {
             const { chatWithLordForObserver } = await import('./services/geminiService');
-            const config = buildAIConfigFromSettings();
-            const aiConfig = config ? { baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model, provider: config.provider } : undefined;
+            const config = buildAIConfigFromSettings(loadAISettingsFromStorage());
+            const aiConfig = config ?? undefined;
             const loc = locations.find(l => l.id === locationId);
             const factionName = loc?.factionId ? (FACTIONS.find(f => f.id === loc.factionId)?.name ?? '') : '';
             return chatWithLordForObserver(

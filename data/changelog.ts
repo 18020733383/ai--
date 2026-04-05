@@ -6,6 +6,13 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.26',
+    date: '2026-04-03',
+    items: [
+      '设置：新增「AI 回复风格（前置对话）」——User/Assistant 两段均填写时，在每条 OpenAI 兼容 chat 请求的 system 之后插入一轮伪历史对话；存档可随设置导出/导入。观海围攻/领主对话从本地设置正确组装配置'
+    ]
+  },
+  {
     version: '0.13.25',
     date: '2026-04-03',
     items: [

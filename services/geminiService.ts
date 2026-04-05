@@ -352,7 +352,7 @@ export const resolveBattle = async (
             'Authorization': `Bearer ${openAIConfig.apiKey}`,
           },
           body: JSON.stringify({
-            ...buildChatRequestBody(openAIConfig.provider, {
+            ...buildChatRequestBody(openAIConfig, {
               model: openAIConfig.model,
               messages: [
                 { role: 'system', content: prompt },
@@ -507,7 +507,7 @@ export const resolveBattle = async (
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${openAIConfig.apiKey}`,
         },
-        body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+        body: JSON.stringify(buildChatRequestBody(openAIConfig, {
           model: openAIConfig.model,
           messages: [
             { role: 'system', content: prompt },
@@ -629,7 +629,7 @@ ${historyText || '（暂无）'}
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openAIConfig.apiKey}`,
       },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [
           { role: 'system', content: prompt },
@@ -715,7 +715,7 @@ ${historyText || '（暂无）'}
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openAIConfig.apiKey}`,
       },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [
           { role: 'system', content: prompt },
@@ -788,7 +788,7 @@ ${userInput}
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openAIConfig.apiKey}`,
       },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [
           { role: 'system', content: prompt },
@@ -981,7 +981,7 @@ ${soldierHistory || '（无）'}
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openAIConfig.apiKey}`,
       },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [
           { role: 'system', content: prompt },
@@ -1020,6 +1020,8 @@ export interface OpenAIConfig {
   apiKey: string;
   model: string;
   provider: AIProvider;
+  /** 在每条 chat/completions 的 messages 中，紧跟前置 system 之后插入 user→assistant 一轮，模拟已达成约定的对话（仅两者均非空时生效） */
+  replyStylePreamble?: { user: string; assistant: string };
 }
 
 export type WorldNewspaperSection = {
@@ -1159,7 +1161,7 @@ ${forceBlock}
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openAIConfig.apiKey}`,
       },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [
           { role: 'system', content: prompt },
@@ -1390,13 +1392,34 @@ const normalizeProviderBaseUrl = (provider: AIProvider, baseUrl: string) => {
   return normalizeOpenAIBaseUrl(baseUrl);
 };
 
-const buildChatRequestBody = (provider: AIProvider, payload: { model: string; messages: { role: string; content: string }[]; temperature?: number; jsonOnly?: boolean }) => {
+const injectReplyStylePreamble = (
+  messages: { role: string; content: string }[],
+  preamble?: { user: string; assistant: string }
+): { role: string; content: string }[] => {
+  const u = preamble?.user?.trim();
+  const a = preamble?.assistant?.trim();
+  if (!u || !a) return messages;
+  let i = 0;
+  while (i < messages.length && messages[i].role === 'system') i++;
+  return [
+    ...messages.slice(0, i),
+    { role: 'user', content: u },
+    { role: 'assistant', content: a },
+    ...messages.slice(i)
+  ];
+};
+
+const buildChatRequestBody = (
+  cfg: OpenAIConfig,
+  payload: { model: string; messages: { role: string; content: string }[]; temperature?: number; jsonOnly?: boolean }
+) => {
+  const messages = injectReplyStylePreamble(payload.messages, cfg.replyStylePreamble);
   const body: any = {
     model: payload.model,
-    messages: payload.messages,
+    messages,
     temperature: payload.temperature
   };
-  if (payload.jsonOnly && (provider === 'GPT' || provider === 'CUSTOM')) {
+  if (payload.jsonOnly && (cfg.provider === 'GPT' || cfg.provider === 'CUSTOM')) {
     body.response_format = { type: 'json_object' };
   }
   return body;
@@ -1551,7 +1574,7 @@ export const runSettingsApiChatTest = async (
         Authorization: `Bearer ${cfg.apiKey}`
       },
       body: JSON.stringify({
-        ...buildChatRequestBody(cfg.provider, {
+        ...buildChatRequestBody(cfg, {
           model: cfg.model,
           messages: [
             {
@@ -1628,7 +1651,7 @@ ${altarHumanBaselineBlock}
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openAIConfig.apiKey}`,
       },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [
           { role: 'system', content: prompt },
@@ -1863,7 +1886,7 @@ ${historyText || '（暂无）'}
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openAIConfig.apiKey}`,
       },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [
           { role: 'system', content: prompt },
@@ -1978,7 +2001,7 @@ ${historyText || '（暂无）'}
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openAIConfig.apiKey}`,
       },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [
           { role: 'system', content: prompt },
@@ -2034,7 +2057,7 @@ export const chatWithHero = async (
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openAIConfig.apiKey}`,
       },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [
           { role: 'system', content: prompt },
@@ -2150,7 +2173,7 @@ ${diaryText}
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openAIConfig.apiKey}`,
       },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [
           { role: 'system', content: prompt },
@@ -2438,7 +2461,7 @@ ${historyText || '（暂无）'}
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openAIConfig.apiKey}`,
       },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [
           { role: 'system', content: prompt },
@@ -2741,7 +2764,7 @@ ${historyText || "（暂无）"}
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${openAIConfig.apiKey}`,
         },
-        body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+        body: JSON.stringify(buildChatRequestBody(openAIConfig, {
           model: openAIConfig.model,
           messages: [
             { role: 'system', content: prompt },
@@ -2847,7 +2870,7 @@ export const decideFactionAction = async (
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openAIConfig.apiKey}`,
       },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [
           { role: 'system', content: prompt },
@@ -2926,7 +2949,7 @@ export const runDiplomacyMeeting = async (
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${openAIConfig.apiKey}`,
       },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [
           { role: 'system', content: prompt },
@@ -2985,7 +3008,7 @@ ${dialogue.length > 0 ? `近期对话：\n${dialogue.slice(-6).map(d => `${d.rol
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAIConfig.apiKey}` },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0.8
@@ -3026,7 +3049,7 @@ export const resolveSiegeOutcome = async (
     const res = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${openAIConfig.apiKey}` },
-      body: JSON.stringify(buildChatRequestBody(openAIConfig.provider, {
+      body: JSON.stringify(buildChatRequestBody(openAIConfig, {
         model: openAIConfig.model,
         messages: [{ role: 'system', content: prompt }, { role: 'user', content: '只返回 JSON。' }],
         temperature: 0.5,

@@ -37,6 +37,10 @@ type SettingsModalProps = {
   setHeroChatterMinMinutes: (value: number) => void;
   heroChatterMaxMinutes: number;
   setHeroChatterMaxMinutes: (value: number) => void;
+  replyStyleUserMessage: string;
+  setReplyStyleUserMessage: (value: string) => void;
+  replyStyleAssistantMessage: string;
+  setReplyStyleAssistantMessage: (value: string) => void;
   saveDataText: string;
   setSaveDataText: (value: string) => void;
   saveDataNotice: string | null;
@@ -83,6 +87,10 @@ export const SettingsModal = ({
   setHeroChatterMinMinutes,
   heroChatterMaxMinutes,
   setHeroChatterMaxMinutes,
+  replyStyleUserMessage,
+  setReplyStyleUserMessage,
+  replyStyleAssistantMessage,
+  setReplyStyleAssistantMessage,
   saveDataText,
   setSaveDataText,
   saveDataNotice,
@@ -341,6 +349,33 @@ export const SettingsModal = ({
                   </div>
                 </div>
                 <div className="text-xs text-stone-600">仅当队伍至少有 2 名英雄，且不在战斗中时触发。</div>
+              </div>
+
+              <div className="bg-black/20 border border-stone-800 rounded px-3 py-2 space-y-3">
+                <div className="text-xs text-stone-300 font-bold">AI 回复风格（前置对话）</div>
+                <p className="text-[11px] text-stone-500 leading-relaxed">
+                  仅对 OpenAI 兼容接口生效（自定义 / GPT / 豆包等）。若下列两项均填写，每次请求会在<strong className="text-stone-400">所有前置 system 消息之后</strong>
+                  插入一轮「用户 → 助手」伪历史，再接着游戏的 system / user，用于约定语气或格式（例如先让模型承认扮演某角色）。
+                  Gemini 直连不使用该机制。
+                </p>
+                <div>
+                  <label className="block text-xs text-stone-500 mb-1">User（第一条，如：你是一个江湖说书人，回复要短促带评书味。）</label>
+                  <textarea
+                    value={replyStyleUserMessage}
+                    onChange={e => setReplyStyleUserMessage(e.target.value)}
+                    className="w-full min-h-[64px] bg-stone-950 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 placeholder:text-stone-600"
+                    placeholder="留空则不注入前置对话"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs text-stone-500 mb-1">Assistant（第二条，模型侧应答，如：得嘞，老夫这就短打快说。）</label>
+                  <textarea
+                    value={replyStyleAssistantMessage}
+                    onChange={e => setReplyStyleAssistantMessage(e.target.value)}
+                    className="w-full min-h-[64px] bg-stone-950 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 placeholder:text-stone-600"
+                    placeholder="需与上栏同时非空才会生效"
+                  />
+                </div>
               </div>
 
               {settingsError && (

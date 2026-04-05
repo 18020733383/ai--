@@ -34,9 +34,9 @@ export const ObserverSiegeModal = ({
     (async () => {
       try {
         const { resolveSiegeOutcome } = await import('../../../services/geminiService');
-        const { buildAIConfigFromSettings } = await import('../../../app/providers/ai-settings');
-        const config = buildAIConfigFromSettings();
-        const aiConfig = config ? { baseUrl: config.baseUrl, apiKey: config.apiKey, model: config.model, provider: config.provider } : undefined;
+        const { buildAIConfigFromSettings, loadAISettingsFromStorage } = await import('../../../app/providers/ai-settings');
+        const config = buildAIConfigFromSettings(loadAISettingsFromStorage());
+        const aiConfig = config ?? undefined;
         const result = await resolveSiegeOutcome(
           attackerName,
           attackerTroops,
