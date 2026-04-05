@@ -100,12 +100,16 @@ export const SettingsModal = ({
   );
   const [apiTestResult, setApiTestResult] = React.useState<string | null>(null);
   const [apiTestLoading, setApiTestLoading] = React.useState(false);
+  /** OpenAI 兼容端：部分服务（如 Grok/xAI）默认只返回 SSE，需流式或与自动解析配合 */
+  const [apiTestUseStream, setApiTestUseStream] = React.useState(false);
 
   const handleApiTest = async () => {
     setApiTestLoading(true);
     setApiTestResult(null);
     try {
-      const res = await runSettingsApiChatTest(buildAIConfig(), apiTestPrompt);
+      const res = await runSettingsApiChatTest(buildAIConfig(), apiTestPrompt, {
+        stream: apiTestUseStream
+      });
       if (res.ok) {
         setApiTestResult(`成功（${res.latencyMs} ms）\n\n${res.reply}`);
       } else {
@@ -348,8 +352,30 @@ export const SettingsModal = ({
               <div className="bg-black/20 border border-stone-800 rounded p-3 space-y-2">
                 <div className="text-xs text-stone-300 font-bold">API 连通测试</div>
                 <p className="text-[11px] text-stone-500 leading-relaxed">
-                  使用当前表单中的供应商、Key、Base URL、模型发一条对话（无需先点「保存」）。用于快速验证密钥与网络。
+                  使用当前表单中的供应商、Key、Base URL、模型发一条对话（无需先点「保存」）。非流式请求会附带{' '}
+                  <span className="text-stone-400 font-mono">stream:false</span>；若仍解析失败可改「流式」。服务端若直接返回 SSE，也会尽量从正文聚合内容。
                 </p>
+                <div className="flex items-center gap-2 bg-black/25 border border-stone-800 rounded px-2 py-1.5">
+                  <span className="text-[10px] text-stone-500 shrink-0">chat/completions</span>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={!apiTestUseStream ? 'gold' : 'secondary'}
+                    onClick={() => setApiTestUseStream(false)}
+                    disabled={apiTestLoading}
+                  >
+                    非流式
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={apiTestUseStream ? 'gold' : 'secondary'}
+                    onClick={() => setApiTestUseStream(true)}
+                    disabled={apiTestLoading}
+                  >
+                    流式
+                  </Button>
+                </div>
                 <textarea
                   value={apiTestPrompt}
                   onChange={e => setApiTestPrompt(e.target.value)}
@@ -360,7 +386,9 @@ export const SettingsModal = ({
                   <Button variant="gold" size="sm" onClick={handleApiTest} disabled={apiTestLoading}>
                     {apiTestLoading ? '请求中…' : '发送测试'}
                   </Button>
-                  <span className="text-[10px] text-stone-600">Gemini 使用上方 Gemini Key；自定义/GPT/豆包使用对应 Key 与模型。</span>
+                  <span className="text-[10px] text-stone-600">
+                    Gemini 不受流式开关影响；自定义 / GPT / 豆包 / Grok 等走 OpenAI 兼容接口。
+                  </span>
                 </div>
                 {apiTestResult !== null && (
                   <pre className="text-xs text-stone-300 bg-stone-950/80 border border-stone-800 rounded p-3 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono">

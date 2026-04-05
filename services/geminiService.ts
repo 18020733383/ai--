@@ -1442,18 +1442,84 @@ export type SettingsApiChatTestResult =
   | { ok: true; reply: string; latencyMs: number }
   | { ok: false; error: string; latencyMs?: number };
 
+const normalizeAssistantContentPayload = (c: unknown): string => {
+  if (typeof c === 'string') return c;
+  if (c == null) return '';
+  if (Array.isArray(c)) {
+    return c
+      .map((p: any) => {
+        if (typeof p === 'string') return p;
+        if (p?.type === 'text' && typeof p?.text === 'string') return p.text;
+        if (typeof p?.content === 'string') return p.content;
+        return '';
+      })
+      .join('');
+  }
+  return '';
+};
+
+/**
+ * 解析 chat/completions：整段 JSON（非流式）或 OpenAI 兼容 SSE（data: {...} 行）。
+ * 部分网关（如 Grok/xAI）即使未传 stream 也可能返回 event-stream，仅用 res.json 会得到空。
+ */
+const extractOpenAIChatCompletionTextFromRawBody = (raw: string): string => {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+
+  try {
+    const j = JSON.parse(trimmed) as any;
+    const msgContent = normalizeAssistantContentPayload(j?.choices?.[0]?.message?.content);
+    if (msgContent.trim()) return msgContent.trim();
+    const legacy = j?.choices?.[0]?.text;
+    if (typeof legacy === 'string' && legacy.trim()) return legacy.trim();
+  } catch {
+    /* 整段不是 JSON → 按 SSE 解析 */
+  }
+
+  let fromDeltas = '';
+  let fromFinishMessage = '';
+  for (const line of raw.split('\n')) {
+    const t = line.trim();
+    if (!t.startsWith('data:')) continue;
+    const data = t.slice(5).trim();
+    if (!data || data === '[DONE]') continue;
+    let payload: any;
+    try {
+      payload = JSON.parse(data);
+    } catch {
+      continue;
+    }
+    const delta = payload?.choices?.[0]?.delta;
+    if (delta) {
+      fromDeltas += normalizeAssistantContentPayload(delta.content);
+      if (typeof delta.reasoning_content === 'string') {
+        fromDeltas += delta.reasoning_content;
+      }
+    }
+    const finMsg = payload?.choices?.[0]?.message;
+    if (finMsg) {
+      const piece = normalizeAssistantContentPayload(finMsg.content);
+      if (piece.trim()) fromFinishMessage = piece;
+    }
+  }
+  return (fromFinishMessage || fromDeltas).trim();
+};
+
 /**
  * 设置页一键对话测试：兼容 Gemini、OpenAI 系及豆包等 OpenAI 兼容端点。
+ * @param options.stream 显式 true/false：部分服务商默认仅流式或反之；未传时按 false 请求并仍尝试解析 SSE 正文。
  */
 export const runSettingsApiChatTest = async (
   openAI: OpenAIConfig | undefined,
-  userMessage?: string
+  userMessage?: string,
+  options?: { stream?: boolean }
 ): Promise<SettingsApiChatTestResult> => {
   const msg = (
     userMessage ?? '请用一句中文回复：若你收到此消息，只回答「连通正常」四字。'
   ).trim();
   const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const elapsed = () => Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+  const streamFlag = options?.stream === true;
 
   try {
     if (!openAI?.apiKey?.trim()) {
@@ -1484,8 +1550,8 @@ export const runSettingsApiChatTest = async (
         'Content-Type': 'application/json',
         Authorization: `Bearer ${cfg.apiKey}`
       },
-      body: JSON.stringify(
-        buildChatRequestBody(cfg.provider, {
+      body: JSON.stringify({
+        ...buildChatRequestBody(cfg.provider, {
           model: cfg.model,
           messages: [
             {
@@ -1495,8 +1561,9 @@ export const runSettingsApiChatTest = async (
             { role: 'user', content: msg }
           ],
           temperature: 0.2
-        })
-      )
+        }),
+        stream: streamFlag
+      })
     });
     if (!res.ok) {
       const errText = await res.text().catch(() => '');
@@ -1506,12 +1573,17 @@ export const runSettingsApiChatTest = async (
         latencyMs: elapsed()
       };
     }
-    const json = (await res.json().catch(() => null)) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (typeof text !== 'string' || !text.trim()) {
-      return { ok: false, error: '返回内容为空或格式异常', latencyMs: elapsed() };
+    const raw = await res.text().catch(() => '');
+    const text = extractOpenAIChatCompletionTextFromRawBody(raw);
+    if (!text) {
+      const preview = raw.trim().slice(0, 280);
+      return {
+        ok: false,
+        error: `返回内容为空或无法解析。请尝试切换「流式/非流式」。正文片段：${preview || '（空）'}`,
+        latencyMs: elapsed()
+      };
     }
-    return { ok: true, reply: text.trim(), latencyMs: elapsed() };
+    return { ok: true, reply: text, latencyMs: elapsed() };
   } catch (e: unknown) {
     const message = e instanceof Error ? e.message : '未知错误';
     return { ok: false, error: message, latencyMs: elapsed() };

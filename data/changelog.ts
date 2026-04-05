@@ -6,6 +6,13 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.24',
+    date: '2026-04-05',
+    items: [
+      '设置·API 测试：OpenAI 兼容端支持显式非流式（stream:false）与流式（stream:true）切换；响应体同时解析整段 JSON 与 SSE data 行，避免 Grok 等仅返回流式时前端误判为空'
+    ]
+  },
+  {
     version: '0.13.23',
     date: '2026-04-03',
     items: ['设置：新增「API 连通测试」面板，可输入简短对话一键验证当前供应商/Key/模型是否可用（含耗时）']
