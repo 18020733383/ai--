@@ -6,6 +6,13 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.25',
+    date: '2026-04-03',
+    items: [
+      '游戏内所有 OpenAI 兼容 chat/completions 调用统一用 readOpenAIChatCompletionResponseText 解析（整段 JSON + SSE），修复英雄对话、战斗结算、谈判等路径在 Grok/xAI 等网关下误报「返回为空」'
+    ]
+  },
+  {
     version: '0.13.24',
     date: '2026-04-05',
     items: [

@@ -523,9 +523,8 @@ export const resolveBattle = async (
         throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
       }
 
-      const json = await res.json().catch(() => null) as any;
-      const text = json?.choices?.[0]?.message?.content;
-      if (!text) throw new Error('OpenAI 返回为空');
+      const text = await readOpenAIChatCompletionResponseText(res);
+      if (!text.trim()) throw new Error('OpenAI 返回为空');
       let parsed: BattleResult;
       try {
         const jsonStr = extractBattleJsonText(text);
@@ -646,9 +645,8 @@ ${historyText || '（暂无）'}
       throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
     }
 
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('OpenAI 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('OpenAI 返回为空');
     return parseNegotiationResult(text);
   }
 
@@ -732,9 +730,8 @@ ${historyText || '（暂无）'}
       throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
     }
 
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('OpenAI 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('OpenAI 返回为空');
     return String(text).trim();
   }
 
@@ -806,9 +803,8 @@ ${userInput}
       throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
     }
 
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('OpenAI 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('OpenAI 返回为空');
     return String(text).trim();
   }
 
@@ -999,9 +995,8 @@ ${soldierHistory || '（无）'}
       const text = await res.text().catch(() => '');
       throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
     }
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('OpenAI 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('OpenAI 返回为空');
     return JSON.parse(text) as HeroPromotionDraft;
   }
 
@@ -1178,9 +1173,8 @@ ${forceBlock}
       const text = await res.text().catch(() => '');
       throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
     }
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('OpenAI 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('OpenAI 返回为空');
     return parseIssue(JSON.parse(text));
   }
 
@@ -1505,6 +1499,12 @@ const extractOpenAIChatCompletionTextFromRawBody = (raw: string): string => {
   return (fromFinishMessage || fromDeltas).trim();
 };
 
+/** 读取 chat/completions 响应体并聚合 assistant 文本（兼容整段 JSON 与 SSE）。 */
+export const readOpenAIChatCompletionResponseText = async (res: Response): Promise<string> => {
+  const raw = await res.text().catch(() => '');
+  return extractOpenAIChatCompletionTextFromRawBody(raw);
+};
+
 /**
  * 设置页一键对话测试：兼容 Gemini、OpenAI 系及豆包等 OpenAI 兼容端点。
  * @param options.stream 显式 true/false：部分服务商默认仅流式或反之；未传时按 false 请求并仍尝试解析 SSE 正文。
@@ -1644,9 +1644,8 @@ ${altarHumanBaselineBlock}
       throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
     }
 
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('OpenAI 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('OpenAI 返回为空');
     return parseAltarJson(text) as AltarTroopTreeResult;
   }
 
@@ -1880,9 +1879,8 @@ ${historyText || '（暂无）'}
       throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
     }
 
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('OpenAI 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('OpenAI 返回为空');
     const parsed = parseAltarJson(text) as { npcReply?: string; religionName?: string; domain?: string; spread?: string; blessing?: string; doctrineSummary?: string; troops?: AltarTroopDraft[] };
     console.log('[altar] raw', text);
     console.log('[altar] parsed', parsed);
@@ -1995,9 +1993,8 @@ ${historyText || '（暂无）'}
       throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
     }
 
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('OpenAI 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('OpenAI 返回为空');
     return String(text).trim();
   }
 
@@ -2053,9 +2050,8 @@ export const chatWithHero = async (
       throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
     }
 
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('OpenAI 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('OpenAI 返回为空');
     let parsed: { reply?: string; emotion?: string; memory?: string; affinity?: string };
     try {
       parsed = JSON.parse(text);
@@ -2168,9 +2164,8 @@ ${diaryText}
       const text = await res.text().catch(() => '');
       throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
     }
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('OpenAI 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('OpenAI 返回为空');
     const parsed = JSON.parse(text) as any;
     const summary = String(parsed?.summary ?? '').trim();
     const linesRaw = Array.isArray(parsed?.lines) ? parsed.lines : [];
@@ -2459,9 +2454,8 @@ ${historyText || '（暂无）'}
       throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
     }
 
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('OpenAI 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('OpenAI 返回为空');
     let parsed: { reply?: string; relationDelta?: number; memory?: string; attack?: boolean; attackReason?: string; attackRatio?: number };
     try {
       parsed = JSON.parse(text);
@@ -2763,9 +2757,8 @@ ${historyText || "（暂无）"}
         throw new Error(`OpenAI 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 200)}` : ''}`.trim());
       }
 
-      const json = await res.json().catch(() => null) as any;
-      const text = json?.choices?.[0]?.message?.content;
-      if (!text) throw new Error('OpenAI 返回为空');
+      const text = await readOpenAIChatCompletionResponseText(res);
+      if (!text.trim()) throw new Error('OpenAI 返回为空');
       return JSON.parse(text) as ShaperProposal;
     }
 
@@ -2870,9 +2863,8 @@ export const decideFactionAction = async (
       throw new Error(`API 请求失败 (${res.status}) ${text ? `- ${text.slice(0, 100)}` : ''}`.trim());
     }
 
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('API 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('API 返回为空');
     const parsed = JSON.parse(text) as { action?: string; actions?: string[] };
     const action = String(parsed?.action ?? '待定').trim() || '待定';
     const actions = Array.isArray(parsed?.actions) ? parsed.actions.filter((a: unknown) => typeof a === 'string').slice(0, 5) : undefined;
@@ -2945,9 +2937,8 @@ export const runDiplomacyMeeting = async (
       }))
     });
     if (!res.ok) throw new Error(`API 请求失败 (${res.status})`);
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('API 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('API 返回为空');
     const parsed = JSON.parse(text) as { dialogue?: string[]; decision?: string; relationDelta?: number };
     const dialogue = Array.isArray(parsed?.dialogue) ? parsed.dialogue.filter((s: unknown) => typeof s === 'string') : [];
     const decision = (parsed?.decision === 'REINFORCE' || parsed?.decision === 'WITHDRAW' || parsed?.decision === 'IMPROVE_RELATIONS')
@@ -3001,8 +2992,7 @@ ${dialogue.length > 0 ? `近期对话：\n${dialogue.slice(-6).map(d => `${d.rol
       }))
     });
     if (!res.ok) throw new Error(`API 请求失败 (${res.status})`);
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
+    const text = await readOpenAIChatCompletionResponseText(res);
     return String(text ?? '').trim() || '领主点了点头。';
   }
   const response = await getGeminiClient(openAI?.provider === 'GEMINI' ? openAI?.apiKey : undefined).models.generateContent({
@@ -3044,9 +3034,8 @@ export const resolveSiegeOutcome = async (
       }))
     });
     if (!res.ok) throw new Error(`API 请求失败 (${res.status})`);
-    const json = await res.json().catch(() => null) as any;
-    const text = json?.choices?.[0]?.message?.content;
-    if (!text) throw new Error('API 返回为空');
+    const text = await readOpenAIChatCompletionResponseText(res);
+    if (!text.trim()) throw new Error('API 返回为空');
     const parsed = JSON.parse(text) as { outcome?: string };
     return parsed?.outcome === 'defender' ? 'defender' : 'attacker';
   }
