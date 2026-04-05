@@ -1438,6 +1438,86 @@ export const listOpenAIModels = async (provider: AIProvider, baseUrl: string, ap
   return ids.sort((a, b) => a.localeCompare(b));
 };
 
+export type SettingsApiChatTestResult =
+  | { ok: true; reply: string; latencyMs: number }
+  | { ok: false; error: string; latencyMs?: number };
+
+/**
+ * 设置页一键对话测试：兼容 Gemini、OpenAI 系及豆包等 OpenAI 兼容端点。
+ */
+export const runSettingsApiChatTest = async (
+  openAI: OpenAIConfig | undefined,
+  userMessage?: string
+): Promise<SettingsApiChatTestResult> => {
+  const msg = (
+    userMessage ?? '请用一句中文回复：若你收到此消息，只回答「连通正常」四字。'
+  ).trim();
+  const t0 = typeof performance !== 'undefined' ? performance.now() : Date.now();
+  const elapsed = () => Math.round((typeof performance !== 'undefined' ? performance.now() : Date.now()) - t0);
+
+  try {
+    if (!openAI?.apiKey?.trim()) {
+      return { ok: false, error: '未配置 API Key（或先选择供应商并填写 Key）' };
+    }
+    if (openAI.provider === 'GEMINI') {
+      const model = openAI.model?.trim() || 'gemini-3-flash-preview';
+      const response = await getGeminiClient(openAI.apiKey).models.generateContent({
+        model,
+        contents: msg,
+        config: { temperature: 0.2 }
+      });
+      const text = response.text;
+      if (!text?.trim()) {
+        return { ok: false, error: 'Gemini 返回为空', latencyMs: elapsed() };
+      }
+      return { ok: true, reply: text.trim(), latencyMs: elapsed() };
+    }
+
+    const cfg = requireOpenAIConfig(openAI);
+    if (!cfg) {
+      return { ok: false, error: '请填写模型名称' };
+    }
+    const url = `${normalizeProviderBaseUrl(cfg.provider, cfg.baseUrl)}/chat/completions`;
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${cfg.apiKey}`
+      },
+      body: JSON.stringify(
+        buildChatRequestBody(cfg.provider, {
+          model: cfg.model,
+          messages: [
+            {
+              role: 'system',
+              content: '你是协助用户检测 API 连通的助手。按用户要求用简短中文回复即可。'
+            },
+            { role: 'user', content: msg }
+          ],
+          temperature: 0.2
+        })
+      )
+    });
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      return {
+        ok: false,
+        error: `请求失败 (${res.status})${errText ? `: ${errText.slice(0, 500)}` : ''}`,
+        latencyMs: elapsed()
+      };
+    }
+    const json = (await res.json().catch(() => null)) as any;
+    const text = json?.choices?.[0]?.message?.content;
+    if (typeof text !== 'string' || !text.trim()) {
+      return { ok: false, error: '返回内容为空或格式异常', latencyMs: elapsed() };
+    }
+    return { ok: true, reply: text.trim(), latencyMs: elapsed() };
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : '未知错误';
+    return { ok: false, error: message, latencyMs: elapsed() };
+  }
+};
+
 export type UndeadChatLine = { role: 'PLAYER' | 'UNDEAD'; text: string };
 export type LordChatLine = { role: 'PLAYER' | 'LORD'; text: string };
 export type AltarChatLine = { role: 'PLAYER' | 'NPC'; text: string };

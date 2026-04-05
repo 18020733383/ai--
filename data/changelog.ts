@@ -6,6 +6,11 @@ export type ChangelogEntry = {
 
 export const CHANGELOG: ChangelogEntry[] = [
   {
+    version: '0.13.23',
+    date: '2026-04-03',
+    items: ['设置：新增「API 连通测试」面板，可输入简短对话一键验证当前供应商/Key/模型是否可用（含耗时）']
+  },
+  {
     version: '0.13.22',
     date: '2026-04-03',
     items: [

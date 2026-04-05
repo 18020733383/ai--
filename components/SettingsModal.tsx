@@ -2,6 +2,7 @@ import React from 'react';
 import { Settings } from 'lucide-react';
 import { Button } from './Button';
 import { AIProvider } from '../types';
+import { runSettingsApiChatTest, type OpenAIConfig } from '../services/geminiService';
 
 type SettingsModalProps = {
   openAIBaseUrl: string;
@@ -46,6 +47,7 @@ type SettingsModalProps = {
   importSaveData: () => void;
   onClose: () => void;
   onSave: () => void;
+  buildAIConfig: () => OpenAIConfig | undefined;
 };
 
 export const SettingsModal = ({
@@ -90,8 +92,32 @@ export const SettingsModal = ({
   exportSaveData,
   importSaveData,
   onClose,
-  onSave
+  onSave,
+  buildAIConfig
 }: SettingsModalProps) => {
+  const [apiTestPrompt, setApiTestPrompt] = React.useState(
+    '请用一句中文回复：若你收到此消息，只回答「连通正常」四字。'
+  );
+  const [apiTestResult, setApiTestResult] = React.useState<string | null>(null);
+  const [apiTestLoading, setApiTestLoading] = React.useState(false);
+
+  const handleApiTest = async () => {
+    setApiTestLoading(true);
+    setApiTestResult(null);
+    try {
+      const res = await runSettingsApiChatTest(buildAIConfig(), apiTestPrompt);
+      if (res.ok) {
+        setApiTestResult(`成功（${res.latencyMs} ms）\n\n${res.reply}`);
+      } else {
+        setApiTestResult(
+          `失败${typeof res.latencyMs === 'number' ? `（${res.latencyMs} ms）` : ''}：${res.error}`
+        );
+      }
+    } finally {
+      setApiTestLoading(false);
+    }
+  };
+
   const isModelListSupported = aiProvider === 'GPT' || aiProvider === 'CUSTOM';
   const showProfiles = aiProvider === 'GPT' || aiProvider === 'CUSTOM';
   const keyLabel = aiProvider === 'DOUBAO' ? '豆包 API Key' : 'Key';
@@ -318,6 +344,30 @@ export const SettingsModal = ({
                   {settingsError}
                 </div>
               )}
+
+              <div className="bg-black/20 border border-stone-800 rounded p-3 space-y-2">
+                <div className="text-xs text-stone-300 font-bold">API 连通测试</div>
+                <p className="text-[11px] text-stone-500 leading-relaxed">
+                  使用当前表单中的供应商、Key、Base URL、模型发一条对话（无需先点「保存」）。用于快速验证密钥与网络。
+                </p>
+                <textarea
+                  value={apiTestPrompt}
+                  onChange={e => setApiTestPrompt(e.target.value)}
+                  className="w-full min-h-[72px] bg-stone-950 border border-stone-700 rounded px-3 py-2 text-sm text-stone-200 placeholder:text-stone-600"
+                  placeholder="输入发给模型的用户消息…"
+                />
+                <div className="flex flex-wrap gap-2 items-center">
+                  <Button variant="gold" size="sm" onClick={handleApiTest} disabled={apiTestLoading}>
+                    {apiTestLoading ? '请求中…' : '发送测试'}
+                  </Button>
+                  <span className="text-[10px] text-stone-600">Gemini 使用上方 Gemini Key；自定义/GPT/豆包使用对应 Key 与模型。</span>
+                </div>
+                {apiTestResult !== null && (
+                  <pre className="text-xs text-stone-300 bg-stone-950/80 border border-stone-800 rounded p-3 whitespace-pre-wrap break-words max-h-40 overflow-y-auto font-mono">
+                    {apiTestResult}
+                  </pre>
+                )}
+              </div>
             </div>
 
           <div className="bg-stone-950/40 border border-stone-800 rounded p-4">

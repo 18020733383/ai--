@@ -7740,6 +7740,7 @@ export default function App() {
       importSaveData={importSaveData}
       onClose={() => setIsSettingsOpen(false)}
       onSave={saveOpenAISettings}
+      buildAIConfig={buildAIConfig}
     />
   );
 
